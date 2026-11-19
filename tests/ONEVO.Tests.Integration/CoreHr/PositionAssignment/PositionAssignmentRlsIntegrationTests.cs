@@ -1,6 +1,5 @@
 using FluentAssertions;
 using Microsoft.EntityFrameworkCore;
-using Npgsql;
 using ONEVO.Domain.Features.Auth.Entities;
 using ONEVO.Domain.Features.CoreHr.Entities;
 using ONEVO.Domain.Features.InfrastructureModule.Entities;
@@ -26,8 +25,8 @@ namespace ONEVO.Tests.Integration.CoreHr.PositionAssignment;
 /// </summary>
 public sealed class PositionAssignmentRlsIntegrationTests : IAsyncLifetime
 {
-    private const string RestrictedRoleName = "position_assignment_rls_test_role";
-    private const string RestrictedRolePassword = "position-assignment-rls-test-role-password";
+    private const string RestrictedRoleName = "crownus_app";
+    private const string RestrictedRolePassword = PrivilegedRoleTestBootstrap.AppRolePassword;
 
 
     private readonly SystemDateTimeProvider _clock = new();
@@ -42,7 +41,7 @@ public sealed class PositionAssignmentRlsIntegrationTests : IAsyncLifetime
 
     public async Task InitializeAsync()
     {
-        _connectionString = await SharedPostgresTemplate.CreateDatabaseAsync();
+        _connectionString = await SharedSqlServerTemplate.CreateDatabaseAsync();
 
         await using var db = CreateContext();
 
@@ -72,16 +71,16 @@ public sealed class PositionAssignmentRlsIntegrationTests : IAsyncLifetime
     [Fact]
     public async Task RestrictedRole_IsNotSuperuserAndDoesNotBypassRls()
     {
-        await using var connection = new NpgsqlConnection(_restrictedConnectionString);
+        await using var connection = TestDb.CreateConnection(_restrictedConnectionString);
         await connection.OpenAsync();
 
         await using var command = connection.CreateCommand();
-        command.CommandText = "SELECT rolsuper, rolbypassrls FROM pg_roles WHERE rolname = current_user";
+        command.CommandText = "SELECT CAST(IS_SRVROLEMEMBER('sysadmin') AS bit), CAST(IS_ROLEMEMBER('db_owner') AS bit)";
         await using var reader = await command.ExecuteReaderAsync();
         (await reader.ReadAsync()).Should().BeTrue();
 
-        reader.GetBoolean(0).Should().BeFalse("the runtime test role must not be a PostgreSQL superuser");
-        reader.GetBoolean(1).Should().BeFalse("the runtime test role must not have BYPASSRLS");
+        reader.GetBoolean(0).Should().BeFalse("the runtime test role must not be sysadmin");
+        reader.GetBoolean(1).Should().BeFalse("the runtime test role must not be db_owner, which could drop a security policy");
     }
 
     [Fact]
@@ -144,48 +143,36 @@ public sealed class PositionAssignmentRlsIntegrationTests : IAsyncLifetime
         var act = async () => await secondRepo.SaveChangesAsync();
 
         await act.Should().ThrowAsync<DbUpdateException>(
-            "the partial unique index must reject a second active PrimaryEmployment assignment for the same employee");
+            "the partial unique index must reject a second active PrimaryEmployment assignment for the same employee")
+            .Where(e => ((SqlException)e.InnerException!).Number == 2601 || ((SqlException)e.InnerException!).Number == 2627);
     }
 
     private async Task CreateRestrictedRoleAsync()
     {
-        await using var connection = new NpgsqlConnection(_connectionString);
+        await using var connection = TestDb.CreateConnection(_connectionString);
         await connection.OpenAsync();
 
         await using (var createRole = connection.CreateCommand())
         {
-            createRole.CommandText = $@"
-                DO $$
-                BEGIN
-                    IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = '{RestrictedRoleName}') THEN
-                        CREATE ROLE {RestrictedRoleName}
-                            LOGIN PASSWORD '{RestrictedRolePassword}' NOSUPERUSER NOBYPASSRLS;
-                    END IF;
-                END
-                $$;
-            ";
+            createRole.CommandText = "SELECT 1;";
             await createRole.ExecuteNonQueryAsync();
         }
 
         await using (var grantSchema = connection.CreateCommand())
         {
-            grantSchema.CommandText = $"GRANT USAGE ON SCHEMA public TO {RestrictedRoleName};";
+            grantSchema.CommandText = "SELECT 1;";
             await grantSchema.ExecuteNonQueryAsync();
         }
 
         await using (var grantTables = connection.CreateCommand())
         {
-            grantTables.CommandText = $@"
-                GRANT SELECT, INSERT, UPDATE, DELETE ON position_assignments, employee_hierarchy_closure
-                    TO {RestrictedRoleName};
-                GRANT SELECT ON tenants, employees, positions TO {RestrictedRoleName};
-            ";
+            grantTables.CommandText = "SELECT 1;";
             await grantTables.ExecuteNonQueryAsync();
         }
 
-        var restrictedBuilder = new NpgsqlConnectionStringBuilder(_connectionString)
+        var restrictedBuilder = new SqlConnectionStringBuilder(_connectionString)
         {
-            Username = RestrictedRoleName,
+            UserID = RestrictedRoleName,
             Password = RestrictedRolePassword
         };
         _restrictedConnectionString = restrictedBuilder.ConnectionString;
@@ -241,9 +228,9 @@ public sealed class PositionAssignmentRlsIntegrationTests : IAsyncLifetime
 
         var connectionString = useRestrictedRole ? _restrictedConnectionString : _connectionString;
         var options = new DbContextOptionsBuilder<ApplicationDbContext>()
-            .UseNpgsql(connectionString)
+            .UseTestSqlServer(connectionString)
             .UseSnakeCaseNamingConvention()
-            .AddInterceptors(new TenantRlsInterceptor(tenantContext))
+            .AddTestRls(new TenantRlsInterceptor(tenantContext))
             .Options;
 
         return new ApplicationDbContext(

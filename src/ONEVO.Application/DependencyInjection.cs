@@ -2,6 +2,7 @@ using FluentValidation;
 using MediatR;
 using Microsoft.Extensions.DependencyInjection;
 using ONEVO.Application.Common.Behaviors;
+using ONEVO.Application.Common.RepositoryInterfaces;
 using ONEVO.Application.Common.ServiceInterfaces;
 using ONEVO.Application.Features.Auth.Login.OutboxHandlers;
 using ONEVO.Application.Features.DevPlatform.PlatformAccess.OutboxHandlers;
@@ -28,6 +29,7 @@ public static class DependencyInjection
         {
             cfg.RegisterServicesFromAssembly(assembly);
             cfg.AddBehavior(typeof(IPipelineBehavior<,>), typeof(UnhandledExceptionBehavior<,>));
+            cfg.AddBehavior(typeof(IPipelineBehavior<,>), typeof(AdminTenantContextBehavior<,>));
             cfg.AddBehavior(typeof(IPipelineBehavior<,>), typeof(ValidationBehavior<,>));
             cfg.AddBehavior(typeof(IPipelineBehavior<,>), typeof(LoggingBehavior<,>));
             cfg.AddBehavior(typeof(IPipelineBehavior<,>), typeof(PerformanceBehavior<,>));
@@ -36,14 +38,35 @@ public static class DependencyInjection
         services.AddValidatorsFromAssembly(assembly);
 
         services.AddScoped<
+            ONEVO.Application.Features.Dashboard.Layout.Access.IDashboardWidgetAccess,
+            ONEVO.Application.Features.Dashboard.Layout.Access.DashboardWidgetAccess>();
+        services.AddScoped<ONEVO.Application.Features.Dashboard.Layout.Services.DashboardSeeder>();
+        // Widget data providers themselves are registered by the API layer (they mirror its controller actions).
+        services.AddScoped<
+            ONEVO.Application.Features.Dashboard.Layout.Data.IWidgetDataOrchestrator,
+            ONEVO.Application.Features.Dashboard.Layout.Data.WidgetDataOrchestrator>();
+
+        services.AddScoped<
             ONEVO.Application.Features.Monitoring.TrayActivation.ServiceInterfaces.ITrayPresenceRequirementEvaluator,
             ONEVO.Application.Features.Monitoring.TrayActivation.Services.TrayPresenceRequirementEvaluator>();
+        services.AddScoped<
+            ONEVO.Application.Features.Monitoring.Biometrics.ServiceInterfaces.IEnrolledFaceMatcher,
+            ONEVO.Application.Features.Monitoring.Biometrics.Services.EnrolledFaceMatcher>();
+        services.AddScoped<
+            ONEVO.Application.Features.Monitoring.CheckIn.ServiceInterfaces.IFaceVerificationRetryPolicy,
+            ONEVO.Application.Features.Monitoring.CheckIn.Services.FaceVerificationRetryPolicy>();
         services.AddScoped<
             ONEVO.Application.Features.TimeAttendance.Services.IClockInPolicyScopeMembershipValidator,
             ONEVO.Application.Features.TimeAttendance.Services.ClockInPolicyScopeMembershipValidator>();
         services.AddScoped<
             ONEVO.Application.Features.TimeAttendance.Services.IAttendanceTodayStateService,
             ONEVO.Application.Features.TimeAttendance.Services.AttendanceTodayStateService>();
+        services.AddScoped<
+            ONEVO.Application.Features.TimeAttendance.Services.IEmployeeAttendancePeriodReader,
+            ONEVO.Application.Features.TimeAttendance.Services.EmployeeAttendancePeriodReader>();
+        services.AddScoped<
+            ONEVO.Application.Features.TimeAttendance.Team.Services.ITeamAttendancePeriodReader,
+            ONEVO.Application.Features.TimeAttendance.Team.Services.TeamAttendancePeriodReader>();
         // Registered as concrete types too: TrayClockInCommandHandler/TrayClockOutCommandHandler/
         // TrayStartBreakCommandHandler/TrayEndBreakCommandHandler inject these directly to reuse
         // their mutation logic without duplicating it.
@@ -73,13 +96,21 @@ public static class DependencyInjection
         services.AddScoped<IOutboxMessageHandler, EmployeeOnboardingInviteEmailOutboxHandler>();
         services.AddScoped<IOutboxMessageHandler, PositionChangeApprovalRequestEmailOutboxHandler>();
         services.AddScoped<IOutboxMessageHandler, InvoiceEmailOutboxHandler>();
-        services.AddScoped<IOutboxMessageHandler>(_ =>
-            new NoOpLeaveApprovalSideEffectOutboxHandler(OutboxMessageTypes.LeaveRequestApproved));
-        services.AddScoped<IOutboxMessageHandler>(_ =>
-            new NoOpLeaveApprovalSideEffectOutboxHandler(OutboxMessageTypes.LeaveRequestRejected));
-        services.AddScoped<IOutboxMessageHandler>(_ =>
-            new NoOpLeaveApprovalSideEffectOutboxHandler(OutboxMessageTypes.LeaveInformationRequested));
-        services.AddScoped<IOutboxMessageHandler, ONEVO.Application.Features.Leave.Cancellation.Outbox.NoOpLeaveCancellationSideEffectOutboxHandler>();
+        services.AddScoped<IOutboxMessageHandler>(sp =>
+            new LeaveApprovalEmailOutboxHandler(
+                sp.GetRequiredService<IEmailService>(),
+                sp.GetRequiredService<IEmployeeRepository>(),
+                OutboxMessageTypes.LeaveRequestApproved));
+        services.AddScoped<IOutboxMessageHandler>(sp =>
+            new LeaveApprovalEmailOutboxHandler(
+                sp.GetRequiredService<IEmailService>(),
+                sp.GetRequiredService<IEmployeeRepository>(),
+                OutboxMessageTypes.LeaveRequestRejected));
+        services.AddScoped<IOutboxMessageHandler>(sp =>
+            new LeaveApprovalEmailOutboxHandler(
+                sp.GetRequiredService<IEmailService>(),
+                sp.GetRequiredService<IEmployeeRepository>(),
+                OutboxMessageTypes.LeaveRequestCancelled));
                 services.AddScoped<GitHubUserIntegrationAvailability>();
         services.AddScoped<
             ONEVO.Application.Features.Monitoring.TrayActivation.Services.ITrayEnrollmentService,
@@ -87,12 +118,27 @@ public static class DependencyInjection
         services.AddScoped<ONEVO.Application.Features.Monitoring.TrayActivation.Commands.DeviceChangeRequests.DeviceChangeRequestWorkflow>();
 
         services.AddScoped<IOutboxMessageHandler, WorkNotificationOutboxHandler>();
+        services.AddScoped<IOutboxMessageHandler, ONEVO.Application.Features.Inbox.OutboxHandlers.InboxChangedOutboxHandler>();
         services.AddScoped<IOutboxMessageHandler, ONEVO.Application.Features.Calendar.OutboxHandlers.CalendarEventInviteEmailOutboxHandler>();
+        services.AddScoped<IOutboxMessageHandler, ONEVO.Application.Features.Calendar.OutboxHandlers.CalendarMeetingCancelOutboxHandler>();
+        services.AddScoped<IOutboxMessageHandler, ONEVO.Application.Features.WorkManagement.Meetings.OutboxHandlers.MeetingLinkProvisionOutboxHandler>();
+        services.AddScoped<IOutboxMessageHandler, ONEVO.Application.Features.Calendar.OutboxHandlers.CalendarOutlookPushOutboxHandler>();
         services.AddScoped<GetBulkOnboardingTemplateQueryHandler>();
 
         services.AddScoped<
             ONEVO.Application.Features.CoreHr.EmployeeAuthority.ServiceInterfaces.IEmployeeAuthorityResolver,
             ONEVO.Application.Features.CoreHr.EmployeeAuthority.Services.EmployeeAuthorityResolver>();
+
+        services.AddScoped<
+            ONEVO.Application.Features.Monitoring.Exceptions.ServiceInterfaces.IExceptionScopeResolver,
+            ONEVO.Application.Features.Monitoring.Exceptions.Services.ExceptionScopeResolver>();
+        services.AddScoped<ONEVO.Application.Features.Monitoring.Exceptions.Services.ExceptionCaseRouting>();
+        services.AddScoped<
+            ONEVO.Application.Features.Monitoring.Exceptions.ServiceInterfaces.IExceptionAlertRouter,
+            ONEVO.Application.Features.Monitoring.Exceptions.Services.ExceptionAlertRouter>();
+        services.AddScoped<
+            ONEVO.Application.Features.Monitoring.Exceptions.ServiceInterfaces.IExceptionAlertRouterFactory,
+            ONEVO.Application.Features.Monitoring.Exceptions.Services.ExceptionAlertRouterFactory>();
 
         return services;
     }

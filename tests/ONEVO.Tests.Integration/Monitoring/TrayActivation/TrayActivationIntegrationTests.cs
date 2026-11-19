@@ -34,7 +34,7 @@ public sealed class TrayActivationIntegrationTestsFixture : IAsyncLifetime
 
     public async Task InitializeAsync()
     {
-        var connectionString = await SharedPostgresTemplate.CreateDatabaseAsync();
+        var connectionString = await SharedSqlServerTemplate.CreateDatabaseAsync();
         _environmentScope = new IntegrationTestEnvironmentScope(connectionString);
 
         _factory = new TrayActivationTestFactory(connectionString);
@@ -146,18 +146,18 @@ public sealed class TrayActivationIntegrationTestsFixture : IAsyncLifetime
             HttpStatusCode.Accepted,
             await legalResponse.Content.ReadAsStringAsync());
 
-        // 3. Session exchange on tenant host — produces onevo_session + onevo_csrf cookies
+        // 3. Session exchange on tenant host — produces crownus_session + crownus_csrf cookies
         var exchangeResponse = await CompleteTenantSessionExchangeAsync(legalResponse);
         exchangeResponse.StatusCode.Should().Be(
             HttpStatusCode.OK,
             await exchangeResponse.Content.ReadAsStringAsync());
 
-        var sessionValue = ExtractCookieValue(exchangeResponse, "onevo_session");
-        var csrfCookieValue = ExtractCookieValue(exchangeResponse, "onevo_csrf");
+        var sessionValue = ExtractCookieValue(exchangeResponse, "crownus_session");
+        var csrfCookieValue = ExtractCookieValue(exchangeResponse, "crownus_csrf");
         var csrfHeader = Uri.UnescapeDataString(csrfCookieValue);
 
         return new SessionInfo(
-            $"onevo_session={sessionValue}; onevo_csrf={csrfCookieValue}",
+            $"crownus_session={sessionValue}; crownus_csrf={csrfCookieValue}",
             csrfHeader,
             $"{user.TenantSlug}.localhost");
     }
@@ -233,8 +233,8 @@ public sealed class TrayActivationIntegrationTestsFixture : IAsyncLifetime
 
     private async Task<HttpResponseMessage> CompleteLegalAcceptanceAsync(HttpResponseMessage priorResponse)
     {
-        var legalPending = ExtractCookieValue(priorResponse, "onevo_legal_pending");
-        var legalCsrf = ExtractCookieValue(priorResponse, "onevo_legal_csrf");
+        var legalPending = ExtractCookieValue(priorResponse, "crownus_legal_pending");
+        var legalCsrf = ExtractCookieValue(priorResponse, "crownus_legal_csrf");
         var priorBody = await priorResponse.Content.ReadAsStringAsync();
         using var priorDocument = JsonDocument.Parse(priorBody);
         var continueUrl = new Uri(
@@ -243,7 +243,7 @@ public sealed class TrayActivationIntegrationTestsFixture : IAsyncLifetime
 
         using var request = new HttpRequestMessage(HttpMethod.Post, continueUrl.PathAndQuery);
         request.Headers.Host = continueUrl.Host;
-        request.Headers.Add("Cookie", $"onevo_legal_pending={legalPending}; onevo_legal_csrf={legalCsrf}");
+        request.Headers.Add("Cookie", $"crownus_legal_pending={legalPending}; crownus_legal_csrf={legalCsrf}");
         request.Headers.Add("X-CSRF-Token", legalCsrf);
         request.Content = JsonContent.Create(new
         {
@@ -511,13 +511,42 @@ public sealed class TrayActivationIntegrationTests : IClassFixture<TrayActivatio
         const string fingerprint = "fp-refresh-used-001";
         var (_, firstRefreshToken) = await _fixture.ExchangeCodeAsync(code, fingerprint);
 
-        // Rotate once — old token is revoked
-        await _fixture.PostRefreshAsync(firstRefreshToken, fingerprint);
+        // Rotate once, then use the replacement — the client demonstrably received it
+        var second = await ReadRefreshTokenAsync(await _fixture.PostRefreshAsync(firstRefreshToken, fingerprint));
+        (await _fixture.PostRefreshAsync(second, fingerprint)).StatusCode.Should().Be(HttpStatusCode.OK);
 
         // Replay the original (now revoked) token
         var replay = await _fixture.PostRefreshAsync(firstRefreshToken, fingerprint);
 
         replay.StatusCode.Should().Be(HttpStatusCode.Unauthorized, "a rotated-away token must be rejected");
+    }
+
+    [Fact]
+    public async Task Refresh_RetryAfterLostResponse_IssuesNewTokenAndRevokesUnreceivedOne()
+    {
+        var user = await _fixture.SeedActiveUserAsync("refresh-retry-test", "refresh-retry@test.dev", "RefRetryPass1!");
+        var session = await _fixture.LoginAndGetSessionAsync(user);
+        var code = await _fixture.GenerateCodeAsync(session);
+        const string fingerprint = "fp-refresh-retry-001";
+        var (_, firstRefreshToken) = await _fixture.ExchangeCodeAsync(code, fingerprint);
+
+        // The tray never sees this response (timeout / dropped connection) and retries.
+        var lost = await ReadRefreshTokenAsync(await _fixture.PostRefreshAsync(firstRefreshToken, fingerprint));
+        var retry = await _fixture.PostRefreshAsync(firstRefreshToken, fingerprint);
+
+        retry.StatusCode.Should().Be(HttpStatusCode.OK, "a retry inside the grace window must not log the device out");
+        var current = await ReadRefreshTokenAsync(retry);
+        current.Should().NotBe(lost);
+        (await _fixture.PostRefreshAsync(lost, fingerprint)).StatusCode
+            .Should().Be(HttpStatusCode.Unauthorized, "the unreceived replacement is revoked by the retry");
+        (await _fixture.PostRefreshAsync(current, fingerprint)).StatusCode.Should().Be(HttpStatusCode.OK);
+    }
+
+    private static async Task<string> ReadRefreshTokenAsync(HttpResponseMessage response)
+    {
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
+        using var doc = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+        return doc.RootElement.GetProperty("refresh_token").GetString()!;
     }
 
     [Fact]
@@ -634,4 +663,50 @@ public sealed class TrayActivationIntegrationTests : IClassFixture<TrayActivatio
             .Should().Be(1, "a rejected device-change attempt must not create a second active registration");
     }
 
+    // ── SEC-15: ES256 device tokens ────────────────────────────────────────────
+
+    [Fact]
+    public async Task DeviceToken_IsES256WithKid_AndWorksAsBearerAndAsHubQueryToken()
+    {
+        var user = await _fixture.SeedActiveUserWithEmployeeAsync(
+            "sec15-token-test", "sec15-token@test.dev", "Sec15Pass1!", "EMP-1501");
+        var session = await _fixture.LoginAndGetSessionAsync(user);
+        var code = await _fixture.GenerateCodeAsync(session);
+        var (accessToken, _) = await _fixture.ExchangeCodeAsync(code, "fp-sec15-token");
+
+        // Test environment, no key configured: the throwaway key signs, and the same key validates.
+        var headerJson = Microsoft.IdentityModel.Tokens.Base64UrlEncoder.Decode(accessToken.Split('.')[0]);
+        using (var header = JsonDocument.Parse(headerJson))
+        {
+            header.RootElement.GetProperty("alg").GetString().Should().Be("ES256");
+            header.RootElement.GetProperty("kid").GetString().Should().StartWith("dev-ephemeral-");
+        }
+
+        // Bearer header on a TrayDevicePolicy endpoint.
+        using (var heartbeat = new HttpRequestMessage(HttpMethod.Post, "/api/v1/monitoring/activation/heartbeat"))
+        {
+            heartbeat.Headers.Host = "localhost";
+            heartbeat.Headers.Authorization =
+                new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", accessToken);
+            (await _fixture.Client.SendAsync(heartbeat)).StatusCode.Should().Be(HttpStatusCode.NoContent);
+        }
+
+        // ?access_token= on the agent hub (SignalR negotiate runs the hub's [Authorize]).
+        (await NegotiateAgentHubAsync(accessToken)).Should().Be(HttpStatusCode.OK);
+        (await NegotiateAgentHubAsync(null)).Should().Be(HttpStatusCode.Unauthorized);
+
+        var parts = accessToken.Split('.');
+        var tampered = parts[0] + "." + parts[1] + "." + new string('A', parts[2].Length);
+        (await NegotiateAgentHubAsync(tampered)).Should().Be(HttpStatusCode.Unauthorized);
+    }
+
+    private async Task<HttpStatusCode> NegotiateAgentHubAsync(string? accessToken)
+    {
+        var url = "/hubs/agent-commands/negotiate?negotiateVersion=1"
+            + (accessToken is null ? string.Empty : "&access_token=" + Uri.EscapeDataString(accessToken));
+        using var request = new HttpRequestMessage(HttpMethod.Post, url);
+        request.Headers.Host = "localhost";
+        using var response = await _fixture.Client.SendAsync(request);
+        return response.StatusCode;
+    }
 }

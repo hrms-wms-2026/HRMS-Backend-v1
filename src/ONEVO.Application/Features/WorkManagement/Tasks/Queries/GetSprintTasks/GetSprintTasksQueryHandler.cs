@@ -2,11 +2,14 @@ using MediatR;
 using ONEVO.Application.Common.Models;
 using ONEVO.Application.Common.ServiceInterfaces;
 using ONEVO.Application.Features.Auth.Permission.ServiceInterfaces;
+using ONEVO.Application.Features.WorkManagement.Approvals.RepositoryInterfaces;
 using ONEVO.Application.Features.WorkManagement.Common.Services;
 using ONEVO.Application.Features.WorkManagement.ProjectMembers.RepositoryInterfaces;
 using ONEVO.Application.Features.WorkManagement.Sprints.RepositoryInterfaces;
 using ONEVO.Application.Features.WorkManagement.Tasks.DTOs.Responses;
 using ONEVO.Application.Features.WorkManagement.Tasks.RepositoryInterfaces;
+using ONEVO.Application.Features.WorkManagement.Tasks.Services;
+using ONEVO.Domain.Features.WorkManagement.Approvals.Entities;
 
 namespace ONEVO.Application.Features.WorkManagement.Tasks.Queries.GetSprintTasks;
 
@@ -19,6 +22,8 @@ public class GetSprintTasksQueryHandler : IRequestHandler<GetSprintTasksQuery, R
     private readonly IPermissionResolver _permissionResolver;
     private readonly IWorkTaskRepository _tasks;
     private readonly ITaskAssignmentRepository _assignments;
+    private readonly IWorkApprovalRequestRepository _approvalRequests;
+    private readonly ITaskAccessResolver? _taskAccess;
 
     public GetSprintTasksQueryHandler(
         ICurrentUser currentUser,
@@ -27,7 +32,9 @@ public class GetSprintTasksQueryHandler : IRequestHandler<GetSprintTasksQuery, R
         IProjectMemberRepository members,
         IPermissionResolver permissionResolver,
         IWorkTaskRepository tasks,
-        ITaskAssignmentRepository assignments)
+        ITaskAssignmentRepository assignments,
+        IWorkApprovalRequestRepository approvalRequests,
+        ITaskAccessResolver? taskAccess = null)
     {
         _currentUser = currentUser;
         _identity = identity;
@@ -36,6 +43,8 @@ public class GetSprintTasksQueryHandler : IRequestHandler<GetSprintTasksQuery, R
         _permissionResolver = permissionResolver;
         _tasks = tasks;
         _assignments = assignments;
+        _approvalRequests = approvalRequests;
+        _taskAccess = taskAccess;
     }
 
     public async Task<Result<IReadOnlyList<WorkTaskResponse>>> Handle(GetSprintTasksQuery request, CancellationToken ct)
@@ -57,21 +66,29 @@ public class GetSprintTasksQueryHandler : IRequestHandler<GetSprintTasksQuery, R
             return Result<IReadOnlyList<WorkTaskResponse>>.NotFound("Sprint not found.");
 
         var permissions = await _permissionResolver.ResolveAsync(userId, tenantId, null, ct);
-        var hasReadPermission = permissions.Contains("projects:read") || permissions.Contains("*");
+        var hasReadPermission = permissions.Contains("*");
         if (!hasReadPermission && !await _members.HasActiveMembershipAsync(tenantId, sprint.ProjectId, callerEmployeeId.Value, ct))
             return Result<IReadOnlyList<WorkTaskResponse>>.Forbidden("You do not have access to this project.");
 
         var items = await _tasks.GetBySprintIdAsync(tenantId, request.SprintId, ct);
+        if (_taskAccess is not null)
+            items = await _taskAccess.FilterViewableTasksAsync(
+                tenantId, userId, callerEmployeeId.Value, items, ct);
 
         var assignments = await _assignments.GetByTaskIdsAsync(items.Select(t => t.Id).ToList(), ct);
         var assigneesByTaskId = assignments
             .GroupBy(a => a.TaskId)
             .ToDictionary(g => g.Key, g => (IReadOnlyList<Guid>)g.Select(a => a.EmployeeId).ToList());
 
+        var pendingTaskIds = await _approvalRequests.GetPendingTargetIdsAsync(
+            tenantId, WorkTargetTypes.Task, items.Select(task => task.Id).ToList(), ct) ?? new HashSet<Guid>();
+
         var responses = items.Select(t => new WorkTaskResponse(
             t.Id, t.ObjectiveId, t.ShortId, t.Title, t.Description, t.CategoryId, t.StatusId,
             t.Priority, t.StoryPoints, t.DueDate, t.EstimatedHours, t.CompletedHours, t.ProgressPercent, t.SprintId,
-            assigneesByTaskId.GetValueOrDefault(t.Id, Array.Empty<Guid>()), CreatedAt: t.CreatedAt)).ToList();
+            assigneesByTaskId.GetValueOrDefault(t.Id, Array.Empty<Guid>()), CreatedAt: t.CreatedAt,
+            HasPendingApproval: pendingTaskIds.Contains(t.Id),
+            TaskKind: t.TaskKind, VisibilityScope: t.VisibilityScope)).ToList();
 
         return Result<IReadOnlyList<WorkTaskResponse>>.Success(responses);
     }

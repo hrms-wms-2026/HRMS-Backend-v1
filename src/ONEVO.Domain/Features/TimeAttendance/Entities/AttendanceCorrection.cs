@@ -31,6 +31,11 @@ public sealed class AttendanceCorrection : ITenantOwnedEntity
     public DateTimeOffset? RequestedClockOutAt { get; set; }
     public string? OriginalBreakJson { get; set; }
     public string? RequestedBreakJson { get; set; }
+    /// <summary>Set when the approver changed the requested values before approving (Inbox edit-before-approve). The
+    /// requested values are kept as asked; the approved ones are what was applied.</summary>
+    public DateTimeOffset? ApprovedClockInAt { get; set; }
+    public DateTimeOffset? ApprovedClockOutAt { get; set; }
+    public string? ApprovedBreakJson { get; set; }
     public string Reason { get; set; } = string.Empty;
     public string? Notes { get; set; }
     public string Status { get; set; } = StatusPending;

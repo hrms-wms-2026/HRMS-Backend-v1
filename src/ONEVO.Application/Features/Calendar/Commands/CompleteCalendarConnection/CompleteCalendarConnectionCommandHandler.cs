@@ -5,6 +5,7 @@ using Microsoft.Extensions.Logging;
 using ONEVO.Application.Common.Models;
 using ONEVO.Application.Common.RepositoryInterfaces;
 using ONEVO.Application.Common.ServiceInterfaces;
+using ONEVO.Application.Common.Tenancy;
 using ONEVO.Application.Features.Calendar.RepositoryInterfaces;
 using ONEVO.Application.Features.Calendar.ServiceInterfaces;
 using ONEVO.Application.Features.DevPlatform.SystemConfig.PlatformOAuthApps.ServiceInterfaces;
@@ -47,8 +48,15 @@ public sealed class CompleteCalendarConnectionCommandHandler(
         var scheme = baseUri?.Scheme ?? "https";
         var port = baseUri?.Port ?? 443;
 
+        var singleHost = TenancyModeReader.Read(configuration) == TenancyMode.SingleHost;
+
         string BuildRedirect(string query)
-            => new UriBuilder(scheme, $"{tenant.Slug}.{rootDomain}", port, "/calendar") { Query = query }.Uri.ToString();
+            => singleHost
+                ? new UriBuilder(scheme, rootDomain, port, "/calendar")
+                {
+                    Query = $"{query}&tenant={Uri.EscapeDataString(tenant.Slug)}"
+                }.Uri.ToString()
+                : new UriBuilder(scheme, $"{tenant.Slug}.{rootDomain}", port, "/calendar") { Query = query }.Uri.ToString();
 
         var errorRedirect = BuildRedirect("connectionError=1");
 
@@ -96,9 +104,12 @@ public sealed class CompleteCalendarConnectionCommandHandler(
         var tokens = await tokenExchangeClient.ExchangeCodeAsync(app.TokenUrl, credential.ClientId, credential.ClientSecret, code, redirectUri, ct);
         var account = await tokenExchangeClient.GetAccountAsync(request.Provider, tokens.AccessToken, ct);
 
-        var externalSource = request.Provider.Equals("google", StringComparison.OrdinalIgnoreCase)
-            ? CalendarExternalSources.GoogleCalendar
-            : CalendarExternalSources.OutlookCalendar;
+        var externalSource = request.Provider switch
+        {
+            var p when p.Equals("google", StringComparison.OrdinalIgnoreCase) => CalendarExternalSources.GoogleCalendar,
+            var p when p.Equals("zoom", StringComparison.OrdinalIgnoreCase) => CalendarExternalSources.Zoom,
+            _ => CalendarExternalSources.OutlookCalendar
+        };
 
         return await unitOfWork.ExecuteInTransactionAsync(async innerCt =>
         {
@@ -142,7 +153,12 @@ public sealed class CompleteCalendarConnectionCommandHandler(
                     AccessTokenEncrypted = encryption.EncryptBytes(tokens.AccessToken),
                     RefreshTokenEncrypted = encryption.EncryptBytes(tokens.RefreshToken),
                     ScopesJson = JsonSerializer.Serialize(app.DefaultScopes),
-                    SyncDirection = CalendarSyncDirections.TwoWay,
+                    // Zoom connections are meeting-only — there is no calendar to sync, and
+                    // CalendarSyncService/CalendarSyncJob already skip any connection whose
+                    // SyncDirection is Disabled (see CalendarSyncService.SyncConnectionAsync).
+                    SyncDirection = externalSource == CalendarExternalSources.Zoom
+                        ? CalendarSyncDirections.Disabled
+                        : CalendarSyncDirections.TwoWay,
                     Status = ExternalCalendarConnectionStatuses.Active,
                     ExpiresAt = tokens.ExpiresAt,
                     CreatedAt = now

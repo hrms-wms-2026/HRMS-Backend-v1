@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata.Builders;
 using ONEVO.Domain.Features.Calendar.Entities;
+using ONEVO.Infrastructure.Persistence.SqlServer;
 
 namespace ONEVO.Infrastructure.Persistence.Configurations.Calendar;
 
@@ -15,7 +16,7 @@ public class ExternalCalendarConnectionConfiguration : IEntityTypeConfiguration<
         builder.Property(c => c.ExternalAccountEmail).HasMaxLength(255).IsRequired();
         builder.Property(c => c.ExternalCalendarId).HasMaxLength(255);
         builder.Property(c => c.ExternalCalendarName).HasMaxLength(255);
-        builder.Property(c => c.ScopesJson).HasColumnName("scopes").HasColumnType("jsonb").IsRequired();
+        builder.Property(c => c.ScopesJson).HasColumnName("scopes").IsJsonColumn().IsRequired();
         builder.Property(c => c.SyncDirection).HasMaxLength(20).IsRequired();
         builder.Property(c => c.Status).HasMaxLength(20).IsRequired();
         builder.Property(c => c.RefreshTokenEncrypted).IsRequired();

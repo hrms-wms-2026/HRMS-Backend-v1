@@ -70,13 +70,13 @@ public sealed class BulkOnboardingControllerTests
     }
 
     [Fact]
-    public void GetById_RequiresEmployeesReadPermission()
+    public void GetById_RequiresEmployeesWritePermission()
     {
         var method = typeof(BulkOnboardingController).GetMethod(nameof(BulkOnboardingController.GetById))!;
         var attribute = method.GetCustomAttribute<RequirePermissionAttribute>();
         Assert.NotNull(attribute);
 
         var field = typeof(RequirePermissionAttribute).GetField("_permission", BindingFlags.Instance | BindingFlags.NonPublic);
-        Assert.Equal("employees:read", (string)field!.GetValue(attribute)!);
+        Assert.Equal("employees:write", (string)field!.GetValue(attribute)!);
     }
 }

@@ -1,79 +1,73 @@
 using MediatR;
 using ONEVO.Application.Common.Models;
-using ONEVO.Application.Common.RepositoryInterfaces;
 using ONEVO.Application.Common.ServiceInterfaces;
 using ONEVO.Application.Features.WorkManagement.Common.Services;
+using ONEVO.Application.Features.WorkManagement.Objectives.DTOs;
+using ONEVO.Application.Features.WorkManagement.Objectives.DTOs.Responses;
 using ONEVO.Application.Features.WorkManagement.Objectives.RepositoryInterfaces;
 using ONEVO.Application.Features.WorkManagement.Objectives.Services;
-using ONEVO.Application.Features.WorkManagement.ProjectInvitations.RepositoryInterfaces;
-using ONEVO.Domain.Features.WorkManagement.ProjectInvitations.Entities;
+using ONEVO.Domain.Features.WorkManagement.Approvals.Entities;
 
 namespace ONEVO.Application.Features.WorkManagement.Objectives.Commands.RemoveObjectiveMember;
 
-public class RemoveObjectiveMemberCommandHandler : IRequestHandler<RemoveObjectiveMemberCommand, Result>
+/// <summary>
+/// Removes a milestone member through the approval engine: the parent's owner (or anyone above) removes
+/// them now; the milestone's own head or members below file a module.member_remove request to the
+/// parent's owner.
+/// </summary>
+public class RemoveObjectiveMemberCommandHandler : IRequestHandler<RemoveObjectiveMemberCommand, Result<RemoveObjectiveMemberOutcomeResponse>>
 {
     private readonly ICurrentUser _currentUser;
     private readonly ICallerIdentityResolver _identity;
     private readonly IObjectiveRepository _objectives;
     private readonly IMilestoneMembershipCoordinator _membership;
-    private readonly IProjectMemberInvitationRepository _invitations;
-    private readonly IUnitOfWork _unitOfWork;
+    private readonly IModuleActionSubmitter _submitter;
 
     public RemoveObjectiveMemberCommandHandler(
         ICurrentUser currentUser, ICallerIdentityResolver identity, IObjectiveRepository objectives,
-        IMilestoneMembershipCoordinator membership, IProjectMemberInvitationRepository invitations, IUnitOfWork unitOfWork)
+        IMilestoneMembershipCoordinator membership, IModuleActionSubmitter submitter)
     {
         _currentUser = currentUser;
         _identity = identity;
         _objectives = objectives;
         _membership = membership;
-        _invitations = invitations;
-        _unitOfWork = unitOfWork;
+        _submitter = submitter;
     }
 
-    public async Task<Result> Handle(RemoveObjectiveMemberCommand request, CancellationToken ct)
+    public async Task<Result<RemoveObjectiveMemberOutcomeResponse>> Handle(RemoveObjectiveMemberCommand request, CancellationToken ct)
     {
         if (!_currentUser.IsAuthenticated)
-            return Result.Forbidden("Authentication required.");
+            return Result<RemoveObjectiveMemberOutcomeResponse>.Forbidden("Authentication required.");
 
         var tenantId = _currentUser.TenantId;
         var userId = _currentUser.UserId;
         if (tenantId == Guid.Empty)
-            return Result.Forbidden("Tenant context missing.");
+            return Result<RemoveObjectiveMemberOutcomeResponse>.Forbidden("Tenant context missing.");
 
         var callerEmployeeId = await _identity.ResolveCallerEmployeeIdAsync(tenantId, userId, ct);
         if (callerEmployeeId is null)
-            return Result.Forbidden("No employee record for the current user.");
+            return Result<RemoveObjectiveMemberOutcomeResponse>.Forbidden("No employee record for the current user.");
 
         var objective = await _objectives.GetByIdForTenantAsync(tenantId, request.ObjectiveId, ct);
         if (objective is null || !objective.IsActive)
-            return Result.NotFound("Objective not found.");
+            return Result<RemoveObjectiveMemberOutcomeResponse>.NotFound("Objective not found.");
 
         if (objective.IsAchieved)
-            return Result.Failure("Cannot remove members from an achieved milestone.");
+            return Result<RemoveObjectiveMemberOutcomeResponse>.Failure("Cannot remove members from an achieved milestone.");
 
         if (!await _membership.IsEffectiveManagerAsync(tenantId, objective.Id, callerEmployeeId.Value, ct))
-            return Result.Forbidden("Only this milestone's head can remove members.");
+            return Result<RemoveObjectiveMemberOutcomeResponse>.Forbidden("Only this milestone's head or an active member can remove members.");
 
         if (request.EmployeeId == objective.OwnerId)
-            return Result.Failure("Cannot remove the milestone's head as a member - use Transfer instead.");
+            return Result<RemoveObjectiveMemberOutcomeResponse>.Failure("Cannot remove the milestone's head as a member - use Transfer instead.");
 
-        if (await _membership.HasActiveMembershipAsync(tenantId, objective.ProjectId, objective.Id, request.EmployeeId, ct))
-        {
-            await _membership.DeactivateMembershipAsync(tenantId, objective.ProjectId, objective.Id, request.EmployeeId, ct);
-            await _unitOfWork.SaveChangesAsync(ct);
-            return Result.Success();
-        }
+        var input = new ModuleMemberRemoveInput(request.EmployeeId);
+        var outcome = await _submitter.SubmitAsync(tenantId, callerEmployeeId.Value, objective, WorkActionTypes.ModuleMemberRemove, input,
+            (tracked, innerCt) => _membership.ApplyMemberRemoveAsync(tenantId, tracked, request.EmployeeId, innerCt),
+            extraRecipients: [request.EmployeeId], ct: ct);
 
-        var pendingInvite = await _invitations.GetTrackedPendingForObjectiveAndEmployeeAsync(tenantId, objective.Id, request.EmployeeId, ct);
-        if (pendingInvite is null)
-            return Result.NotFound("This employee has no active membership or pending invitation on this milestone.");
-
-        pendingInvite.Status = ProjectInvitationStatuses.Cancelled;
-        pendingInvite.DecidedAt = DateTimeOffset.UtcNow;
-        _invitations.Update(pendingInvite);
-        await _unitOfWork.SaveChangesAsync(ct);
-
-        return Result.Success();
+        return outcome.IsSuccess
+            ? Result<RemoveObjectiveMemberOutcomeResponse>.Success(new RemoveObjectiveMemberOutcomeResponse(outcome.Value!.Applied, outcome.Value.ApprovalRequestId))
+            : Result<RemoveObjectiveMemberOutcomeResponse>.Failure(outcome.Error!, outcome.StatusCode ?? 400);
     }
 }

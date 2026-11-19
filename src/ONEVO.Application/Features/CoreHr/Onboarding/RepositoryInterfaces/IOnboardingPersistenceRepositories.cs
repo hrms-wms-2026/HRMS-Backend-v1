@@ -116,10 +116,18 @@ public interface IEmployeeChecklistTaskRepository
 
     Task<IReadOnlyList<EmployeeChecklistTask>> ListByEmployeeAsync(Guid tenantId, Guid employeeId, CancellationToken ct = default);
 
+    Task<IReadOnlyList<EmployeeChecklistTaskEffectiveState>> ListEffectiveByEmployeeAsync(
+        Guid tenantId, Guid employeeId, CancellationToken ct = default);
+
+    Task<IReadOnlyList<EmployeeChecklistTaskEffectiveState>> ListEffectiveByOffboardingRecordAsync(
+        Guid tenantId, Guid offboardingRecordId, CancellationToken ct = default);
+
     /// <summary>Tenant+id lookup with no employee scoping - used both by employee-scoped handlers
     /// (which additionally verify task.EmployeeId == the route's employeeId) and by cross-employee
     /// bypass-approval handlers (Task 15), which only know the bypass request's task id.</summary>
     Task<EmployeeChecklistTask?> GetTrackedByIdAsync(Guid tenantId, Guid taskId, CancellationToken ct = default);
+
+    Task<EmployeeChecklistTask?> GetTrackedByWorkTaskIdAsync(Guid tenantId, Guid workTaskId, CancellationToken ct = default);
 
     /// <summary>Tasks belonging to one specific offboarding attempt (via EmployeeChecklistTask.
     /// OffboardingRecordId) - not "all this employee's offboarding tasks ever", which would wrongly
@@ -128,3 +136,11 @@ public interface IEmployeeChecklistTaskRepository
 
     Task<int> SaveChangesAsync(CancellationToken ct = default);
 }
+
+public sealed record EmployeeChecklistTaskEffectiveState(
+    EmployeeChecklistTask Task,
+    bool IsCompleted,
+    DateTimeOffset? CompletedAt,
+    string? WorkStatusName,
+    string? WorkTaskShortId,
+    Guid? WorkProjectId);

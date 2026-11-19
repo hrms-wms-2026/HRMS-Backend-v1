@@ -5,12 +5,17 @@ using ONEVO.Application.Common.RepositoryInterfaces;
 using ONEVO.Application.Common.ServiceInterfaces;
 using ONEVO.Application.Features.Auth.Permission.ServiceInterfaces;
 using ONEVO.Application.Features.Storage.File.Helpers;
+using ONEVO.Application.Features.WorkManagement.Approvals.RepositoryInterfaces;
 using ONEVO.Application.Features.WorkManagement.CalendarEvents.RepositoryInterfaces;
 using ONEVO.Application.Features.WorkManagement.Common.Services;
+using ONEVO.Application.Features.WorkManagement.Hierarchy;
 using ONEVO.Application.Features.WorkManagement.ProjectMembers.RepositoryInterfaces;
 using ONEVO.Application.Features.WorkManagement.Projects.RepositoryInterfaces;
 using ONEVO.Application.Features.WorkManagement.Tasks.DTOs.Responses;
 using ONEVO.Application.Features.WorkManagement.Tasks.RepositoryInterfaces;
+using ONEVO.Application.Features.WorkManagement.Tasks.Services;
+using ONEVO.Domain.Features.WorkManagement.Tasks.Entities;
+using ONEVO.Domain.Features.WorkManagement.Approvals.Entities;
 
 namespace ONEVO.Application.Features.WorkManagement.Tasks.Queries.GetTaskById;
 
@@ -21,11 +26,14 @@ public sealed class GetTaskByIdQueryHandler : IRequestHandler<GetTaskByIdQuery, 
     private readonly IWorkTaskRepository _tasks;
     private readonly IProjectRepository _projects;
     private readonly IProjectMemberRepository _members;
+    private readonly IWorkHierarchyService _hierarchy;
     private readonly IPermissionResolver _permissionResolver;
     private readonly ITaskAssignmentRepository _assignments;
     private readonly ITaskClockingSessionRepository _sessions;
     private readonly ICalendarEventRepository _calendarEvents;
     private readonly IEntityAssetRepository _entityAssets;
+    private readonly IWorkApprovalRequestRepository _approvalRequests;
+    private readonly ITaskAccessResolver? _taskAccess;
 
     public GetTaskByIdQueryHandler(
         ICurrentUser currentUser,
@@ -37,18 +45,24 @@ public sealed class GetTaskByIdQueryHandler : IRequestHandler<GetTaskByIdQuery, 
         ITaskAssignmentRepository assignments,
         ITaskClockingSessionRepository sessions,
         ICalendarEventRepository calendarEvents,
-        IEntityAssetRepository entityAssets)
+        IEntityAssetRepository entityAssets,
+        IWorkHierarchyService hierarchy,
+        IWorkApprovalRequestRepository approvalRequests,
+        ITaskAccessResolver? taskAccess = null)
     {
         _currentUser = currentUser;
         _identity = identity;
         _tasks = tasks;
         _projects = projects;
         _members = members;
+        _hierarchy = hierarchy;
         _permissionResolver = permissionResolver;
         _assignments = assignments;
         _sessions = sessions;
         _calendarEvents = calendarEvents;
         _entityAssets = entityAssets;
+        _approvalRequests = approvalRequests;
+        _taskAccess = taskAccess;
     }
 
     public async Task<Result<WorkTaskResponse>> Handle(GetTaskByIdQuery request, CancellationToken ct)
@@ -74,14 +88,21 @@ public sealed class GetTaskByIdQueryHandler : IRequestHandler<GetTaskByIdQuery, 
             return Result<WorkTaskResponse>.NotFound("Task not found.");
 
         var permissions = await _permissionResolver.ResolveAsync(userId, tenantId, null, ct);
-        var hasReadPermission = permissions.Contains("projects:read") || permissions.Contains("*");
+        var hasReadPermission = permissions.Contains("*");
         if (!hasReadPermission)
         {
             var accessibleObjectiveIds =
-                (await _members.GetActiveObjectiveIdsForEmployeeInProjectAsync(tenantId, project.Id, callerEmployeeId.Value, ct))
-                .ToHashSet();
+                (await _hierarchy.LoadTreeAsync(tenantId, project.Id, ct)).AtOrBelow(
+                    await _members.GetActiveObjectiveIdsForEmployeeInProjectAsync(tenantId, project.Id, callerEmployeeId.Value, ct));
             if (!accessibleObjectiveIds.Contains(task.ObjectiveId))
                 return Result<WorkTaskResponse>.NotFound("Task not found.");
+        }
+
+        if (_taskAccess is not null && task.VisibilityScope == WorkTaskVisibilityScopes.Assignees)
+        {
+            var access = await _taskAccess.ResolveViewableTaskAsync(tenantId, userId, task.Id, ct);
+            if (!access.IsSuccess)
+                return Result<WorkTaskResponse>.Failure(access.Error!, access.StatusCode ?? 404);
         }
 
         var assignments = await _assignments.GetByTaskIdsAsync(new[] { task.Id }, ct);
@@ -98,6 +119,9 @@ public sealed class GetTaskByIdQueryHandler : IRequestHandler<GetTaskByIdQuery, 
             .Select(a => new TaskAttachmentDto(a.FileRecordId, a.OriginalFileName, a.FileSizeBytes, a.ContentType))
             .ToList();
 
+        var pendingTaskIds = await _approvalRequests.GetPendingTargetIdsAsync(
+            tenantId, WorkTargetTypes.Task, new[] { task.Id }, ct) ?? new HashSet<Guid>();
+
         var response = new WorkTaskResponse(
             task.Id, task.ObjectiveId, task.ShortId, task.Title, task.Description, task.CategoryId, task.StatusId,
             task.Priority, task.StoryPoints, task.DueDate, task.EstimatedHours, task.CompletedHours, task.ProgressPercent, task.SprintId,
@@ -108,7 +132,9 @@ public sealed class GetTaskByIdQueryHandler : IRequestHandler<GetTaskByIdQuery, 
             activeEventLink?.CalendarEventId,
             activeEventLink?.EventName,
             attachments,
-            ParentTaskId: task.ParentTaskId, CreatedAt: task.CreatedAt);
+            ParentTaskId: task.ParentTaskId, CreatedAt: task.CreatedAt,
+            HasPendingApproval: pendingTaskIds.Contains(task.Id),
+            TaskKind: task.TaskKind, VisibilityScope: task.VisibilityScope);
 
         return Result<WorkTaskResponse>.Success(response);
     }

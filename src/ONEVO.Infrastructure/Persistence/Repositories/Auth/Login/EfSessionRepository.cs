@@ -1,4 +1,5 @@
 using Microsoft.EntityFrameworkCore;
+using ONEVO.Application.Common.ServiceInterfaces;
 using ONEVO.Application.Features.Auth.Login.RepositoryInterfaces;
 using ONEVO.Domain.Features.Auth.Entities;
 
@@ -7,10 +8,14 @@ namespace ONEVO.Infrastructure.Persistence.Repositories.Auth.Login;
 public sealed class EfSessionRepository : ISessionRepository
 {
     private readonly ApplicationDbContext _db;
+    private readonly ISessionTicketCache? _ticketCache;
 
-    public EfSessionRepository(ApplicationDbContext db)
+    // The cache is optional only so standalone test contexts can build the repository; the API
+    // always registers it. Bulk updates bypass the EF eviction interceptor, so they evict here.
+    public EfSessionRepository(ApplicationDbContext db, ISessionTicketCache? ticketCache = null)
     {
         _db = db;
+        _ticketCache = ticketCache;
     }
 
     public async Task<Session?> GetLatestActiveByUserIdAsync(Guid userId, CancellationToken ct = default)
@@ -36,20 +41,30 @@ public sealed class EfSessionRepository : ISessionRepository
 
     public async Task<Session?> GetByKeyHashForTenantResolutionAsync(string keyHash, CancellationToken ct = default)
     {
-        // set_config(..., is_local: true) reverts automatically at transaction end, so this never
-        // leaks onto the pooled physical connection for a later, unrelated caller to see.
-        // CreateExecutionStrategy() wrapping is required because the runtime connection has
-        // EnableRetryOnFailure configured - EF Core forbids a user-initiated BeginTransactionAsync
-        // under a retrying execution strategy unless it runs inside ExecuteAsync.
+        // SESSION_CONTEXT lasts for the session, so the key is cleared in finally: it must never stay
+        // on a connection for a later query to see. The transaction pins one connection, and
+        // CreateExecutionStrategy() is required because EF Core forbids a user-initiated
+        // BeginTransactionAsync under a retrying strategy unless it runs inside ExecuteAsync.
         var executionStrategy = _db.Database.CreateExecutionStrategy();
         return await executionStrategy.ExecuteAsync(async () =>
         {
             await using var transaction = await _db.Database.BeginTransactionAsync(ct);
-            await _db.Database.ExecuteSqlInterpolatedAsync(
-                $"SELECT set_config('app.session_lookup_key_hash', {keyHash}, true)", ct);
-            var session = await _db.Sessions.FirstOrDefaultAsync(s => s.KeyHash == keyHash, ct);
-            await transaction.CommitAsync(ct);
-            return session;
+            try
+            {
+                await _db.Database.ExecuteSqlInterpolatedAsync(
+                    $"EXEC sp_set_session_context N'app.session_lookup_key_hash', {keyHash}", ct);
+                var session = await _db.Sessions.FirstOrDefaultAsync(s => s.KeyHash == keyHash, ct);
+                await transaction.CommitAsync(ct);
+                return session;
+            }
+            finally
+            {
+                if (_db.Database.GetDbConnection().State == System.Data.ConnectionState.Open)
+                {
+                    await _db.Database.ExecuteSqlRawAsync(
+                        "EXEC sp_set_session_context N'app.session_lookup_key_hash', NULL", CancellationToken.None);
+                }
+            }
         });
     }
 
@@ -74,9 +89,35 @@ public sealed class EfSessionRepository : ISessionRepository
     }
 
     public async Task<int> RevokeAllActiveByUserIdAsync(Guid userId, CancellationToken ct = default)
-        => await _db.Sessions
-            .Where(s => s.UserId == userId && !s.IsRevoked)
-            .ExecuteUpdateAsync(setters => setters.SetProperty(s => s.IsRevoked, true), ct);
+    {
+        _ticketCache?.EvictUser(userId);
+        try
+        {
+            return await _db.Sessions
+                .Where(s => s.UserId == userId && !s.IsRevoked)
+                .ExecuteUpdateAsync(setters => setters.SetProperty(s => s.IsRevoked, true), ct);
+        }
+        finally
+        {
+            _ticketCache?.EvictUser(userId);
+        }
+    }
+
+    public async Task<int> RevokeAllActiveByUserIdExceptAsync(
+        Guid userId, Guid keepSessionId, CancellationToken ct = default)
+    {
+        _ticketCache?.EvictUser(userId);
+        try
+        {
+            return await _db.Sessions
+                .Where(s => s.UserId == userId && !s.IsRevoked && s.Id != keepSessionId)
+                .ExecuteUpdateAsync(setters => setters.SetProperty(s => s.IsRevoked, true), ct);
+        }
+        finally
+        {
+            _ticketCache?.EvictUser(userId);
+        }
+    }
 
     public Task AddAsync(Session session, CancellationToken ct = default)
     {

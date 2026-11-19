@@ -1,9 +1,8 @@
 using Microsoft.EntityFrameworkCore;
-using Npgsql;
+using ONEVO.Infrastructure.Persistence.SqlServer;
 using ONEVO.Application.Common.Exceptions;
 using ONEVO.Application.Features.TimeAttendance.RepositoryInterfaces;
 using ONEVO.Domain.Features.TimeAttendance.Entities;
-using ONEVO.Infrastructure.Persistence;
 
 namespace ONEVO.Infrastructure.Persistence.Repositories.TimeAttendance;
 
@@ -134,9 +133,15 @@ public sealed class EfWorkAreaChangeRequestRepository(ApplicationDbContext db)
             throw new ConcurrencyConflictException(ex);
         }
         catch (DbUpdateException ex) when (
-            ex.InnerException is PostgresException { SqlState: PostgresErrorCodes.UniqueViolation })
+            SqlServerErrors.IsUniqueViolation(ex))
         {
             throw new UniqueConstraintConflictException(ex);
         }
     }
+
+    public async Task<IReadOnlyList<WorkAreaChangeRequest>> ListForEmployeeCreatedAsync(
+        Guid tenantId, Guid employeeId, DateTimeOffset from, DateTimeOffset to, CancellationToken ct = default)
+        => await db.WorkAreaChangeRequests.AsNoTracking()
+            .Where(x => x.TenantId == tenantId && x.EmployeeId == employeeId && x.RequestedAt >= from && x.RequestedAt < to)
+            .ToListAsync(ct);
 }

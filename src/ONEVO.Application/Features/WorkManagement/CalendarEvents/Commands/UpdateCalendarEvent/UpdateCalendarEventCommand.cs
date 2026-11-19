@@ -11,5 +11,6 @@ public sealed record UpdateCalendarEventCommand(
     DateOnly? StartDate,
     DateOnly? EndDate,
     IReadOnlyList<Guid>? ObjectiveIds,
-    IReadOnlyList<Guid>? TaskIds)
+    IReadOnlyList<Guid>? TaskIds,
+    string? Description = null)
     : IRequest<Result<CalendarEventResponse>>;

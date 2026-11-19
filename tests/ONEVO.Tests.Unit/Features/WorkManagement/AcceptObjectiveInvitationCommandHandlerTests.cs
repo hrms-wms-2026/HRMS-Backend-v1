@@ -1,3 +1,4 @@
+using ONEVO.Application.Features.Inbox.OutboxHandlers;
 using Moq;
 using ONEVO.Application.Common.Models;
 using ONEVO.Application.Common.RepositoryInterfaces;
@@ -93,7 +94,6 @@ public class AcceptObjectiveInvitationCommandHandlerTests
                 ? new Employee { Id = InviterEmployeeId, TenantId = TenantId, UserId = InviterUserId, EmploymentStatusId = EmploymentStatusIds.Active }
                 : null);
 
-        var autoGrant = new Mock<IPermissionAutoGrantService>();
         var unitOfWork = new Mock<IUnitOfWork>();
         unitOfWork.Setup(x => x.SaveChangesAsync(It.IsAny<CancellationToken>())).ReturnsAsync(1);
         unitOfWork.Setup(x => x.ExecuteInTransactionAsync(It.IsAny<Func<CancellationToken, Task<Result>>>(), It.IsAny<CancellationToken>()))
@@ -101,7 +101,7 @@ public class AcceptObjectiveInvitationCommandHandlerTests
 
         var outbox = new Mock<IOutboxWriter>();
         var handler = new AcceptObjectiveInvitationCommandHandler(
-            currentUser.Object, identity.Object, invitations.Object, objectives.Object, membership.Object, autoGrant.Object,
+            currentUser.Object, identity.Object, invitations.Object, objectives.Object, membership.Object,
             unitOfWork.Object, projects.Object, outbox.Object);
         return (handler, invitations, membership, objectives, outbox);
     }
@@ -118,6 +118,11 @@ public class AcceptObjectiveInvitationCommandHandlerTests
         invitations.Verify(x => x.Update(It.Is<ProjectMemberInvitation>(i => i.Status == ProjectInvitationStatuses.Accepted)), Times.Once);
         outbox.Verify(x => x.EnqueueAsync(
             It.IsAny<string>(), It.IsAny<WorkNotificationPayload>(), It.IsAny<Guid?>(), It.IsAny<CancellationToken>()), Times.Never);
+        outbox.Verify(x => x.EnqueueAsync(
+            OutboxMessageTypes.InboxChanged,
+            It.Is<InboxChangedPayload>(p => p.Source == "work" && p.Kind == "invitation" && p.Id == InvitationId
+                && p.EmployeeIds.Contains(InvitedEmployeeId)),
+            TenantId, It.IsAny<CancellationToken>()), Times.Once);
     }
 
     [Fact]

@@ -18,8 +18,8 @@
 - Use `Result`/`Result<T>` exactly as defined in `src/ONEVO.Application/Common/Models/Result.cs` — no `ToActionResult()`; controllers use the inline `result.IsSuccess ? Ok(...) : Problem(result.Error, statusCode: result.StatusCode ?? 400)` ternary.
 - `tenant_id` and `userId` are never trusted from the request body — resolved from `ICurrentUser` inside each handler.
 - No new migration: `Project`/`Objective`/`ProjectMember` schemas are unchanged; this slice only adds C# read/update methods against existing columns.
-- No optimistic concurrency token — per the design (`docs/superpowers/specs/2026-08-04-work-management-projects-edit-delete-view-design.md` §2), Edit ships as plain last-write-wins. `ProjectConfiguration.cs`/`ObjectiveConfiguration.cs` are not modified by this plan.
-- **Permission model updated 2026-08-04** per `docs/superpowers/specs/2026-08-04-work-management-milestone-hierarchy-design.md` §2: `projects:write` is retired in favor of `projects:access` (the new module-wide base gate) for every action in this plan except `ListByUser`, which keeps `projects:read` (unchanged — the cross-user "view others" permission). `projects:access` is also newly required on `ListMine` (`/mine`), which previously required no permission at all. `projects:create` (used by the already-shipped `Create` action, Foundation Slice 1) is intentionally **left unchanged** in this plan's Task 7 — retiring it is a separate follow-up that also needs a `PermissionSeeder.cs` change and a data migration for existing tenants' `role_permissions` rows (tracked in the milestone-hierarchy design §8), not silently folded in here. `PermissionSeeder.cs` does not yet seed `projects:access` — implementing Task 7 as written below requires that seed to exist first (a prerequisite task, not currently in this plan — see the note at the top of Task 7).
+- No optimistic concurrency token — per the design (`docs/superpowers/specs/finished/2026-08-04/2026-08-04-work-management-projects-edit-delete-view-design.md` §2), Edit ships as plain last-write-wins. `ProjectConfiguration.cs`/`ObjectiveConfiguration.cs` are not modified by this plan.
+- **Permission model updated 2026-08-04** per `docs/superpowers/specs/finished/2026-08-04/2026-08-04-work-management-milestone-hierarchy-design.md` §2: `projects:write` is retired in favor of `projects:access` (the new module-wide base gate) for every action in this plan except `ListByUser`, which keeps `projects:read` (unchanged — the cross-user "view others" permission). `projects:access` is also newly required on `ListMine` (`/mine`), which previously required no permission at all. `projects:create` (used by the already-shipped `Create` action, Foundation Slice 1) is intentionally **left unchanged** in this plan's Task 7 — retiring it is a separate follow-up that also needs a `PermissionSeeder.cs` change and a data migration for existing tenants' `role_permissions` rows (tracked in the milestone-hierarchy design §8), not silently folded in here. `PermissionSeeder.cs` does not yet seed `projects:access` — implementing Task 7 as written below requires that seed to exist first (a prerequisite task, not currently in this plan — see the note at the top of Task 7).
 - `docs/postman-request/Work Management/<Endpoint Name>.md` is required for every finished endpoint per `docs/superpowers/rules/PROCESS_RULES.md` rule 6 — Task 9 adds the four new ones.
 
 ### Corrections to the design doc (found during pre-implementation verification, 2026-08-04)
@@ -400,7 +400,7 @@ git commit -m "feat(work-management): add project detail/list response DTOs and 
 - Consumes: `IProjectRepository.GetByIdForTenantAsync`/`.Update`, `IObjectiveRepository.GetDefaultByProjectIdAsync`/`.Update`, `IProjectCategoryRepository.GetByIdForTenantAsync` (Task 1 and Foundation), `IUnitOfWork.SaveChangesAsync` (Foundation), `ProjectMapper.ToDetail` (Task 2).
 - Produces: `EditProjectCommand(Guid ProjectId, string Name, string? Description, Guid CategoryId, DateOnly StartDate, DateOnly TargetDate, string? Color, decimal? ActualHours, string? Identifier) : IRequest<Result<ProjectDetailResponse>>` — consumed by Task 7's controller.
 
-**Ownership check added 2026-08-04** per `docs/superpowers/specs/2026-08-04-work-management-milestone-hierarchy-design.md` §4: a Project is the tree's root node, and the tree's recursive rule says only a node's own Head — the Project's `LeadId` — has unrestricted control over that node itself. The handler below therefore returns `403` for any caller who is not the project's lead, matching `DeleteProjectCommandHandler`'s existing lead-only check exactly (same rule, no approval needed either, since the Project is the root — see the design's §4 root exception).
+**Ownership check added 2026-08-04** per `docs/superpowers/specs/finished/2026-08-04/2026-08-04-work-management-milestone-hierarchy-design.md` §4: a Project is the tree's root node, and the tree's recursive rule says only a node's own Head — the Project's `LeadId` — has unrestricted control over that node itself. The handler below therefore returns `403` for any caller who is not the project's lead, matching `DeleteProjectCommandHandler`'s existing lead-only check exactly (same rule, no approval needed either, since the Project is the root — see the design's §4 root exception).
 
 - [ ] **Step 1: Write the failing unit tests**
 
@@ -1371,7 +1371,7 @@ public class EditProjectRequest
 }
 ```
 
-**Prerequisite (not part of this plan — flagged here, not silently assumed):** `PermissionSeeder.cs` must seed `projects:access` before this step's `[RequirePermission("projects:access")]` attributes can resolve to anything at runtime — that seed change, and retiring `projects:create`/`projects:write` from it, is tracked as a separate follow-up in `docs/superpowers/specs/2026-08-04-work-management-milestone-hierarchy-design.md` §8. `projects:create` on `Create` (below) is deliberately left unchanged for the same reason.
+**Prerequisite (not part of this plan — flagged here, not silently assumed):** `PermissionSeeder.cs` must seed `projects:access` before this step's `[RequirePermission("projects:access")]` attributes can resolve to anything at runtime — that seed change, and retiring `projects:create`/`projects:write` from it, is tracked as a separate follow-up in `docs/superpowers/specs/finished/2026-08-04/2026-08-04-work-management-milestone-hierarchy-design.md` §8. `projects:create` on `Create` (below) is deliberately left unchanged for the same reason.
 
 - [ ] **Step 2: Replace `ProjectsController.cs` in full**
 
@@ -1791,7 +1791,7 @@ git commit -m "test(work-management): add HTTP integration tests for Edit/Delete
 
 ## Description
 
-Updates a Project's editable fields and cascades the same `name`/`description`/`startDate`/`targetDate` onto its Default Objective, in one transaction. `identifier` is immutable — if the request body includes one that differs from the project's current value, the request is rejected with `400`. Only the project's lead may edit it — matches Delete's existing lead-only rule (a Project is the tree's root node; only its own Head has unrestricted control over it, per `docs/superpowers/specs/2026-08-04-work-management-milestone-hierarchy-design.md` §4).
+Updates a Project's editable fields and cascades the same `name`/`description`/`startDate`/`targetDate` onto its Default Objective, in one transaction. `identifier` is immutable — if the request body includes one that differs from the project's current value, the request is rejected with `400`. Only the project's lead may edit it — matches Delete's existing lead-only rule (a Project is the tree's root node; only its own Head has unrestricted control over it, per `docs/superpowers/specs/finished/2026-08-04/2026-08-04-work-management-milestone-hierarchy-design.md` §4).
 
 ## Request
 
@@ -1835,7 +1835,7 @@ Content type: `application/json`.
 
 Controller: `src/ONEVO.Api/Controllers/Tenant/WorkManagement/ProjectsController.cs` (`Edit`)
 Handler: `src/ONEVO.Application/Features/WorkManagement/Projects/Commands/EditProject/EditProjectCommandHandler.cs`
-Plan: `docs/superpowers/plans/2026-08-04-work-management-projects-edit-delete-view.md`
+Plan: `docs/superpowers/plans/finished/2026-08-04/2026-08-04-work-management-projects-edit-delete-view.md`
 ```
 
 - [ ] **Step 2: `Delete Project.md`**
@@ -1873,7 +1873,7 @@ No body.
 
 Controller: `src/ONEVO.Api/Controllers/Tenant/WorkManagement/ProjectsController.cs` (`Delete`)
 Handler: `src/ONEVO.Application/Features/WorkManagement/Projects/Commands/DeleteProject/DeleteProjectCommandHandler.cs`
-Plan: `docs/superpowers/plans/2026-08-04-work-management-projects-edit-delete-view.md`
+Plan: `docs/superpowers/plans/finished/2026-08-04/2026-08-04-work-management-projects-edit-delete-view.md`
 ```
 
 - [ ] **Step 3: `Get Project.md`**
@@ -1914,7 +1914,7 @@ Gets a single Project. A soft-deleted project (`is_active = false`) is treated a
 
 Controller: `src/ONEVO.Api/Controllers/Tenant/WorkManagement/ProjectsController.cs` (`GetById`)
 Handler: `src/ONEVO.Application/Features/WorkManagement/Projects/Queries/GetProjectById/GetProjectByIdQueryHandler.cs`
-Plan: `docs/superpowers/plans/2026-08-04-work-management-projects-edit-delete-view.md`
+Plan: `docs/superpowers/plans/finished/2026-08-04/2026-08-04-work-management-projects-edit-delete-view.md`
 ```
 
 - [ ] **Step 4: `List Projects.md`**
@@ -1958,7 +1958,7 @@ If `userId` doesn't resolve to any user with active memberships in the tenant, t
 
 Controller: `src/ONEVO.Api/Controllers/Tenant/WorkManagement/ProjectsController.cs` (`ListMine`, `ListByUser`)
 Handler: `src/ONEVO.Application/Features/WorkManagement/Projects/Queries/ListProjects/ListProjectsQueryHandler.cs`
-Plan: `docs/superpowers/plans/2026-08-04-work-management-projects-edit-delete-view.md`
+Plan: `docs/superpowers/plans/finished/2026-08-04/2026-08-04-work-management-projects-edit-delete-view.md`
 ```
 
 - [ ] **Step 5: Commit**
@@ -1972,7 +1972,7 @@ git commit -m "docs(work-management): add postman-request docs for Edit/Delete/G
 
 ## Self-review
 
-**Spec coverage** (against `docs/superpowers/specs/2026-08-04-work-management-projects-edit-delete-view-design.md`):
+**Spec coverage** (against `docs/superpowers/specs/finished/2026-08-04/2026-08-04-work-management-projects-edit-delete-view-design.md`):
 - §1 Endpoints table (5 routes, auth/permission column) → Task 7.
 - §Endpoint 3 authorization detail (permission-or-membership, `isLead` computation) → Task 5.
 - §2 Edit Project (editable fields, immutable identifier, Default Objective cascade, validation, no concurrency token, response shape, lead-only ownership check added 2026-08-04 per the milestone-hierarchy design's root-node rule) → Tasks 2, 3.

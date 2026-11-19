@@ -20,6 +20,8 @@ public class CompleteEmployeeChecklistTaskCommandHandler(
         var task = await taskRepository.GetTrackedByIdAsync(tenantId, request.TaskId, ct);
         if (task is null || task.EmployeeId != request.EmployeeId)
             return Result.NotFound("The checklist task could not be found for this employee.");
+        if (task.WorkTaskId is not null)
+            return Result.Conflict("Complete this checklist item through its linked Work task.");
         if (task.Status is EmployeeChecklistTaskStatuses.Completed or EmployeeChecklistTaskStatuses.Bypassed)
             return Result.Conflict("This task is already resolved.");
 

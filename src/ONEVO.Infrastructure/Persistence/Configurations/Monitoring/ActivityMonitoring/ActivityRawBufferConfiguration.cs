@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata.Builders;
 using ONEVO.Domain.Features.Monitoring.ActivityMonitoring.Entities;
+using ONEVO.Infrastructure.Persistence.SqlServer;
 
 namespace ONEVO.Infrastructure.Persistence.Configurations.Monitoring.ActivityMonitoring;
 
@@ -13,7 +14,7 @@ public class ActivityRawBufferConfiguration : IEntityTypeConfiguration<ActivityR
 
         // JSONB for PostgreSQL raw payload storage
         builder.Property(e => e.PayloadJson)
-            .HasColumnType("jsonb")
+            .IsJsonColumn()
             .IsRequired();
 
         builder.HasIndex(e => new { e.AgentDeviceId, e.ReceivedAt })

@@ -23,20 +23,31 @@ public sealed class AgentCommandExpiryJob : BackgroundService
     {
         using var timer = new PeriodicTimer(CheckInterval);
 
-        while (await timer.WaitForNextTickAsync(stoppingToken))
+        try
         {
-            try
+            while (await timer.WaitForNextTickAsync(stoppingToken))
             {
-                await RunOnceAsync(stoppingToken);
+                try
+                {
+                    await RunOnceAsync(stoppingToken);
+                }
+                catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
+                {
+                    break;
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogError(ex, "AgentCommandExpiryJob encountered an error.");
+                }
             }
-            catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
-            {
-                break;
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "AgentCommandExpiryJob encountered an error.");
-            }
+        }
+        catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
+        {
+            // PeriodicTimer.WaitForNextTickAsync throws when the token passed to it is
+            // cancelled (unlike disposing the timer itself, which returns false instead) -
+            // an ordinary host shutdown must not surface as an unhandled exception here,
+            // since HostOptions.BackgroundServiceExceptionBehavior = StopHost treats any
+            // unhandled exception from a BackgroundService as a crash.
         }
     }
 

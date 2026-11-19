@@ -10,7 +10,7 @@ namespace ONEVO.Infrastructure.Identity.Mfa;
 /// <summary>
 /// Normal runtime implementation of <see cref="IMfaChallengeStore"/>, backed by the canonical
 /// Phase 1 mfa_challenges table. Only the SHA-256 hash of the opaque challenge is persisted; the
-/// raw value is returned once to the caller so it can be placed in the HttpOnly onevo_mfa cookie
+/// raw value is returned once to the caller so it can be placed in the HttpOnly crownus_mfa cookie
 /// and is never stored or logged. Consumption is single-use: consumed_at is an EF concurrency
 /// token, so two racing verifications cannot both consume the same challenge. Failed attempts are
 /// registered with a single atomic UPDATE so parallel invalid attempts cannot lose increments and

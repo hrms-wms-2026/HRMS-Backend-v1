@@ -232,4 +232,42 @@ public class ChecklistTaskJsonContractTests
         tasks[0].BypassPenaltyDescription.Should().Be("None");
         tasks[0].Category.Should().Be("asset_return");
     }
+
+    [Fact]
+    public void SerializeTemplateTasks_RoundTripsDescriptionPriorityAndAttachments()
+    {
+        var fileId = Guid.NewGuid();
+        var definition = new ChecklistTaskDefinition(
+            "Collect laptop", ChecklistTaskOwnerTypes.Employee, null, 2, null, 1, true,
+            IsBypassable: true, BypassPenaltyDescription: "Salary hold", Category: "asset_return",
+            Description: "<p>Return the charger too</p>", Priority: "high", AttachmentFileIds: [fileId]);
+
+        var json = ChecklistTaskJsonContract.SerializeTemplateTasks([definition]);
+        var parsed = ChecklistTaskJsonContract.Parse(json, ChecklistTaskDueRuleMode.OffsetDays).Single();
+
+        parsed.Description.Should().Be("<p>Return the charger too</p>");
+        parsed.Priority.Should().Be("high");
+        parsed.AttachmentFileIds.Should().Equal(fileId);
+        parsed.IsBypassable.Should().BeTrue();
+        parsed.BypassPenaltyDescription.Should().Be("Salary hold");
+        parsed.Category.Should().Be("asset_return");
+    }
+
+    [Fact]
+    public void ToEmployeeChecklistTasks_CarriesDescriptionPriorityAndAttachments()
+    {
+        var fileId = Guid.NewGuid();
+        var newHire = Guid.NewGuid();
+        var definition = new ChecklistTaskDefinition(
+            "Collect laptop", ChecklistTaskOwnerTypes.Employee, null, 2, null, 1, true,
+            Description: "<p>Hi</p>", Priority: "low", AttachmentFileIds: [fileId]);
+
+        var task = ChecklistTaskJsonContract.ToEmployeeChecklistTasks(
+            [definition], Guid.NewGuid(), Guid.NewGuid(), null, "onboarding", newHire,
+            new DateOnly(2026, 10, 1), ChecklistTaskDueRuleMode.OffsetDays).Single();
+
+        task.Description.Should().Be("<p>Hi</p>");
+        task.Priority.Should().Be("low");
+        task.AttachmentFileIdsJson.Should().Contain(fileId.ToString());
+    }
 }

@@ -7,6 +7,7 @@ using ONEVO.Application.Features.WorkManagement.CalendarEvents.Commands.CreateCa
 using ONEVO.Application.Features.WorkManagement.Common.Services;
 using ONEVO.Application.Features.WorkManagement.CalendarEvents.RepositoryInterfaces;
 using ONEVO.Application.Features.WorkManagement.Objectives.RepositoryInterfaces;
+using ONEVO.Application.Features.WorkManagement.ProjectMembers.RepositoryInterfaces;
 using ONEVO.Application.Features.WorkManagement.Tasks.RepositoryInterfaces;
 using ONEVO.Domain.Features.WorkManagement.CalendarEvents.Entities;
 using ONEVO.Domain.Features.WorkManagement.Tasks.Entities;
@@ -18,23 +19,29 @@ public sealed class UpdateCalendarEventCommandHandler : IRequestHandler<UpdateCa
     private readonly ICurrentUser _currentUser;
     private readonly ICallerIdentityResolver _identity;
     private readonly IObjectiveRepository _objectives;
+    private readonly IProjectMemberRepository _members;
     private readonly IWorkTaskRepository _tasks;
     private readonly ICalendarEventRepository _calendarEvents;
+    private readonly ICalendarEventActivityLogRepository _activityLogs;
     private readonly IUnitOfWork _unitOfWork;
 
     public UpdateCalendarEventCommandHandler(
         ICurrentUser currentUser,
         ICallerIdentityResolver identity,
+        IProjectMemberRepository members,
         IObjectiveRepository objectives,
         IWorkTaskRepository tasks,
         ICalendarEventRepository calendarEvents,
+        ICalendarEventActivityLogRepository activityLogs,
         IUnitOfWork unitOfWork)
     {
         _currentUser = currentUser;
         _identity = identity;
+        _members = members;
         _objectives = objectives;
         _tasks = tasks;
         _calendarEvents = calendarEvents;
+        _activityLogs = activityLogs;
         _unitOfWork = unitOfWork;
     }
 
@@ -48,6 +55,8 @@ public sealed class UpdateCalendarEventCommandHandler : IRequestHandler<UpdateCa
         var calendarEvent = await _calendarEvents.GetByIdForTenantAsync(tenantId, request.Id, ct);
         if (calendarEvent is null)
             return Result<CalendarEventResponse>.NotFound("Calendar event not found.");
+        if (!await _members.HasActiveMembershipAsync(tenantId, calendarEvent.ProjectId, actorResult.EmployeeId, ct))
+            return Result<CalendarEventResponse>.Forbidden("You do not have access to this project.");
         if (calendarEvent.Status != CalendarEventStatuses.Active)
             return Result<CalendarEventResponse>.Failure("Archived calendar events cannot be edited.");
 
@@ -85,6 +94,8 @@ public sealed class UpdateCalendarEventCommandHandler : IRequestHandler<UpdateCa
         var memberTasks = moduleTasks
             .Concat(desiredTaskIds.Select(id => projectTaskById[id]))
             .GroupBy(t => t.Id).Select(g => g.First()).ToList();
+        if (memberTasks.Any(task => task.TaskKind == WorkTaskKinds.EmployeeChecklist))
+            return Result<CalendarEventResponse>.Conflict("Employee checklist tasks cannot be added to calendar events.");
 
         // R2/R3: re-validate every member task against the (possibly new) window.
         var outOfWindow = memberTasks
@@ -133,6 +144,7 @@ public sealed class UpdateCalendarEventCommandHandler : IRequestHandler<UpdateCa
 
         calendarEvent.Name = request.Name is null ? calendarEvent.Name : request.Name.Trim();
         calendarEvent.Color = request.Color is null ? calendarEvent.Color : request.Color.Trim();
+        calendarEvent.Description = request.Description is null ? calendarEvent.Description : request.Description.Trim();
         calendarEvent.StartDate = startDate;
         calendarEvent.EndDate = endDate;
 
@@ -143,6 +155,12 @@ public sealed class UpdateCalendarEventCommandHandler : IRequestHandler<UpdateCa
             await _calendarEvents.AddMembershipsAsync(membershipsToAdd, innerCt);
             _calendarEvents.RemoveTaskMemberships(taskLinksToRemove);
             await _calendarEvents.AddTaskMembershipsAsync(taskLinksToAdd, innerCt);
+            await _activityLogs.AddAsync(new CalendarEventActivityLog
+            {
+                Id = Guid.NewGuid(), TenantId = tenantId, CalendarEventId = calendarEvent.Id,
+                Action = CalendarEventActivityActions.Updated, PerformedById = actorResult.EmployeeId,
+                PerformedAt = now, DetailsJson = $"{{\"name\":{System.Text.Json.JsonSerializer.Serialize(calendarEvent.Name)}}}"
+            }, innerCt);
             await _unitOfWork.SaveChangesAsync(innerCt);
             return true;
         }, ct);

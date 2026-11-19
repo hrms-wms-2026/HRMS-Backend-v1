@@ -4,7 +4,7 @@ public sealed record ProjectSummaryDto(
     Guid Id, string Name, string Identifier, Guid CategoryId, string? Description,
     Guid LeadId, DateOnly StartDate, DateOnly TargetDate, string? Color,
     decimal? ActualHours, decimal AllocatedHours, decimal CompletedHours,
-    bool IsActive, DateTimeOffset CreatedAt);
+    bool IsActive, DateTimeOffset CreatedAt, string? Icon = null);
 
 public sealed record ObjectiveSummaryDto(
     Guid Id, Guid ProjectId, bool IsDefault, string Title, Guid OwnerId,

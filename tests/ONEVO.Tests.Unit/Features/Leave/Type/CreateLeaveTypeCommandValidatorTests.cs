@@ -10,9 +10,9 @@ public class CreateLeaveTypeCommandValidatorTests
     private readonly CreateLeaveTypeCommandValidator _validator = new();
 
     private static CreateLeaveTypeCommand Valid() =>
-        new("Annual Leave", "ANNUAL", null, LeaveTypeCategories.Annual,
-            true, true, false, null, [], null, 20m, false, null, null, false,
-            LeaveGenderRestrictions.All, 0);
+        new("Annual Leave", "ANNUAL", null, "#3B82F6", IsPaid: true,
+            ApplicableGender: LeaveGenderRestrictions.All, RequiresDocument: false,
+            DocumentRequiredAfterHours: null, AcceptedDocumentTypes: []);
 
     [Fact]
     public void ValidCommand_HasNoErrors()
@@ -28,22 +28,38 @@ public class CreateLeaveTypeCommandValidatorTests
         result.ShouldHaveValidationErrorFor(x => x.Name);
     }
 
-    [Fact]
-    public void InvalidCategory_HasError()
+    [Theory]
+    [InlineData("#12AB9F", true)]
+    [InlineData("#12ab9f", true)]
+    [InlineData("red", false)]
+    [InlineData("", false)]
+    [InlineData("#12AB9", false)]
+    public void Color_must_be_hex(string color, bool valid)
     {
-        var result = _validator.TestValidate(Valid() with { Category = "vacation" });
-        result.ShouldHaveValidationErrorFor(x => x.Category);
+        var result = _validator.TestValidate(Valid() with { Color = color });
+        if (valid) result.ShouldNotHaveValidationErrorFor(x => x.Color);
+        else result.ShouldHaveValidationErrorFor(x => x.Color);
     }
 
-    [Fact]
-    public void CarryForwardExceedingDefaultDays_HasError()
+    [Theory]
+    [InlineData(null, true)]
+    [InlineData(8.0, true)]
+    [InlineData(0.0, false)]
+    public void DocumentRequiredAfterHours_must_be_positive_when_set(double? hours, bool valid)
     {
         var result = _validator.TestValidate(Valid() with
         {
-            CarryForwardAllowed = true,
-            DefaultDaysPerYear = 10m,
-            MaxCarryForwardDays = 15m
+            RequiresDocument = true,
+            DocumentRequiredAfterHours = hours is null ? null : (decimal)hours.Value
         });
-        result.ShouldHaveValidationErrorFor(x => x.MaxCarryForwardDays);
+        if (valid) result.ShouldNotHaveValidationErrorFor(x => x.DocumentRequiredAfterHours);
+        else result.ShouldHaveValidationErrorFor(x => x.DocumentRequiredAfterHours);
+    }
+
+    [Fact]
+    public void InvalidGender_HasError()
+    {
+        var result = _validator.TestValidate(Valid() with { ApplicableGender = "other" });
+        result.ShouldHaveValidationErrorFor(x => x.ApplicableGender);
     }
 }

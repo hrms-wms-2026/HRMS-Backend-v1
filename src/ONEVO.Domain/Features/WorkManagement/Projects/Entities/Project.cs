@@ -2,18 +2,29 @@ using ONEVO.Domain.Common;
 
 namespace ONEVO.Domain.Features.WorkManagement.Projects.Entities;
 
+public static class ProjectSystemPurposes
+{
+    public const string Office = "office";
+}
+
 public class Project : BaseEntity
 {
+    public string? SystemPurpose { get; set; }
     public Guid OwningLegalEntityId { get; set; }
     public Guid CategoryId { get; set; }
     public string Name { get; set; } = string.Empty;
     public string Identifier { get; set; } = string.Empty;
     public long NextTaskNumber { get; set; } = 1;
+    /// <summary>Meeting occurrences number separately ({Identifier}-M{n}), so meetings never show up as gaps in
+    /// the task ShortId sequence (meetings-as-tasks Phase 2 spec 4.1).</summary>
+    public long NextMeetingNumber { get; set; } = 1;
     public string? Description { get; set; }
     public Guid LeadId { get; set; }
     public DateOnly StartDate { get; set; }
     public DateOnly TargetDate { get; set; }
     public string? Color { get; set; }
+    /// <summary>The picked icon, "lucide:{name}" or "emoji:{emoji}" (EntityIconRules); null shows the logo or initials.</summary>
+    public string? Icon { get; set; }
     public decimal? ActualHours { get; set; }
     public decimal AllocatedHours { get; set; }
     public decimal CompletedHours { get; set; }

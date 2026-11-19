@@ -1,9 +1,10 @@
 using MediatR;
 using ONEVO.Application.Common.Models;
+using ONEVO.Application.Features.Monitoring.ActivityMonitoring.Helpers;
 
 namespace ONEVO.Application.Features.Monitoring.Meetings.Commands.IngestMeetingSignals;
 
-public record IngestMeetingSignalsCommand : IRequest<Result>
+public record IngestMeetingSignalsCommand : IRequest<Result<SnapshotIngestOutcome>>
 {
     public List<MeetingSignalItem> Signals { get; init; } = [];
 }

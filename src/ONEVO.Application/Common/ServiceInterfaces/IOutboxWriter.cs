@@ -12,4 +12,16 @@ public interface IOutboxWriter
         TPayload payload,
         Guid? tenantId = null,
         CancellationToken ct = default);
+
+    /// <summary>Inserts the message immediately with INSERT … ON CONFLICT (deduplication_key) DO
+    /// NOTHING, inside the caller's open transaction (IUnitOfWork.ExecuteInTransactionAsync).
+    /// Returns false when a message with this key already exists - a silent no-op that never fails
+    /// the caller's save. Throws InvalidOperationException when no transaction is active, so a keyed
+    /// message can never commit separately from its business change.</summary>
+    Task<bool> EnqueueKeyedAsync<TPayload>(
+        string type,
+        TPayload payload,
+        string deduplicationKey,
+        Guid? tenantId = null,
+        CancellationToken ct = default);
 }

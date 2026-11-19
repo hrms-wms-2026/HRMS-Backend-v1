@@ -211,8 +211,20 @@ an authorization rule — only permission codes are.
 | Sensitive-data logging | Not verified in this pass (out of scope of code read) |
 | Correlation ID | `X-Correlation-ID`, generated per-request both sides |
 | CORS | Configured in `Program.cs` (not detailed in this pass) |
-| HTTPS/HSTS | `Secure=Always` outside Development implies HTTPS expectation; HSTS middleware not traced in this pass |
+| HTTPS/HSTS | `Secure=Always` outside Development; `app.UseHsts()` and `UseHttpsRedirection()` run outside Development (`Program.cs`, verified 2026-10-27) |
 | No frontend token storage | Confirmed — no localStorage/sessionStorage/JWT anywhere in `core/auth` |
+
+### 10.1 CSRF in integration tests (verified 2026-10-27)
+
+Integration tests exercise the real `CsrfProtectionMiddleware`; there is no test-only bypass. Every test class that calls mutating endpoints:
+
+1. Creates its client with `HandleCookies = false` and logs in over real HTTP (tenant: base-domain login → session exchange; admin: `POST /admin/v1/auth/login`).
+2. Parses `Set-Cookie` from the login response and keeps the session cookie (`onevo_session` / `admin_session`) and the CSRF cookie value (`onevo_csrf` / `admin_csrf`).
+3. Sends `Cookie: <session cookie>` on every request and `X-CSRF-Token: <csrf cookie value>` on POST/PUT/PATCH/DELETE.
+
+The middleware hashes the header and compares it with the `csrf_token_hash` stored on that session, so a test that reuses a CSRF value from a different login, or sends the header without the matching session cookie, gets 403. Paths in the middleware's `ExemptPaths` set (login, password reset, MFA verify, session exchange, invitation acceptance, ...) need no header.
+
+The integration jobs in `ci.yml` were long labelled as having a "CSRF-handling issue". That was never a CSRF bug: see `docs/reports/build-and-ci/2026-10-27-integration-csrf-label-investigation.md` (full suite 560/560 locally, CI green on `development` and nightly).
 
 ## 11. Code Path Reference
 
@@ -222,7 +234,7 @@ an authorization rule — only permission codes are.
 
 ## 12. Current Gaps and Risks
 
-- **Frontend/backend contract mismatch (partial)**: the auth plan doc (`docs/superpowers/plans/2026-07-28-core-auth-login-legal-consent.md`) predates the `workspace`/`redirect_required`/`continue_url`/session-exchange mechanism entirely — no design doc covers the currently-implemented flow.
+- **Frontend/backend contract mismatch (partial)**: the auth plan doc (`Hrms--Web-application---front-end---v1/docs/superpowers/plans/finished/2026-07-28/2026-07-28-core-auth-login-legal-consent.md`) predates the `workspace`/`redirect_required`/`continue_url`/session-exchange mechanism entirely — no design doc covers the currently-implemented flow.
 - **Legacy dead code**: `IJwtTokenService.GenerateDeviceToken` is registered in DI but has zero call sites anywhere in `src/` — scaffolding for an unbuilt device/agent auth surface.
 - **Legacy table, narrow use**: `RefreshToken`/`IRefreshTokenRepository` exist and are only touched by `ResetPasswordCommandHandler` (revocation on password reset) — no login path ever issues one. Confirms cookie-only sessions but leaves unused infrastructure in place.
 - **Known unfixed inconsistency (backend team's own report)**: `ForcePasswordChangeCommandHandler` requires tenant-host context, but the continue-URL is built from the host where login started — a base-domain-triggered forced password change can produce an unreachable `continue_url`.

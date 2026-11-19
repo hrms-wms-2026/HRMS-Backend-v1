@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata.Builders;
 using ONEVO.Domain.Features.SharedPlatform.Entities;
+using ONEVO.Infrastructure.Persistence.SqlServer;
 
 namespace ONEVO.Infrastructure.Persistence.Configurations.DevPlatform.ModuleCatalog;
 
@@ -12,12 +13,12 @@ public class ModuleCatalogPriceHistoryConfiguration : IEntityTypeConfiguration<M
         builder.HasKey(p => p.Id);
         
         builder.Property(p => p.ModuleKey).HasColumnName("module_key").HasMaxLength(100).IsRequired();
-        builder.Property(p => p.OldPricingReference).HasColumnName("old_pricing_reference").HasColumnType("jsonb");
-        builder.Property(p => p.NewPricingReference).HasColumnName("new_pricing_reference").HasColumnType("jsonb");
-        builder.Property(p => p.OldStorageReference).HasColumnName("old_storage_reference").HasColumnType("jsonb");
-        builder.Property(p => p.NewStorageReference).HasColumnName("new_storage_reference").HasColumnType("jsonb");
-        builder.Property(p => p.OldAiTokenReference).HasColumnName("old_ai_token_reference").HasColumnType("jsonb");
-        builder.Property(p => p.NewAiTokenReference).HasColumnName("new_ai_token_reference").HasColumnType("jsonb");
+        builder.Property(p => p.OldPricingReference).HasColumnName("old_pricing_reference").IsJsonColumn();
+        builder.Property(p => p.NewPricingReference).HasColumnName("new_pricing_reference").IsJsonColumn();
+        builder.Property(p => p.OldStorageReference).HasColumnName("old_storage_reference").IsJsonColumn();
+        builder.Property(p => p.NewStorageReference).HasColumnName("new_storage_reference").IsJsonColumn();
+        builder.Property(p => p.OldAiTokenReference).HasColumnName("old_ai_token_reference").IsJsonColumn();
+        builder.Property(p => p.NewAiTokenReference).HasColumnName("new_ai_token_reference").IsJsonColumn();
         builder.Property(p => p.OldPricingUnit).HasColumnName("old_pricing_unit").HasMaxLength(30);
         builder.Property(p => p.NewPricingUnit).HasColumnName("new_pricing_unit").HasMaxLength(30);
         builder.Property(p => p.ChangedById).HasColumnName("changed_by_id").IsRequired();

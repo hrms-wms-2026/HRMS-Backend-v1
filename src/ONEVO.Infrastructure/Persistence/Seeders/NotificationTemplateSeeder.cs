@@ -1,7 +1,9 @@
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using ONEVO.Application.Common.RepositoryInterfaces;
+using ONEVO.Application.Features.SharedPlatform.Notifications.Catalog;
 using ONEVO.Domain.Features.SharedPlatform.Notifications.Entities;
 using ONEVO.Infrastructure.Persistence;
 
@@ -38,9 +40,11 @@ public class NotificationTemplateSeeder : IHostedService
 
     public Task StopAsync(CancellationToken cancellationToken) => Task.CompletedTask;
 
-    private async Task SeedAsync(INotificationRepository notifications, ApplicationDbContext db, CancellationToken ct)
+    /// <summary>Product-default notification copy. Seeding inserts only codes that are missing, so an
+    /// administrator's edits are never overwritten on restart.</summary>
+    public static IReadOnlyList<NotificationTemplate> DefaultTemplates()
     {
-        var templates = new List<NotificationTemplate>
+        return new List<NotificationTemplate>
         {
             new()
             {
@@ -59,6 +63,18 @@ public class NotificationTemplateSeeder : IHostedService
                 Id = Guid.NewGuid(), Code = "work_task_edit_request_decided",
                 InAppTitleTemplate = "Task edit request {{decision}}",
                 InAppBodyTemplate = "Your edit request for \"{{taskTitle}}\" on {{objectiveName}} was {{decision}}."
+            },
+            new()
+            {
+                Id = Guid.NewGuid(), Code = "work_task_status_change_request_created",
+                InAppTitleTemplate = "Task status change requested",
+                InAppBodyTemplate = "{{requesterName}} requested changes to the task statuses of {{projectName}}."
+            },
+            new()
+            {
+                Id = Guid.NewGuid(), Code = "work_task_status_change_request_decided",
+                InAppTitleTemplate = "Task status change {{decision}}",
+                InAppBodyTemplate = "Your task status change request for {{projectName}} was {{decision}}."
             },
             new()
             {
@@ -104,6 +120,42 @@ public class NotificationTemplateSeeder : IHostedService
             },
             new()
             {
+                Id = Guid.NewGuid(), Code = "work_activity_recorded",
+                InAppTitleTemplate = "Work update",
+                InAppBodyTemplate = "{{actorName}} {{actionLabel}} \"{{targetTitle}}\"."
+            },
+            new()
+            {
+                Id = Guid.NewGuid(), Code = "work_approval_requested",
+                InAppTitleTemplate = "Approval needed",
+                InAppBodyTemplate = "{{actorName}} is waiting for your approval: {{actionLabel}} \"{{targetTitle}}\"."
+            },
+            new()
+            {
+                Id = Guid.NewGuid(), Code = "work_approval_decided",
+                InAppTitleTemplate = "Request {{decision}}",
+                InAppBodyTemplate = "{{actorName}}'s request ({{actionLabel}} \"{{targetTitle}}\") was {{decision}}."
+            },
+            new()
+            {
+                Id = Guid.NewGuid(), Code = "work_monitor_alert",
+                InAppTitleTemplate = "Project alert",
+                InAppBodyTemplate = "{{actionLabel}}: \"{{targetTitle}}\"."
+            },
+            new()
+            {
+                Id = Guid.NewGuid(), Code = "conversation_member_added",
+                InAppTitleTemplate = "Added to a conversation",
+                InAppBodyTemplate = "{{actorName}} added you to \"{{itemTitle}}\"."
+            },
+            new()
+            {
+                Id = Guid.NewGuid(), Code = "conversation_mentioned",
+                InAppTitleTemplate = "You were mentioned",
+                InAppBodyTemplate = "{{actorName}} mentioned you in \"{{itemTitle}}\"."
+            },
+            new()
+            {
                 Id = Guid.NewGuid(), Code = "leave_request_approved",
                 InAppTitleTemplate = "Leave approved",
                 InAppBodyTemplate = "{{leaveTypeName}} from {{startDate}} to {{endDate}} was approved."
@@ -113,12 +165,6 @@ public class NotificationTemplateSeeder : IHostedService
                 Id = Guid.NewGuid(), Code = "leave_request_rejected",
                 InAppTitleTemplate = "Leave rejected",
                 InAppBodyTemplate = "{{leaveTypeName}} from {{startDate}} to {{endDate}} was rejected. {{reason}}"
-            },
-            new()
-            {
-                Id = Guid.NewGuid(), Code = "leave_request_information_requested",
-                InAppTitleTemplate = "More information requested",
-                InAppBodyTemplate = "{{approverName}} requested more information for {{leaveTypeName}} from {{startDate}} to {{endDate}}."
             },
             new()
             {
@@ -143,6 +189,24 @@ public class NotificationTemplateSeeder : IHostedService
                 Id = Guid.NewGuid(), Code = "leave_request_partially_cancelled",
                 InAppTitleTemplate = "Leave partially cancelled",
                 InAppBodyTemplate = "{{leaveTypeName}} from {{effectiveDate}} to {{endDate}} was cancelled. {{restoredDays}} days restored."
+            },
+            new()
+            {
+                Id = Guid.NewGuid(), Code = "face_verification_override",
+                InAppTitleTemplate = "Face verification needs review",
+                InAppBodyTemplate = "{{employeeName}} could not pass face verification {{attempts}} times and was allowed to {{action}} at {{time}} UTC. Reasons: {{reasons}}. Please review the photo."
+            },
+            new()
+            {
+                Id = Guid.NewGuid(), Code = "exception_alert_detected",
+                InAppTitleTemplate = "{{title}}: {{employeeName}}",
+                InAppBodyTemplate = "{{description}} Please review and acknowledge, resolve or escalate to HR."
+            },
+            new()
+            {
+                Id = Guid.NewGuid(), Code = "exception_alert_escalated",
+                InAppTitleTemplate = "Escalated to HR: {{title}} - {{employeeName}}",
+                InAppBodyTemplate = "{{description}} This case was escalated to HR for review."
             },
             new()
             {
@@ -179,6 +243,19 @@ public class NotificationTemplateSeeder : IHostedService
                 Id = Guid.NewGuid(), Code = "work_area_change_request_cancelled",
                 InAppTitleTemplate = "Work-area change cancelled",
                 InAppBodyTemplate = "{{employeeName}} cancelled the work-area change request for {{date}}."
+            },
+
+            new()
+            {
+                Id = Guid.NewGuid(), Code = "support_ticket_replied",
+                InAppTitleTemplate = "Crownus support replied",
+                InAppBodyTemplate = "{{authorName}} replied to your ticket \"{{subject}}\"."
+            },
+            new()
+            {
+                Id = Guid.NewGuid(), Code = "support_ticket_status_changed",
+                InAppTitleTemplate = "Support ticket {{status}}",
+                InAppBodyTemplate = "Your ticket \"{{subject}}\" is now {{status}}."
             },
 
             new()
@@ -228,29 +305,182 @@ public class NotificationTemplateSeeder : IHostedService
                 Id = Guid.NewGuid(), Code = "calendar_event_replacement_nominated",
                 InAppTitleTemplate = "Replacement nominated",
                 InAppBodyTemplate = "{{responderName}} nominated {{nomineeName}} as a replacement for \"{{eventTitle}}\"."
+            },
+            new()
+            {
+                Id = Guid.NewGuid(), Code = "calendar_event_rsvp_accepted",
+                InAppTitleTemplate = "Invitation accepted",
+                InAppBodyTemplate = "{{responderName}} accepted \"{{eventTitle}}\"."
+            },
+            new()
+            {
+                Id = Guid.NewGuid(), Code = "calendar_event_rsvp_rejected",
+                InAppTitleTemplate = "Invitation declined",
+                InAppBodyTemplate = "{{responderName}} declined \"{{eventTitle}}\"."
+            },
+            new()
+            {
+                Id = Guid.NewGuid(), Code = "calendar_event_replacement_nominee",
+                InAppTitleTemplate = "You were nominated as a replacement",
+                InAppBodyTemplate = "{{responderName}} nominated you to attend \"{{eventTitle}}\" in their place."
+            },
+            new()
+            {
+                Id = Guid.NewGuid(), Code = "calendar_event_participant_removed",
+                InAppTitleTemplate = "Removed from an event",
+                InAppBodyTemplate = "{{organizerName}} removed you from \"{{eventTitle}}\"."
+            },
+            new()
+            {
+                Id = Guid.NewGuid(), Code = "calendar_event_meeting_link_removed",
+                InAppTitleTemplate = "Meeting link removed",
+                InAppBodyTemplate = "{{organizerName}} removed the meeting link from \"{{eventTitle}}\"."
+            },
+            new()
+            {
+                Id = Guid.NewGuid(), Code = "calendar_event_meeting_link_failed",
+                InAppTitleTemplate = "Meeting link could not be created",
+                InAppBodyTemplate = "The {{provider}} link for \"{{eventTitle}}\" could not be created. Invitations were sent without it - add the link again from the event."
+            },
+            new()
+            {
+                Id = Guid.NewGuid(), Code = "calendar_connection_reauth_required",
+                InAppTitleTemplate = "Reconnect your calendar",
+                InAppBodyTemplate = "Your {{provider}} connection needs you to sign in again before it can sync."
+            },
+            new()
+            {
+                Id = Guid.NewGuid(), Code = "calendar_connection_failed",
+                InAppTitleTemplate = "Calendar sync failed",
+                InAppBodyTemplate = "Your {{provider}} calendar could not be synced. Check the connection in your calendar settings."
+            },
+            new()
+            {
+                Id = Guid.NewGuid(), Code = "calendar_connection_sync_conflict",
+                InAppTitleTemplate = "Calendar sync conflict",
+                InAppBodyTemplate = "Some events in your {{provider}} calendar conflicted with CROWNUS and were not synced."
+            },
+            new()
+            {
+                Id = Guid.NewGuid(), Code = "calendar_event_reminder",
+                InAppTitleTemplate = "Starting soon",
+                InAppBodyTemplate = "\"{{eventTitle}}\" starts at {{eventTime}}."
+            },
+            new()
+            {
+                Id = Guid.NewGuid(), Code = "calendar_exception_detected",
+                InAppTitleTemplate = "Meeting exception to review",
+                InAppBodyTemplate = "{{employeeName}}: {{title}}. {{description}}"
+            },
+            new()
+            {
+                Id = Guid.NewGuid(), Code = "calendar_exception_raised_for_you",
+                InAppTitleTemplate = "A meeting exception was raised for you",
+                InAppBodyTemplate = "{{title}}. {{description}} You can add your explanation in the Inbox."
+            },
+            new()
+            {
+                Id = Guid.NewGuid(), Code = "calendar_exception_escalated",
+                InAppTitleTemplate = "Meeting exception escalated",
+                InAppBodyTemplate = "{{title}} was not reviewed in time and needs your attention. {{description}}"
+            },
+            new()
+            {
+                Id = Guid.NewGuid(), Code = "work_monitor_alert_escalated",
+                InAppTitleTemplate = "Project alert escalated to you",
+                InAppBodyTemplate = "{{title}}: {{message}}"
+            },
+            new()
+            {
+                Id = Guid.NewGuid(), Code = "leave_request_decision_undone",
+                InAppTitleTemplate = "Leave decision undone",
+                InAppBodyTemplate = "The {{decision}} of your {{leaveType}} from {{startDate}} was undone. Your request is pending again."
+            }
+            ,
+            new()
+            {
+                Id = Guid.NewGuid(), Code = "calendar_event_meeting_link_unknown",
+                InAppTitleTemplate = "Meeting link status unknown",
+                InAppBodyTemplate = "We couldn't confirm whether the {{provider}} meeting for \"{{eventTitle}}\" was created. Open the event to retry or remove it."
+            },
+            new()
+            {
+                Id = Guid.NewGuid(), Code = "calendar_event_meeting_unresolved",
+                InAppTitleTemplate = "A meeting may still exist",
+                InAppBodyTemplate = "A {{provider}} meeting for \"{{eventTitle}}\" may still exist. Please check and delete it in {{provider}}, then confirm in the event."
+            },
+            new()
+            {
+                Id = Guid.NewGuid(), Code = "calendar_event_meeting_cancel_failed",
+                InAppTitleTemplate = "Meeting not cancelled",
+                InAppBodyTemplate = "We couldn't cancel the {{provider}} meeting for \"{{eventTitle}}\". Please delete it in {{provider}}."
             }
 
         };
+    }
 
+    private async Task SeedAsync(INotificationRepository notifications, ApplicationDbContext db, CancellationToken ct)
+    {
+        var now = DateTimeOffset.UtcNow;
         var addedCount = 0;
-        foreach (var template in templates)
+        var versionedCount = 0;
+        foreach (var template in DefaultTemplates())
         {
-            var existing = await notifications.GetTemplateByCodeAsync(template.Code, ct);
-            if (existing is not null)
-                continue;
+            var existing = await db.NotificationTemplates.FirstOrDefaultAsync(t => t.Code == template.Code, ct);
+            if (existing is null)
+            {
+                template.EventKey = template.Code;
+                template.Name = NotificationEventCatalog.TryGet(template.Code, out var definition) ? definition.DisplayName : template.Code;
+                await notifications.AddTemplateRangeAsync(new[] { template }, ct);
+                AddPublishedFirstVersion(db, template, now);
+                addedCount++;
+            }
+            else if (existing.ActiveVersionId is null)
+            {
+                // A template created before versioning: freeze its current (possibly admin-edited) copy as v1.
+                // Never overwrite the copy itself.
+                if (string.IsNullOrEmpty(existing.EventKey))
+                    existing.EventKey = existing.Code;
+                if (string.IsNullOrEmpty(existing.Name))
+                    existing.Name = existing.Code;
+                AddPublishedFirstVersion(db, existing, now);
+                versionedCount++;
+            }
 
-            await notifications.AddTemplateRangeAsync(new[] { template }, ct);
-            addedCount++;
+            // The versioning migration could only name backfilled templates by their code; give them the
+            // catalog's readable name. Only a name still equal to the code is replaced - never template copy.
+            if (existing is not null && existing.Name == existing.Code
+                && NotificationEventCatalog.TryGet(existing.Code, out var known))
+            {
+                existing.Name = known.DisplayName;
+                versionedCount++;
+            }
         }
 
-        if (addedCount > 0)
+        if (addedCount + versionedCount > 0)
         {
             await db.SaveChangesAsync(ct);
-            _logger.LogInformation("Seeded {Count} new notification templates.", addedCount);
+            _logger.LogInformation(
+                "Seeded {Count} new notification templates; versioned or renamed {Versioned} existing ones.",
+                addedCount, versionedCount);
         }
         else
         {
             _logger.LogInformation("Notification templates already up to date — nothing to seed.");
         }
+    }
+
+    private static void AddPublishedFirstVersion(ApplicationDbContext db, NotificationTemplate template, DateTimeOffset now)
+    {
+        var version = NotificationTemplateVersion.CreateDraft(
+            template.Id, 1,
+            new NotificationTemplateContent(
+                template.InAppTitleTemplate, template.InAppBodyTemplate,
+                template.MailSubjectTemplate, EmailHtml: null, EmailCss: null, template.MailBodyTemplate,
+                TrayTitle: null, TrayBody: null, NotificationActionKeys.OpenRelated),
+            actorUserId: null, now);
+        version.Publish(actorUserId: null, now);
+        db.NotificationTemplateVersions.Add(version);
+        template.Activate(version, now);
     }
 }

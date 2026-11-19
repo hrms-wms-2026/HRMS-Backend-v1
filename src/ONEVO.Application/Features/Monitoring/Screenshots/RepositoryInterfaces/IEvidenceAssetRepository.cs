@@ -6,6 +6,13 @@ public interface IEvidenceAssetRepository
 {
     void Add(MonitoringEvidenceAsset asset);
 
+    /// <summary>
+    /// The periodic screenshot this device already stored for <paramref name="capturedAt"/>
+    /// (microsecond precision) — lets a retried upload after a lost response return the original.
+    /// </summary>
+    Task<MonitoringEvidenceAsset?> FindPeriodicScreenshotAsync(
+        Guid tenantId, Guid agentDeviceId, DateTimeOffset capturedAt, CancellationToken ct);
+
     Task<MonitoringEvidenceAsset?> GetByIdAsync(Guid tenantId, Guid id, CancellationToken ct);
 
     Task<(List<MonitoringEvidenceAsset> Items, int Total)> GetPagedAsync(

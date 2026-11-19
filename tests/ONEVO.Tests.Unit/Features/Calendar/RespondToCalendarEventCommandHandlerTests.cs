@@ -160,4 +160,85 @@ public sealed class RespondToCalendarEventCommandHandlerTests
         // Notify must run before the persisting SaveChanges, otherwise the staged outbox row is lost.
         Assert.Equal(new[] { "notify", "save" }, calls);
     }
+
+    [Fact]
+    public async Task Handle_RecordsWhenTheParticipantAnsweredAndTheChangeInTheRsvpHistory()
+    {
+        var sut = BuildSut();
+        var participant = new CalendarEventParticipant { Id = Guid.NewGuid(), TenantId = TenantId, EventId = EventId, EmployeeId = EmployeeId, ResponseStatus = CalendarEventParticipantStatuses.Pending };
+        _events.Setup(x => x.GetTrackedParticipantAsync(TenantId, EventId, EmployeeId, It.IsAny<CancellationToken>())).ReturnsAsync(participant);
+        var history = new List<CalendarEventParticipantRsvpHistory>();
+        _events.Setup(x => x.AddRsvpHistoryAsync(It.IsAny<CalendarEventParticipantRsvpHistory>(), It.IsAny<CancellationToken>()))
+            .Callback((CalendarEventParticipantRsvpHistory h, CancellationToken _) => history.Add(h)).Returns(Task.CompletedTask);
+
+        var result = await sut.Handle(new RespondToCalendarEventCommand(EventId, "Rejected", "Clash"), CancellationToken.None);
+
+        Assert.True(result.IsSuccess);
+        Assert.NotNull(participant.RespondedAt);
+        var row = Assert.Single(history);
+        Assert.Equal((participant.Id, EventId, EmployeeId, CalendarEventParticipantStatuses.Pending, CalendarEventParticipantStatuses.Rejected, "Clash", TenantId),
+            (row.ParticipantId, row.EventId, row.EmployeeId, row.FromStatus, row.ToStatus, row.Reason, row.TenantId));
+        Assert.Equal(participant.RespondedAt, row.ChangedAt);
+    }
+
+    [Theory]
+    [InlineData("Accepted", true)]
+    [InlineData("Rejected", false)]
+    public async Task Handle_AcceptOrDecline_TellsTheOrganizer(string response, bool accepted)
+    {
+        var sut = BuildSut();
+        var participant = new CalendarEventParticipant { Id = Guid.NewGuid(), TenantId = TenantId, EventId = EventId, EmployeeId = EmployeeId, ResponseStatus = CalendarEventParticipantStatuses.Pending };
+        _events.Setup(x => x.GetTrackedParticipantAsync(TenantId, EventId, EmployeeId, It.IsAny<CancellationToken>())).ReturnsAsync(participant);
+
+        await sut.Handle(new RespondToCalendarEventCommand(EventId, response), CancellationToken.None);
+
+        _notifications.Verify(x => x.NotifyRsvpAnsweredAsync(TenantId, OrganizerUserId, "Payroll review", "Ada Lovelace", accepted, It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Fact]
+    public async Task Handle_TheOrganizerAnsweringTheirOwnEvent_IsNotNotified()
+    {
+        var sut = BuildSut();
+        _events.Setup(x => x.GetByIdForTenantAsync(TenantId, EventId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new CalendarEvent { Id = EventId, TenantId = TenantId, Title = "Payroll review", CreatedById = UserId, SourceType = CalendarEventSourceTypes.Manual });
+        var participant = new CalendarEventParticipant { Id = Guid.NewGuid(), TenantId = TenantId, EventId = EventId, EmployeeId = EmployeeId, ResponseStatus = CalendarEventParticipantStatuses.Pending };
+        _events.Setup(x => x.GetTrackedParticipantAsync(TenantId, EventId, EmployeeId, It.IsAny<CancellationToken>())).ReturnsAsync(participant);
+
+        await sut.Handle(new RespondToCalendarEventCommand(EventId, "Accepted"), CancellationToken.None);
+
+        _notifications.Verify(x => x.NotifyRsvpAnsweredAsync(It.IsAny<Guid>(), It.IsAny<Guid>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<bool>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task Handle_NominatingAReplacement_TellsTheNomineeToo()
+    {
+        var sut = BuildSut();
+        var nominee = new Employee { Id = Guid.NewGuid(), TenantId = TenantId, UserId = Guid.NewGuid(), FirstName = "Grace", LastName = "Hopper" };
+        var participant = new CalendarEventParticipant { Id = Guid.NewGuid(), TenantId = TenantId, EventId = EventId, EmployeeId = EmployeeId, ResponseStatus = CalendarEventParticipantStatuses.Pending };
+        _events.Setup(x => x.GetTrackedParticipantAsync(TenantId, EventId, EmployeeId, It.IsAny<CancellationToken>())).ReturnsAsync(participant);
+        _events.Setup(x => x.GetParticipantsForEventsAsync(TenantId, It.IsAny<IReadOnlyList<Guid>>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new Dictionary<Guid, IReadOnlyList<CalendarEventParticipant>>
+            {
+                [EventId] = [participant, new CalendarEventParticipant { Id = Guid.NewGuid(), TenantId = TenantId, EventId = EventId, EmployeeId = nominee.Id }]
+            });
+        _employeeRepo.Setup(x => x.GetByIdAsync(TenantId, nominee.Id, It.IsAny<CancellationToken>())).ReturnsAsync(nominee);
+
+        var result = await sut.Handle(new RespondToCalendarEventCommand(EventId, "ReplacementNominated", null, nominee.Id), CancellationToken.None);
+
+        Assert.True(result.IsSuccess);
+        _notifications.Verify(x => x.NotifyNomineeAsync(TenantId, nominee.UserId, "Payroll review", "Ada Lovelace", It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Fact]
+    public async Task Handle_AnyAnswer_QueuesAMeetingExceptionReEvaluationOfTheResponder()
+    {
+        var sut = BuildSut();
+        var participant = new CalendarEventParticipant { Id = Guid.NewGuid(), TenantId = TenantId, EventId = EventId, EmployeeId = EmployeeId, ResponseStatus = CalendarEventParticipantStatuses.Accepted };
+        _events.Setup(x => x.GetTrackedParticipantAsync(TenantId, EventId, EmployeeId, It.IsAny<CancellationToken>())).ReturnsAsync(participant);
+
+        await sut.Handle(new RespondToCalendarEventCommand(EventId, "Rejected"), CancellationToken.None);
+
+        _notifications.Verify(x => x.QueueIncidentEvaluationAsync(TenantId, It.Is<IReadOnlyCollection<Guid>>(ids => ids.Single() == EmployeeId),
+            It.IsAny<CancellationToken>()), Times.Once);
+    }
 }

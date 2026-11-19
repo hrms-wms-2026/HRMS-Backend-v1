@@ -5,6 +5,7 @@ using ONEVO.Application.Features.OrgStructure.DTOs.Responses;
 using ONEVO.Application.Features.OrgStructure.Mappers;
 using ONEVO.Application.Features.OrgStructure.RepositoryInterfaces;
 using DepartmentEntity = ONEVO.Domain.Features.OrgStructure.Entities.Department;
+using PositionEntity = ONEVO.Domain.Features.OrgStructure.Entities.Position;
 
 namespace ONEVO.Application.Features.OrgStructure.Commands.CreateDepartment;
 
@@ -13,17 +14,20 @@ public class CreateDepartmentCommandHandler
 {
     private readonly IDepartmentRepository _departments;
     private readonly ILegalEntityRepository _legalEntities;
+    private readonly IPositionRepository _positions;
     private readonly ICurrentUser _currentUser;
     private readonly IDateTimeProvider _dateTimeProvider;
 
     public CreateDepartmentCommandHandler(
         IDepartmentRepository departments,
         ILegalEntityRepository legalEntities,
+        IPositionRepository positions,
         ICurrentUser currentUser,
         IDateTimeProvider dateTimeProvider)
     {
         _departments = departments;
         _legalEntities = legalEntities;
+        _positions = positions;
         _currentUser = currentUser;
         _dateTimeProvider = dateTimeProvider;
     }
@@ -41,17 +45,6 @@ public class CreateDepartmentCommandHandler
         var legalEntity = await _legalEntities.GetByIdForTenantAsync(tenantId, request.LegalEntityId, ct);
         if (legalEntity == null)
             return Result<DepartmentResponse>.NotFound("Legal entity not found.");
-
-        // A newly created department has no positions belonging to it yet, so "the position
-        // must belong to the same department" cannot be satisfied at create time (see
-        // Onexo_Department_Position_User_Journey_Validation.md, Create Department section:
-        // "Create the department first and assign its head afterwards, which is recommended").
-        // Reject rather than silently ignoring or accepting a cross-department position.
-        if (request.HeadPositionId is not null)
-        {
-            return Result<DepartmentResponse>.Conflict(
-                "Head position cannot be assigned while creating a department. Create the department first, then assign its head position through update.");
-        }
 
         var name = request.Name.Trim();
         var trimmedCode = request.Code?.Trim();
@@ -75,6 +68,27 @@ public class CreateDepartmentCommandHandler
                 return Result<DepartmentResponse>.Conflict("Parent department is inactive.");
         }
 
+        // A newly created department has no positions of its own yet, so a head chosen at
+        // create time is an existing position that moves into the new department (option 2 in
+        // Onexo_Department_Position_User_Journey_Validation.md, Create Department section). The
+        // UI warns about the move; a position already heading another department is refused.
+        PositionEntity? headPosition = null;
+        if (request.HeadPositionId is { } headPositionId)
+        {
+            headPosition = await _positions.GetByIdForLegalEntityAsync(
+                tenantId, request.LegalEntityId, headPositionId, ct);
+            if (headPosition is null)
+                return Result<DepartmentResponse>.NotFound("Head position not found.");
+            if (!headPosition.IsActive)
+                return Result<DepartmentResponse>.Conflict("Head position is inactive.");
+            if (await _positions.CountHeadDepartmentReferencesAsync(
+                    tenantId, request.LegalEntityId, headPositionId, ct) > 0)
+            {
+                return Result<DepartmentResponse>.Conflict(
+                    "This position already heads another department. Choose a different head position.");
+            }
+        }
+
         var entity = new DepartmentEntity
         {
             Id = Guid.NewGuid(),
@@ -83,11 +97,20 @@ public class CreateDepartmentCommandHandler
             Name = name,
             Code = code,
             ParentDepartmentId = request.ParentDepartmentId,
+            HeadPositionId = headPosition?.Id,
             IsActive = true,
             CreatedAt = _dateTimeProvider.UtcNow
         };
 
         await _departments.AddAsync(entity, ct);
+
+        if (headPosition is not null)
+        {
+            headPosition.DepartmentId = entity.Id;
+            headPosition.UpdatedAt = _dateTimeProvider.UtcNow;
+            _positions.Update(headPosition);
+        }
+
         await _departments.SaveChangesAsync(ct);
 
         return Result<DepartmentResponse>.Success(DepartmentMapper.ToResponse(entity));

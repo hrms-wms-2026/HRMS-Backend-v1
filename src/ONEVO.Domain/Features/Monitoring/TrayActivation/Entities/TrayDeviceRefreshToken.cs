@@ -4,6 +4,9 @@ namespace ONEVO.Domain.Features.Monitoring.TrayActivation.Entities;
 
 public class TrayDeviceRefreshToken : ITenantOwnedEntity
 {
+    /// <summary>RevokedReason for a token replaced by a normal refresh.</summary>
+    public const string RotatedReason = "rotated";
+
     public Guid Id { get; set; }
     public Guid TenantId { get; set; }
     public Guid UserId { get; set; }

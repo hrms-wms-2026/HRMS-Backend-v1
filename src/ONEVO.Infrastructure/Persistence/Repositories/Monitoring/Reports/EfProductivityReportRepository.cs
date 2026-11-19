@@ -67,10 +67,17 @@ public class EfProductivityReportRepository : IProductivityReportRepository
             })
             .FirstOrDefaultAsync(ct);
 
+        // EmployeeWorkSession is keyed by the tray device's JWT UserId, not Employee.Id, so map
+        // the requested employees to their user ids. Composed as a subquery - stays one round trip.
+        var userIds = _db.Employees
+            .AsNoTracking()
+            .Where(e => e.TenantId == tenantId && employeeIds.Contains(e.Id))
+            .Select(e => e.UserId);
+
         var (start, end) = UtcDayBounds(from, to);
         var workSessionAgg = await _db.EmployeeWorkSessions
             .AsNoTracking()
-            .Where(w => w.TenantId == tenantId && employeeIds.Contains(w.UserId)
+            .Where(w => w.TenantId == tenantId && userIds.Contains(w.UserId)
                         && w.ClockInAt >= start && w.ClockInAt < end)
             .GroupBy(_ => 1)
             .Select(g => new

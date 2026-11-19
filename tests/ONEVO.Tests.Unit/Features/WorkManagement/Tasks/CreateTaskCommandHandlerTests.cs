@@ -1,8 +1,14 @@
+using System.Text.Json;
 using Moq;
 using ONEVO.Application.Common.Models;
+using ONEVO.Application.Features.WorkManagement.Tasks.Appliers;
 using ONEVO.Application.Common.RepositoryInterfaces;
 using ONEVO.Application.Common.ServiceInterfaces;
+using ONEVO.Application.Features.WorkManagement.Approvals.Services;
 using ONEVO.Application.Features.WorkManagement.Common.Services;
+using ONEVO.Application.Features.WorkManagement.Hierarchy;
+using ONEVO.Application.Features.WorkManagement.Notifications.Services;
+using ONEVO.Application.Features.WorkManagement.Tasks.DTOs;
 using ONEVO.Application.Features.WorkManagement.Objectives.RepositoryInterfaces;
 using ONEVO.Application.Features.WorkManagement.Objectives.Services;
 using ONEVO.Application.Features.WorkManagement.Projects.RepositoryInterfaces;
@@ -43,7 +49,8 @@ public class CreateTaskCommandHandlerTests
         Guid? callerEmployeeId = null, bool? callerIsEffectiveManager = null,
         bool categoryExists = true, Guid? categoryProjectId = null, Guid? sprintProjectId = null,
         Mock<ONEVO.Application.Features.WorkManagement.CalendarEvents.RepositoryInterfaces.ICalendarEventRepository>? calendarEvents = null,
-        Mock<ITaskAssetLinker>? assetLinker = null, IReadOnlyList<TaskStatusEntity>? template = null)
+        Mock<ITaskAssetLinker>? assetLinker = null, IReadOnlyList<TaskStatusEntity>? template = null,
+        Mock<IWorkApprovalEngine>? approvalEngine = null)
     {
         var resolvedCallerEmployeeId = callerEmployeeId ?? EmployeeId;
 
@@ -96,8 +103,8 @@ public class CreateTaskCommandHandlerTests
         var slackCalculator = new ObjectiveAllocationSlackCalculator(objectives.Object, tasks.Object);
 
         var unitOfWork = new Mock<IUnitOfWork>();
-        unitOfWork.Setup(x => x.ExecuteInTransactionAsync(It.IsAny<Func<CancellationToken, Task<Result<WorkTaskResponse>>>>(), It.IsAny<CancellationToken>()))
-            .Returns((Func<CancellationToken, Task<Result<WorkTaskResponse>>> op, CancellationToken ct) => op(ct));
+        unitOfWork.Setup(x => x.ExecuteInTransactionAsync(It.IsAny<Func<CancellationToken, Task<Result<TaskWriteOutcome>>>>(), It.IsAny<CancellationToken>()))
+            .Returns((Func<CancellationToken, Task<Result<TaskWriteOutcome>>> op, CancellationToken ct) => op(ct));
 
         var membership = new Mock<IMilestoneMembershipCoordinator>();
         // Mirrors direct-owner-only behavior by default so pre-existing tests keep passing
@@ -109,13 +116,126 @@ public class CreateTaskCommandHandlerTests
 
         var sprintLogs = new Mock<ISprintActivityLogRepository>();
 
+        var writes = new TaskWriteService(
+            objectives.Object, projects.Object, tasks.Object, statuses.Object, sprints.Object, categories.Object,
+            slackCalculator, (calendarEvents ?? CalendarEventRepositoryMocks.Empty()).Object,
+            sprintLogs.Object, new Mock<ITaskEditLogRepository>().Object, new Mock<ITaskPercentageLogRepository>().Object);
+        // Engine defaults to "apply now" so these tests keep exercising the direct-create path;
+        // TaskActionsThroughEngineTests covers the pending branch.
+        var hierarchy = new Mock<IWorkHierarchyService>();
+        hierarchy.Setup(x => x.LoadTreeAsync(TenantId, ProjectId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new ProjectModuleTree(new[] { objective }));
+        var approvals = approvalEngine ?? new Mock<IWorkApprovalEngine>();
+        if (approvalEngine is null)
+            approvals.Setup(x => x.SubmitAsync(It.IsAny<WorkAction>(), It.IsAny<CancellationToken>()))
+                .ReturnsAsync(Result<ApprovalDecision>.Success(ApprovalDecision.Direct));
+
         var handler = new CreateTaskCommandHandler(
-            currentUser.Object, identity.Object, objectives.Object, projects.Object, tasks.Object,
-            statuses.Object, sprints.Object, categories.Object, slackCalculator, unitOfWork.Object, membership.Object,
-            (calendarEvents ?? CalendarEventRepositoryMocks.Empty()).Object,
-            (assetLinker ?? new Mock<ITaskAssetLinker>()).Object,
-            sprintLogs.Object);
+            currentUser.Object, identity.Object, objectives.Object, unitOfWork.Object, membership.Object,
+            (assetLinker ?? new Mock<ITaskAssetLinker>()).Object, writes, hierarchy.Object, approvals.Object,
+            new Mock<IWorkNotificationEngine>().Object,
+            Microsoft.Extensions.Options.Options.Create(new ONEVO.Application.Features.WorkManagement.Meetings.MeetingsOptions { Create = true }),
+            ONEVO.Tests.Unit.Features.WorkManagement.Meetings.MeetingActionItemTestFactory.Build());
         return (handler, tasks, sprints, sprintLogs);
+    }
+
+    // Planner create popover (2026-11-03): a request can carry the requester as assignee and a plan slot.
+    private static readonly DateTimeOffset SlotStart = new(2026, 11, 10, 9, 0, 0, TimeSpan.Zero);
+    private static readonly DateTimeOffset SlotEnd = new(2026, 11, 10, 11, 0, 0, TimeSpan.Zero);
+    private static readonly Guid MemberEmployeeId = Guid.NewGuid();
+
+    private static (Mock<IWorkApprovalEngine> Engine, List<WorkAction> Sent) PendingEngine()
+    {
+        var sent = new List<WorkAction>();
+        var engine = new Mock<IWorkApprovalEngine>();
+        engine.Setup(x => x.SubmitAsync(Capture.In(sent), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(Result<ApprovalDecision>.Success(ApprovalDecision.Pending(Guid.NewGuid(), EmployeeId)));
+        return (engine, sent);
+    }
+
+    private static CreateTaskCommand PlanCommand(Guid? assignee, DateTimeOffset? start, DateTimeOffset? end)
+        => new(ObjectiveId, "Fix login bug", null, CategoryId, WorkTaskPriorities.Medium, null, 2m, null, null,
+            AssigneeEmployeeId: assignee, PlanStartAt: start, PlanEndAt: end);
+
+    [Fact]
+    public async Task Handle_AssigneeIsTheCaller_AndASlot_ArePutInTheApprovalPayload()
+    {
+        var (engine, sent) = PendingEngine();
+        var (handler, _, _, _) = BuildHandler(Owned(100m), 0m, callerEmployeeId: MemberEmployeeId, callerIsEffectiveManager: true,
+            approvalEngine: engine);
+
+        var result = await handler.Handle(PlanCommand(MemberEmployeeId, SlotStart, SlotEnd), CancellationToken.None);
+
+        Assert.True(result.IsSuccess);
+        var payload = JsonSerializer.Deserialize<TaskCreateInput>(Assert.Single(sent).PayloadJson, TaskPayload.Options)!;
+        Assert.Equal((MemberEmployeeId, SlotStart, SlotEnd), (payload.AssigneeEmployeeId!.Value, payload.PlanStartAt!.Value, payload.PlanEndAt!.Value));
+    }
+
+    [Fact]
+    public async Task Handle_AssigneeIsSomeoneElse_Is400()
+    {
+        var (engine, sent) = PendingEngine();
+        var (handler, _, _, _) = BuildHandler(Owned(100m), 0m, callerEmployeeId: MemberEmployeeId, callerIsEffectiveManager: true,
+            approvalEngine: engine);
+
+        var result = await handler.Handle(PlanCommand(Guid.NewGuid(), SlotStart, SlotEnd), CancellationToken.None);
+
+        Assert.Equal((400, TaskErrorCodes.InvalidPlanRequest), (result.StatusCode, result.ErrorCode));
+        Assert.Empty(sent);
+    }
+
+    // Follow-up 1: a slot is only planned for its assignee, so a slot without one is refused rather than dropped silently.
+    [Fact]
+    public async Task Handle_SlotWithoutAnAssignee_Is400()
+    {
+        var (engine, sent) = PendingEngine();
+        var (handler, _, _, _) = BuildHandler(Owned(100m), 0m, callerEmployeeId: MemberEmployeeId, callerIsEffectiveManager: true,
+            approvalEngine: engine);
+
+        var result = await handler.Handle(PlanCommand(null, SlotStart, SlotEnd), CancellationToken.None);
+
+        Assert.Equal((400, TaskErrorCodes.InvalidPlanRequest), (result.StatusCode, result.ErrorCode));
+        Assert.Equal("A planned time needs the assignee it is planned for.", result.Error);
+        Assert.Empty(sent);
+    }
+
+    [Fact]
+    public async Task Handle_OnlyOneSlotEnd_Is400()
+    {
+        var (engine, sent) = PendingEngine();
+        var (handler, _, _, _) = BuildHandler(Owned(100m), 0m, callerEmployeeId: MemberEmployeeId, callerIsEffectiveManager: true,
+            approvalEngine: engine);
+
+        var result = await handler.Handle(PlanCommand(MemberEmployeeId, SlotStart, null), CancellationToken.None);
+
+        Assert.Equal((400, TaskErrorCodes.InvalidPlanRequest), (result.StatusCode, result.ErrorCode));
+        Assert.Empty(sent);
+    }
+
+    [Fact]
+    public async Task Handle_SlotEndNotAfterStart_Is400()
+    {
+        var (engine, sent) = PendingEngine();
+        var (handler, _, _, _) = BuildHandler(Owned(100m), 0m, callerEmployeeId: MemberEmployeeId, callerIsEffectiveManager: true,
+            approvalEngine: engine);
+
+        var result = await handler.Handle(PlanCommand(MemberEmployeeId, SlotEnd, SlotStart), CancellationToken.None);
+
+        Assert.Equal((400, TaskErrorCodes.InvalidPlanRequest), (result.StatusCode, result.ErrorCode));
+        Assert.Empty(sent);
+    }
+
+    [Fact]
+    public async Task Handle_NoNewFields_PayloadUnchanged()
+    {
+        var (engine, sent) = PendingEngine();
+        var (handler, _, _, _) = BuildHandler(Owned(100m), 0m, callerEmployeeId: MemberEmployeeId, callerIsEffectiveManager: true,
+            approvalEngine: engine);
+
+        await handler.Handle(PlanCommand(null, null, null), CancellationToken.None);
+
+        var payload = JsonSerializer.Deserialize<TaskCreateInput>(Assert.Single(sent).PayloadJson, TaskPayload.Options)!;
+        Assert.Equal((null, null, null), (payload.AssigneeEmployeeId, payload.PlanStartAt, payload.PlanEndAt));
     }
 
     [Fact]
@@ -130,7 +250,7 @@ public class CreateTaskCommandHandlerTests
         });
         var result = await handler.Handle(new CreateTaskCommand(ObjectiveId, "Task", null, CategoryId, "medium", null, null, null, null), CancellationToken.None);
         Assert.True(result.IsSuccess);
-        Assert.Equal(first, result.Value!.StatusId);
+        Assert.Equal(first, result.Value!.Task!.StatusId);
     }
 
     [Fact]
@@ -145,7 +265,7 @@ public class CreateTaskCommandHandlerTests
         });
         var result = await handler.Handle(new CreateTaskCommand(ObjectiveId, "Task", null, CategoryId, "medium", null, null, null, null), CancellationToken.None);
         Assert.True(result.IsSuccess);
-        Assert.Equal(first, result.Value!.StatusId);
+        Assert.Equal(first, result.Value!.Task!.StatusId);
     }
 
     [Fact]
@@ -195,8 +315,8 @@ public class CreateTaskCommandHandlerTests
             CancellationToken.None);
 
         Assert.True(result.IsSuccess);
-        Assert.Equal("WEB-7", result.Value!.ShortId);
-        Assert.Equal(DefaultStatusId, result.Value.StatusId);
+        Assert.Equal("WEB-7", result.Value!.Task!.ShortId);
+        Assert.Equal(DefaultStatusId, result.Value!.Task!.StatusId);
     }
 
     [Fact]
@@ -220,7 +340,7 @@ public class CreateTaskCommandHandlerTests
         var result = await handler.Handle(command, CancellationToken.None);
 
         Assert.True(result.IsSuccess);
-        Assert.Null(result.Value!.SprintId);
+        Assert.Null(result.Value!.Task!.SprintId);
         tasks.Verify(x => x.AddAsync(It.Is<Domain.Features.WorkManagement.Tasks.Entities.WorkTask>(t => t.SprintId == null), It.IsAny<CancellationToken>()), Times.Once);
         sprints.Verify(x => x.GetByIdForTenantAsync(It.IsAny<Guid>(), It.IsAny<Guid>(), It.IsAny<CancellationToken>()), Times.Never);
         sprintLogs.Verify(x => x.AddAsync(It.IsAny<SprintActivityLog>(), It.IsAny<CancellationToken>()), Times.Never);
@@ -237,7 +357,7 @@ public class CreateTaskCommandHandlerTests
         Assert.True(result.IsSuccess);
         sprintLogs.Verify(x => x.AddAsync(It.Is<SprintActivityLog>(l =>
                 l.SprintId == SprintId && l.Action == SprintActivityActions.TasksAdded &&
-                l.DetailsJson!.Contains(result.Value!.Id.ToString())),
+                l.DetailsJson!.Contains(result.Value!.Task!.Id.ToString())),
             It.IsAny<CancellationToken>()), Times.Once);
     }
 
@@ -421,8 +541,8 @@ public class CreateTaskCommandHandlerTests
         var result = await handler.Handle(command, CancellationToken.None);
 
         Assert.True(result.IsSuccess);
-        assetLinker.Verify(x => x.SyncAttachmentsAsync(TenantId, UserId, result.Value!.Id, new[] { fileId }, It.IsAny<CancellationToken>()), Times.Once);
-        assetLinker.Verify(x => x.SyncDescriptionImagesAsync(TenantId, UserId, result.Value!.Id, "<p>desc</p>", It.IsAny<CancellationToken>()), Times.Once);
+        assetLinker.Verify(x => x.SyncAttachmentsAsync(TenantId, UserId, result.Value!.Task!.Id, new[] { fileId }, It.IsAny<CancellationToken>()), Times.Once);
+        assetLinker.Verify(x => x.SyncDescriptionImagesAsync(TenantId, UserId, result.Value!.Task!.Id, "<p>desc</p>", It.IsAny<CancellationToken>()), Times.Once);
     }
 }
 

@@ -9,6 +9,7 @@ using ONEVO.Application.Features.WorkManagement.Objectives.Services;
 using ONEVO.Application.Features.WorkManagement.ProjectInvitations.RepositoryInterfaces;
 using ONEVO.Application.Features.WorkManagement.Projects.RepositoryInterfaces;
 using ONEVO.Domain.Features.WorkManagement.ProjectInvitations.Entities;
+using ONEVO.Application.Features.WorkManagement.Notifications.Services;
 
 namespace ONEVO.Application.Features.WorkManagement.ProjectInvitations.Commands.AcceptObjectiveInvitation;
 
@@ -19,14 +20,13 @@ public class AcceptObjectiveInvitationCommandHandler : IRequestHandler<AcceptObj
     private readonly IProjectMemberInvitationRepository _invitations;
     private readonly IObjectiveRepository _objectives;
     private readonly IMilestoneMembershipCoordinator _membership;
-    private readonly IPermissionAutoGrantService _autoGrant;
     private readonly IUnitOfWork _unitOfWork;
     private readonly IProjectRepository _projects;
     private readonly IOutboxWriter _outboxWriter;
 
     public AcceptObjectiveInvitationCommandHandler(
         ICurrentUser currentUser, ICallerIdentityResolver identity, IProjectMemberInvitationRepository invitations,
-        IObjectiveRepository objectives, IMilestoneMembershipCoordinator membership, IPermissionAutoGrantService autoGrant,
+        IObjectiveRepository objectives, IMilestoneMembershipCoordinator membership,
         IUnitOfWork unitOfWork, IProjectRepository projects, IOutboxWriter outboxWriter)
     {
         _currentUser = currentUser;
@@ -34,7 +34,6 @@ public class AcceptObjectiveInvitationCommandHandler : IRequestHandler<AcceptObj
         _invitations = invitations;
         _objectives = objectives;
         _membership = membership;
-        _autoGrant = autoGrant;
         _unitOfWork = unitOfWork;
         _projects = projects;
         _outboxWriter = outboxWriter;
@@ -96,7 +95,6 @@ public class AcceptObjectiveInvitationCommandHandler : IRequestHandler<AcceptObj
                 await _membership.UpsertMembershipAsync(tenantId, objective.ProjectId, objective.Id, invitation.InvitedEmployeeId, innerCt);
                 await _membership.DeactivateMembershipAsync(tenantId, objective.ProjectId, objective.Id, oldHeadEmployeeId, innerCt);
                 await _membership.HasOtherActiveAccessAsync(tenantId, objective.ProjectId, oldHeadEmployeeId, objective.Id, innerCt);
-                await _autoGrant.EnsureGrantedAsync(tenantId, invitee.UserId, userId, "projects:access", innerCt);
             }
             else
             {
@@ -130,13 +128,15 @@ public class AcceptObjectiveInvitationCommandHandler : IRequestHandler<AcceptObj
                                     ["projectName"] = project.Name
                                 },
                                 "project_member_invitation",
-                                invitation.Id),
+                                invitation.Id, EventId: Guid.NewGuid()),
                             tenantId,
                             innerCt);
                     }
                 }
             }
 
+            await WorkNotificationEngine.EnqueueInboxChangedAsync(
+                _outboxWriter, tenantId, [invitation.InvitedById, invitation.InvitedEmployeeId], WorkNotificationEngine.InvitationInboxKind, invitation.Id, innerCt);
             await _unitOfWork.SaveChangesAsync(innerCt);
 
             return Result.Success();

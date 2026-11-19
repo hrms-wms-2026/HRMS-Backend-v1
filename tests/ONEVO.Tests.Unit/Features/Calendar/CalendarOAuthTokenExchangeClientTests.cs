@@ -64,4 +64,63 @@ public sealed class CalendarOAuthTokenExchangeClientTests
         Assert.Equal("me@example.com", result.AccountEmail);
         Assert.Equal("me@example.com", result.PrimaryCalendarId);
     }
+
+    [Fact]
+    public async Task ExchangeCodeAsync_ZoomTokenUrl_SendsBasicAuthAndOmitsCredentialsFromBody()
+    {
+        string? capturedAuthHeader = null;
+        string? capturedBody = null;
+        var handler = new StubHandler(request =>
+        {
+            capturedAuthHeader = request.Headers.Authorization?.ToString();
+            capturedBody = request.Content!.ReadAsStringAsync().GetAwaiter().GetResult();
+            return JsonResponse(new { access_token = "at-zoom", refresh_token = "rt-zoom", expires_in = 3600 });
+        });
+        var sut = new CalendarOAuthTokenExchangeClient(new HttpClient(handler), NullLogger<CalendarOAuthTokenExchangeClient>.Instance);
+
+        var result = await sut.ExchangeCodeAsync("https://zoom.us/oauth/token", "zoom-client-id", "zoom-client-secret", "code", "https://onexso.com:7229/callback", CancellationToken.None);
+
+        Assert.Equal("at-zoom", result.AccessToken);
+        var expectedAuth = "Basic " + Convert.ToBase64String(Encoding.UTF8.GetBytes("zoom-client-id:zoom-client-secret"));
+        Assert.Equal(expectedAuth, capturedAuthHeader);
+        Assert.DoesNotContain("client_id", capturedBody);
+        Assert.DoesNotContain("client_secret", capturedBody);
+    }
+
+    [Fact]
+    public async Task ExchangeCodeAsync_GoogleTokenUrl_StillSendsCredentialsInBodyWithNoBasicAuth()
+    {
+        string? capturedAuthHeader = "unset";
+        string? capturedBody = null;
+        var handler = new StubHandler(request =>
+        {
+            capturedAuthHeader = request.Headers.Authorization?.ToString();
+            capturedBody = request.Content!.ReadAsStringAsync().GetAwaiter().GetResult();
+            return JsonResponse(new { access_token = "at-1", refresh_token = "rt-1", expires_in = 3600 });
+        });
+        var sut = new CalendarOAuthTokenExchangeClient(new HttpClient(handler), NullLogger<CalendarOAuthTokenExchangeClient>.Instance);
+
+        await sut.ExchangeCodeAsync("https://oauth2.googleapis.com/token", "client", "secret", "code", "https://localhost:7229/callback", CancellationToken.None);
+
+        Assert.Null(capturedAuthHeader);
+        Assert.Contains("client_id=client", capturedBody);
+        Assert.Contains("client_secret=secret", capturedBody);
+    }
+
+    [Fact]
+    public async Task GetAccountAsync_Zoom_ReturnsEmailWithNoCalendarInfo()
+    {
+        var handler = new StubHandler(request =>
+        {
+            Assert.Equal("https://api.zoom.us/v2/users/me", request.RequestUri!.ToString());
+            return JsonResponse(new { email = "organizer@acme.com" });
+        });
+        var sut = new CalendarOAuthTokenExchangeClient(new HttpClient(handler), NullLogger<CalendarOAuthTokenExchangeClient>.Instance);
+
+        var result = await sut.GetAccountAsync("zoom", "access-token", CancellationToken.None);
+
+        Assert.Equal("organizer@acme.com", result.AccountEmail);
+        Assert.Null(result.PrimaryCalendarId);
+        Assert.Null(result.PrimaryCalendarName);
+    }
 }

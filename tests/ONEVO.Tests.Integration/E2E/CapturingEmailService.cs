@@ -63,6 +63,6 @@ public sealed class CapturingEmailService : IEmailService
     public Task SendPositionChangeApprovalRequestAsync(string to, string employeeName, string positionName, string? changeReason, CancellationToken ct = default, string? tenantSlug = null)
         => SendTemplateAsync(to, "position_change_approval_request", new { employeeName, positionName, changeReason, tenant_slug = tenantSlug }, ct);
 
-    public Task SendCalendarEventInviteAsync(string to, string recipientName, string eventTitle, DateTimeOffset startDateUtc, string? location, string organizerName, CancellationToken ct = default)
-        => SendTemplateAsync(to, "calendar_event_invite", new { recipientName, eventTitle, startDateUtc, location, organizerName }, ct);
+    public Task SendCalendarEventInviteAsync(string to, string recipientName, string eventTitle, DateTimeOffset startDateUtc, string? location, string organizerName, string? meetingLink = null, CancellationToken ct = default)
+        => SendTemplateAsync(to, "calendar_event_invite", new { recipientName, eventTitle, startDateUtc, location, organizerName, meetingLink }, ct);
 }

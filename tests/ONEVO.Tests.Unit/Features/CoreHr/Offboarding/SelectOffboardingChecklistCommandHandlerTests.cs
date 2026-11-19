@@ -48,6 +48,22 @@ public class SelectOffboardingChecklistCommandHandlerTests
     }
 
     [Fact]
+    public async Task Handle_NoTemplate_MovesToInProgressWithoutTasks()
+    {
+        var record = new OffboardingRecord { Id = Guid.NewGuid(), Status = OffboardingRecordStatuses.Initiated };
+        _offboardingRecordRepository.Setup(r => r.GetOpenByEmployeeIdAsync(_tenantId, _employeeId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(record);
+
+        var result = await CreateSut().Handle(new SelectOffboardingChecklistCommand(_employeeId, null), CancellationToken.None);
+
+        result.IsSuccess.Should().BeTrue();
+        record.Status.Should().Be(OffboardingRecordStatuses.InProgress);
+        record.ChecklistTemplateId.Should().BeNull();
+        _checklistTemplateRepository.Verify(r => r.GetByIdAsync(It.IsAny<Guid>(), It.IsAny<Guid>(), It.IsAny<CancellationToken>()), Times.Never);
+        _offboardingRecordRepository.Verify(r => r.SaveChangesAsync(It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Fact]
     public async Task Handle_ChecklistAlreadySelected_ReturnsConflict()
     {
         _offboardingRecordRepository.Setup(r => r.GetOpenByEmployeeIdAsync(_tenantId, _employeeId, It.IsAny<CancellationToken>()))

@@ -11,7 +11,7 @@ public sealed record MyProjectMilestoneResponse(
     /// visibility, ...) intentionally allow any effective manager, not just the true owner.</summary>
     bool IsOwner,
     /// <summary>True only for the actual owner (or an ancestor's owner) - never a plain member.
-    /// Use this, not IsOwner, wherever the gate must match EditTaskCommandHandler /
-    /// Approve|RejectTaskEditRequestCommandHandler's IsEffectiveOwnerAsync check (e.g. deciding
+    /// Use this, not IsOwner, wherever the gate must match the task approval decision
+    /// (WorkApprovalDecisionRules) (e.g. deciding
     /// whether a task edit saves directly or must go through an edit request).</summary>
     bool IsEffectiveOwner);

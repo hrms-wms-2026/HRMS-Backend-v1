@@ -14,6 +14,44 @@ public sealed record MyTaskRow(
     Guid ObjectiveId,
     string Priority);
 
+/// <summary>A not_started/active task assigned to an employee, for the employee work graph.</summary>
+public sealed record OpenAssignedTaskRow(
+    Guid Id,
+    string ShortId,
+    string Title,
+    Guid ProjectId,
+    Guid ObjectiveId,
+    string Category,
+    DateOnly? DueDate = null,
+    string? StatusName = null,
+    string? Priority = null);
+
+/// <summary>Top-level task counts by status category for one module or project (work graph).
+/// Overdue: not done and due before today.</summary>
+public sealed record WorkTaskCounts(int Total, int NotStarted, int Active, int Done, int Overdue);
+
+public sealed record OpenAssignedTasksPage(IReadOnlyList<OpenAssignedTaskRow> Items, int TotalCount);
+
+/// <summary>The fields needed to bucket one employee task for the Overview work/delivery cards.
+/// IsCarriedOver: due before the period started (still unfinished when the period began).</summary>
+public sealed record EmployeeTaskPeriodRow(
+    DateOnly? DueDate,
+    DateTimeOffset? CompletedAt,
+    int ProgressPercent,
+    bool MarksTaskComplete,
+    int? StoryPoints,
+    Guid TaskId = default,
+    string Title = "",
+    Guid ProjectId = default,
+    string ProjectName = "",
+    bool IsCarriedOver = false,
+    string ShortId = "",
+    string Priority = "",
+    string StatusName = "",
+    string StatusColor = "",
+    Guid ObjectiveId = default,
+    string ObjectiveTitle = "");
+
 /// <summary>The bare fields needed to bucket a caller's assigned task into the Task Progress
 /// donut widget's Completed/Overdue/In Progress/Not Started categories.</summary>
 public sealed record TaskProgressRow(
@@ -21,11 +59,59 @@ public sealed record TaskProgressRow(
     DateOnly? DueDate,
     int ProgressPercent);
 
+/// <summary>Same bucketing inputs as <see cref="TaskProgressRow"/>, plus the objective the task
+/// belongs to - for My Team's Team Progress, which rolls counts up per head module (My Team spec
+/// §8.3.3).</summary>
+
+/// <summary>One overdue top-level task for My Team's Team Progress overdue list, with its
+/// assignees.</summary>
+public sealed record LedOverdueTaskRow(Guid TaskId, string ShortId, string Title, Guid ProjectId, Guid ObjectiveId, DateOnly DueDate, IReadOnlyList<Guid> AssigneeEmployeeIds,
+    decimal? EstimatedHours = null);
+
+/// <summary>Every top-level overdue task of one module, summed: how many, their estimated hours split the way the module
+/// hour summary splits open work (ProgressPercent &gt; 0 is in progress, else not started), and how many have no estimate
+/// (they add no hours).</summary>
+public sealed record LedOverdueModuleRow(Guid ProjectId, Guid ObjectiveId, int TaskCount, decimal InProgressHours,
+    decimal NotStartedHours, int UnestimatedTaskCount)
+{
+    public decimal EstimatedHours => InProgressHours + NotStartedHours;
+}
+
+/// <summary>An employee's assigned task with its project and status, for the Work & Activity
+/// Needs attention and Recent tasks cards.</summary>
+public sealed record EmployeeWorkTaskRow(
+    Guid Id,
+    string ShortId,
+    string Title,
+    Guid ProjectId,
+    string ProjectName,
+    string StatusName,
+    string StatusColor,
+    bool MarksTaskComplete,
+    string Priority,
+    int? StoryPoints,
+    DateOnly? DueDate,
+    int ProgressPercent,
+    DateTimeOffset LastChangedAt);
+
 public interface IWorkTaskRepository
 {
     Task AddAsync(WorkTask task, CancellationToken ct = default);
     Task<WorkTask?> GetByIdForTenantAsync(Guid tenantId, Guid id, CancellationToken ct = default);
+
+    /// <summary>Bulk fetch of specific task rows by id - one query for a set of tasks, instead of one
+    /// query per task (e.g. the action items linked to a meeting occurrence).</summary>
+    Task<IReadOnlyList<WorkTask>> GetByIdsForTenantAsync(Guid tenantId, IReadOnlyCollection<Guid> ids, CancellationToken ct = default);
+
     Task<WorkTask?> GetTrackedByIdForTenantAsync(Guid tenantId, Guid id, CancellationToken ct = default);
+
+    /// <summary>Same as <see cref="GetTrackedByIdForTenantAsync"/> but bypasses the soft-delete query
+    /// filter - for reverting a task.delete, where the task we need to find IS the soft-deleted one.</summary>
+    Task<WorkTask?> GetTrackedByIdForTenantIncludingDeletedAsync(Guid tenantId, Guid id, CancellationToken ct = default);
+
+    Task<bool> IsAssignedToEmployeeAsync(Guid taskId, Guid employeeId, CancellationToken ct = default);
+    Task<IReadOnlyDictionary<Guid, IReadOnlyList<Guid>>> GetAssignedEmployeeIdsByTaskIdsAsync(
+        IReadOnlyCollection<Guid> taskIds, CancellationToken ct = default);
     Task<IReadOnlyList<WorkTask>> GetByObjectiveIdAsync(Guid tenantId, Guid objectiveId, CancellationToken ct = default);
     Task<IReadOnlyList<WorkTask>> GetByParentTaskIdAsync(Guid tenantId, Guid parentTaskId, CancellationToken ct = default);
 
@@ -53,6 +139,43 @@ public interface IWorkTaskRepository
     /// for the Task Progress dashboard widget's overall completion breakdown.</summary>
     Task<IReadOnlyList<TaskProgressRow>> GetMyTaskProgressRowsAsync(Guid tenantId, Guid employeeId, CancellationToken ct = default);
 
+    /// <summary>Tasks assigned to this employee whose status category is not_started or active,
+    /// active first then by ShortId, capped at take; TotalCount is the uncapped total.</summary>
+    Task<OpenAssignedTasksPage> ListOpenAssignedToEmployeeAsync(Guid tenantId, Guid employeeId, int take, CancellationToken ct = default);
+
+    /// <summary>Top-level (non-subtask) task counts per objective, for the work graph's module stats.</summary>
+    Task<IReadOnlyDictionary<Guid, WorkTaskCounts>> CountByObjectivesAsync(
+        Guid tenantId, IReadOnlyCollection<Guid> objectiveIds, DateOnly today, CancellationToken ct = default);
+
+    /// <summary>Top-level (non-subtask) task counts per project, for the work graph's project stats.</summary>
+    Task<IReadOnlyDictionary<Guid, WorkTaskCounts>> CountByProjectsAsync(
+        Guid tenantId, IReadOnlyCollection<Guid> projectIds, DateOnly today, CancellationToken ct = default);
+
+    /// <summary>Tasks assigned to this employee that belong to from..to: due date in the range, OR
+    /// CompletedAt in the range, OR the employee was assigned within the range (UTC day bounds), OR
+    /// carried over - due before the range and still unfinished when it began (open, or completed
+    /// on/after its start), so old overdue work never silently drops out of later periods.</summary>
+    Task<IReadOnlyList<EmployeeTaskPeriodRow>> ListForEmployeePeriodAsync(
+        Guid tenantId, Guid employeeId, DateOnly from, DateOnly to, CancellationToken ct = default);
+
+    /// <summary>Every task assigned to this employee that is still open (status does not mark complete and
+    /// progress below 100), whatever its due date - the work to hand over when they leave. Same row shape
+    /// as ListForEmployeePeriodAsync; IsCarriedOver is always false.</summary>
+    Task<IReadOnlyList<EmployeeTaskPeriodRow>> ListOpenForEmployeeAsync(Guid tenantId, Guid employeeId, CancellationToken ct = default);
+
+    /// <summary>Assigned, not-completed (status does not mark complete and progress below 100)
+    /// tasks with a due date on or before dueOnOrBefore - every overdue task plus the upcoming window.</summary>
+    Task<IReadOnlyList<EmployeeWorkTaskRow>> ListOpenDueByAsync(Guid tenantId, Guid employeeId, DateOnly dueOnOrBefore, CancellationToken ct = default);
+
+    /// <summary>The employee's assigned tasks that are due on <paramref name="today"/> or were created/updated
+    /// in [dayStartUtc, dayEndUtc), ordered by UpdatedAt ?? CreatedAt descending, capped at take.</summary>
+    Task<IReadOnlyList<EmployeeWorkTaskRow>> ListTodayAssignedAsync(
+        Guid tenantId, Guid employeeId, DateOnly today, DateTimeOffset dayStartUtc, DateTimeOffset dayEndUtc, int take, CancellationToken ct = default);
+
+    /// <summary>CompletedAt of every completed (status marks complete or progress 100) assigned task
+    /// whose CompletedAt is in [fromUtc, toUtcExclusive).</summary>
+    Task<IReadOnlyList<DateTimeOffset>> ListCompletedAtForEmployeeAsync(Guid tenantId, Guid employeeId, DateTimeOffset fromUtc, DateTimeOffset toUtcExclusive, CancellationToken ct = default);
+
     Task<IReadOnlyList<WorkTask>> GetBySprintIdAsync(Guid tenantId, Guid sprintId, CancellationToken ct = default);
 
     /// <summary>TaskId -> ObjectiveId for this set of tasks - used to resolve which objective (and
@@ -67,6 +190,18 @@ public interface IWorkTaskRepository
     /// <summary>True if any physical WorkTask row, including a soft-deleted row, has this CategoryId
     /// within the tenant - used to block deleting a category while a restricted FK still references it.</summary>
     Task<bool> AnyActiveByCategoryIdAsync(Guid tenantId, Guid categoryId, CancellationToken ct = default);
+
+
+    /// <summary>Top-level overdue tasks (not in a MarksTaskComplete status, ProgressPercent &lt; 100,
+    /// DueDate &lt; today) of the given objectives, most overdue first, with their assignees.</summary>
+    Task<IReadOnlyList<LedOverdueTaskRow>> ListTopLevelOverdueAsync(Guid tenantId, IReadOnlyCollection<Guid> objectiveIds, DateOnly today, int take, CancellationToken ct = default);
+
+    /// <summary>How many tasks ListTopLevelOverdueAsync would return without a limit.</summary>
+    Task<int> CountTopLevelOverdueAsync(Guid tenantId, IReadOnlyCollection<Guid> objectiveIds, DateOnly today, CancellationToken ct = default);
+
+    /// <summary>The tasks ListTopLevelOverdueAsync would return without a limit, grouped by module: one query.</summary>
+    Task<IReadOnlyList<LedOverdueModuleRow>> ListTopLevelOverdueByModuleAsync(Guid tenantId, IReadOnlyCollection<Guid> objectiveIds,
+        DateOnly today, CancellationToken ct = default);
 
     void Update(WorkTask task);
     void Remove(WorkTask task);

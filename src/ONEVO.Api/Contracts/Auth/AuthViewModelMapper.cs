@@ -7,7 +7,7 @@ public static class AuthViewModelMapper
 {
     public static AuthSessionViewModel ToViewModel(this AuthSessionResponseDto dto) => new(
         dto.Authenticated,
-        dto.User is null ? null : new CurrentUserViewModel(dto.User.Email),
+        dto.User is null ? null : new CurrentUserViewModel(dto.User.Email, dto.User.DisplayName, dto.User.EmployeeId),
         dto.Permissions,
         dto.ActiveModules,
         dto.MustChangePassword,
@@ -16,7 +16,8 @@ public static class AuthViewModelMapper
         dto.PendingLegalDocuments?.Select(ToViewModel).ToList(),
         dto.ExpiresAt,
         dto.ContinueUrl,
-        dto.Workspace is null ? null : new WorkspaceViewModel(dto.Workspace.Slug, dto.Workspace.DisplayName)
+        dto.Workspace is null ? null : new WorkspaceViewModel(dto.Workspace.Slug, dto.Workspace.DisplayName),
+        dto.ManagesPeople
     );
 
     public static PendingLegalDocumentViewModel ToViewModel(this PendingLegalDocumentDto dto) => new(

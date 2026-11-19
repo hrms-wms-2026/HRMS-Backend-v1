@@ -17,7 +17,8 @@ public sealed record LeaveRequestResponse(
     LeaveRequestBalanceImpactResponse BalanceImpact,
     IReadOnlyList<LeaveRequestApproverResponse> Approvers,
     LeaveRequestConflictSnapshotResponse ConflictSnapshot,
-    DateTimeOffset CreatedAt);
+    DateTimeOffset CreatedAt,
+    decimal ExceedsBalanceByHours = 0m);
 
 public sealed record LeaveRequestBalanceImpactResponse(
     decimal CurrentRemainingHours,
@@ -26,6 +27,7 @@ public sealed record LeaveRequestBalanceImpactResponse(
 
 public sealed record LeaveRequestApproverResponse(
     Guid ApproverEmployeeId,
+    string ApproverName,
     int SequenceOrder,
     string Status,
     Guid? DelegatedFromApproverId);
@@ -58,5 +60,10 @@ public sealed record LeaveRequestListItemResponse(
     decimal UnpaidHours,
     string Status,
     bool NoticePeriodMissed,
+    string? ApprovedByName,
     DateTimeOffset CreatedAt,
-    DateTimeOffset? UpdatedAt);
+    DateTimeOffset? UpdatedAt,
+    decimal ExceedsBalanceByHours = 0m,
+    // Multi-step approval progress ("1 of 2 approved"); skipped and cancelled approver rows are not counted.
+    int ApprovedApproverCount = 0,
+    int ApproverCount = 0);

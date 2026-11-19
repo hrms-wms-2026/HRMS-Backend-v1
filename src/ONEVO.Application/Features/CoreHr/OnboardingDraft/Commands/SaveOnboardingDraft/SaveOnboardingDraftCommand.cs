@@ -6,18 +6,21 @@ namespace ONEVO.Application.Features.CoreHr.OnboardingDrafts.Commands.SaveOnboar
 
 public record SaveOnboardingDraftCommand(
     Guid? DraftId,
-    string FirstName,
-    string LastName,
-    string WorkEmail,
+    string? FirstName,
+    string? LastName,
+    string? WorkEmail,
     Guid LegalEntityId,
     Guid? DepartmentId,
     Guid? PositionId,
-    string EmploymentType,
-    DateOnly StartDate,
+    string? EmploymentType,
+    DateOnly? StartDate,
     string? EmployeeNumber,
     Guid? WorkModeId,
     Guid? SelectedTemplateId,
     string? EditedTasksJson,
     string LastSavedStep,
     string? IfMatchVersion,
-    Guid? ReportsToEmployeeId) : IRequest<Result<OnboardingDraftResponse>>;
+    Guid? ReportsToEmployeeId,
+    bool? PhotoRequiredOverride = null,
+    bool? LocationCaptureOverride = null,
+    Guid? AvatarFileId = null) : IRequest<Result<OnboardingDraftResponse>>;

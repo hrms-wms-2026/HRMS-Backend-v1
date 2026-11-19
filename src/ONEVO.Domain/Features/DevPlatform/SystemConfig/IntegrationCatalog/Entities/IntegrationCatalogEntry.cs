@@ -18,7 +18,7 @@ public class IntegrationCatalogEntry
     public string ConnectionScope { get; set; } = string.Empty;
 
     /// <summary>FK -> platform_oauth_apps.provider; ONEVO OAuth app registration used for consent.</summary>
-    public string OnevoAppProvider { get; set; } = string.Empty;
+    public string CrownusAppProvider { get; set; } = string.Empty;
 
     public string? LogoUrl { get; set; }
 

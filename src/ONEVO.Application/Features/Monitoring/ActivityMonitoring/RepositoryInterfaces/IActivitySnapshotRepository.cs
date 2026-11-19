@@ -2,6 +2,9 @@ using ONEVO.Domain.Features.Monitoring.ActivityMonitoring.Entities;
 
 namespace ONEVO.Application.Features.Monitoring.ActivityMonitoring.RepositoryInterfaces;
 
+/// <summary>Sum of ActiveSeconds of one employee's snapshots captured in one UTC half-hour slot.</summary>
+public sealed record ActivitySlotRow(DateTimeOffset SlotStartUtc, int ActiveSeconds);
+
 public interface IActivitySnapshotRepository
 {
     Task AddRangeAsync(IEnumerable<ActivitySnapshot> snapshots, CancellationToken ct);
@@ -46,4 +49,17 @@ public interface IActivitySnapshotRepository
     Task<IReadOnlyList<(Guid TenantId, Guid EmployeeId)>> GetEmployeeKeysForDateAsync(
         DateOnly date,
         CancellationToken ct);
+
+    /// <summary>ActiveSeconds summed per UTC half-hour slot (by CapturedAt) in [fromUtc, toUtcExclusive).</summary>
+    Task<IReadOnlyList<ActivitySlotRow>> GetActiveSecondsByHalfHourAsync(
+        Guid tenantId, Guid employeeId, DateTimeOffset fromUtc, DateTimeOffset toUtcExclusive, CancellationToken ct);
+
+    /// <summary>Latest CapturedAt with ActiveSeconds > 0 in the window, or null.</summary>
+    Task<DateTimeOffset?> GetLastActiveAtAsync(
+        Guid tenantId, Guid employeeId, DateTimeOffset fromUtc, DateTimeOffset toUtcExclusive, CancellationToken ct);
+
+    /// <summary>Snapshots in the window ordered by CapturedAt, projected to CapturedAt, ActiveSeconds,
+    /// IdleSeconds and ForegroundProcessName (the fields WorkPatternWindowClassifier reads).</summary>
+    Task<IReadOnlyList<ActivitySnapshot>> GetWindowsByEmployeeRangeAsync(
+        Guid tenantId, Guid employeeId, DateTimeOffset fromUtc, DateTimeOffset toUtcExclusive, CancellationToken ct);
 }

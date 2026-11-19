@@ -1,4 +1,5 @@
 using MediatR;
+using ONEVO.Application.Common.Helpers;
 using ONEVO.Application.Common.Models;
 using ONEVO.Application.Common.ServiceInterfaces;
 using ONEVO.Application.Features.Leave.Type.DTOs.Responses;
@@ -37,20 +38,14 @@ public class UpdateLeaveTypeCommandHandler : IRequestHandler<UpdateLeaveTypeComm
 
         entity.Name = name;
         entity.Description = request.Description?.Trim();
-        entity.Category = request.Category;
+        entity.Color = request.Color.Trim().ToUpperInvariant();
+        if (request.Icon is not null)
+            entity.Icon = EntityIconRules.Normalize(request.Icon);
         entity.IsPaid = request.IsPaid;
-        entity.RequiresApproval = request.RequiresApproval;
-        entity.RequiresDocument = request.RequiresDocument;
-        entity.DocumentRequiredAfterDays = request.DocumentRequiredAfterDays;
-        entity.AcceptedDocumentTypes = request.AcceptedDocumentTypes ?? [];
-        entity.MaxConsecutiveDays = request.MaxConsecutiveDays;
-        entity.DefaultDaysPerYear = request.DefaultDaysPerYear;
-        entity.CarryForwardAllowed = request.CarryForwardAllowed;
-        entity.MaxCarryForwardDays = request.MaxCarryForwardDays;
-        entity.CarryForwardExpiryMonths = request.CarryForwardExpiryMonths;
-        entity.ProRataForNewJoiners = request.ProRataForNewJoiners;
         entity.ApplicableGender = request.ApplicableGender;
-        entity.MinimumNoticeDays = request.MinimumNoticeDays;
+        entity.RequiresDocument = request.RequiresDocument;
+        entity.DocumentRequiredAfterHours = request.RequiresDocument ? request.DocumentRequiredAfterHours : null;
+        entity.AcceptedDocumentTypes = request.AcceptedDocumentTypes ?? [];
         entity.UpdatedAt = _dateTimeProvider.UtcNow;
 
         _leaveTypes.Update(entity);

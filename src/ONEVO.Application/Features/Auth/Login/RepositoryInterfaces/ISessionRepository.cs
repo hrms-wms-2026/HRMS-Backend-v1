@@ -24,4 +24,8 @@ public interface ISessionRepository
     /// <summary>Revokes every non-revoked session for a user in one bulk update. Returns the
     /// number of sessions revoked. Used by offboarding completion - see design spec §5.5.</summary>
     Task<int> RevokeAllActiveByUserIdAsync(Guid userId, CancellationToken ct = default);
+
+    /// <summary>Revokes every non-revoked session for a user except <paramref name="keepSessionId"/>
+    /// in one bulk update. Used when a signed-in user changes their own password.</summary>
+    Task<int> RevokeAllActiveByUserIdExceptAsync(Guid userId, Guid keepSessionId, CancellationToken ct = default);
 }

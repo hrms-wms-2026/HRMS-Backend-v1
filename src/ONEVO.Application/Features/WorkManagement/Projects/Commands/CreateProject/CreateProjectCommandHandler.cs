@@ -1,3 +1,4 @@
+using ONEVO.Application.Common.Helpers;
 using MediatR;
 using Microsoft.Extensions.Logging;
 using ONEVO.Application.Common.Constants;
@@ -166,6 +167,7 @@ public class CreateProjectCommandHandler : IRequestHandler<CreateProjectCommand,
                 StartDate = request.StartDate,
                 TargetDate = request.TargetDate,
                 Color = request.Color,
+                Icon = EntityIconRules.Normalize(request.Icon),
                 ActualHours = request.ActualHours,
                 AllocatedHours = request.DefaultObjectiveAllocatedHours,
                 CompletedHours = 0m,

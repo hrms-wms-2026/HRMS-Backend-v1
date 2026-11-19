@@ -17,4 +17,9 @@ public class User : BaseEntity
     public string? PasswordResetTokenHash { get; set; }
     public DateTimeOffset? PasswordResetTokenExpiresAt { get; set; }
     public DateTimeOffset? LastLoginAt { get; set; }
+
+    // Suspension from Settings > Users. IsActive = false alone also means "invite not accepted
+    // yet" or "offboarded", so suspension is tracked separately; reactivate only clears this.
+    public DateTimeOffset? SuspendedAt { get; set; }
+    public Guid? SuspendedById { get; set; }
 }

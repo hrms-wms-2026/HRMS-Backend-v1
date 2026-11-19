@@ -225,11 +225,13 @@ public class ModuleCatalogSeeder : IHostedService
         var ownershipToSeed = new[]
         {
             // auth
+            new { Module = "auth", Perm = "users:read" },
             new { Module = "auth", Perm = "users:manage" },
 
             // configuration
-            new { Module = "configuration", Perm = "settings:read" },
-            new { Module = "configuration", Perm = "settings:admin" },
+            new { Module = "configuration", Perm = "billing:read" },
+            new { Module = "configuration", Perm = "billing:manage" },
+            new { Module = "configuration", Perm = "support:manage" },
 
             // roles
             new { Module = "roles", Perm = "roles:manage" },
@@ -241,13 +243,14 @@ public class ModuleCatalogSeeder : IHostedService
             new { Module = "org_structure", Perm = "org:read" },
             new { Module = "org_structure", Perm = "org:manage" },
             new { Module = "org_structure", Perm = "legal_entity:create" },
+            new { Module = "org_structure", Perm = "legal_entity:read" },
             new { Module = "org_structure", Perm = "legal_entity:update" },
             new { Module = "org_structure", Perm = "legal_entity:delete" },
 
             // core_hr
-            new { Module = "core_hr", Perm = "employees:read" },
             new { Module = "core_hr", Perm = "employees:write" },
             new { Module = "core_hr", Perm = "employees:offboard" },
+            new { Module = "core_hr", Perm = "checklists:manage" },
             new { Module = "core_hr", Perm = "employees:delete" },
 
             // time_off
@@ -269,6 +272,7 @@ public class ModuleCatalogSeeder : IHostedService
             // monitoring
             new { Module = "monitoring", Perm = "monitoring:read" },
             new { Module = "monitoring", Perm = "monitoring:configure" },
+            new { Module = "monitoring", Perm = "monitoring:screenshots:request" },
 
             // verification
             new { Module = "verification", Perm = "verification:view" },
@@ -281,25 +285,8 @@ public class ModuleCatalogSeeder : IHostedService
             new { Module = "analytics", Perm = "analytics:write" },
             new { Module = "analytics", Perm = "reports:create" },
 
-            // work_management
-            new { Module = "work_management", Perm = "projects:read" },
-            new { Module = "work_management", Perm = "projects:access" },
-            new { Module = "work_management", Perm = "tasks:read" },
-            new { Module = "work_management", Perm = "tasks:read-own" },
-            new { Module = "work_management", Perm = "tasks:write" },
-            new { Module = "work_management", Perm = "tasks:approve" },
-            new { Module = "work_management", Perm = "tasks:delete" },
-            new { Module = "work_management", Perm = "sprints:read" },
-            new { Module = "work_management", Perm = "sprints:manage" },
-            new { Module = "work_management", Perm = "okr:read" },
-            new { Module = "work_management", Perm = "okr:write" },
-            new { Module = "work_management", Perm = "roadmaps:read" },
-            new { Module = "work_management", Perm = "roadmaps:write" },
-            new { Module = "work_management", Perm = "time:read" },
-            new { Module = "work_management", Perm = "time:write" },
-            new { Module = "work_management", Perm = "time:approve" },
-            new { Module = "work_management", Perm = "resources:read" },
-            new { Module = "work_management", Perm = "resources:manage" },
+            // work_management - ordinary access is relationship based
+            new { Module = "projects", Perm = "projects:create" },
 
             // integrations
             new { Module = "integrations", Perm = "integrations:manage" }
@@ -309,6 +296,14 @@ public class ModuleCatalogSeeder : IHostedService
         var permSet = new HashSet<string>(existingPermissions, StringComparer.Ordinal);
 
         var existingOwnerships = await db.ModulePermissionOwnerships.ToListAsync(ct);
+        var staleOwnerships = existingOwnerships
+            .Where(o => !permSet.Contains(o.PermissionCode))
+            .ToList();
+        if (staleOwnerships.Count > 0)
+        {
+            db.ModulePermissionOwnerships.RemoveRange(staleOwnerships);
+            existingOwnerships = existingOwnerships.Except(staleOwnerships).ToList();
+        }
         var existingByCode = existingOwnerships.ToDictionary(o => o.PermissionCode, StringComparer.Ordinal);
 
         foreach (var def in ownershipToSeed)

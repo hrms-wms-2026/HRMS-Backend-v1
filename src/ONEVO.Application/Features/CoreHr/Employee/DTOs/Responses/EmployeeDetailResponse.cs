@@ -8,13 +8,22 @@ public record EmployeeDetailResponse(
     EmployeeDetailPayroll? Payroll,
     string? InvitationStatus,
     DateTimeOffset? InvitationExpiresAt,
-    EmployeeListAttendanceSummaryResponse? AttendanceSummary = null);
+    EmployeeListAttendanceSummaryResponse? AttendanceSummary = null,
+    IReadOnlyList<EmployeeDetailProjectMembership>? ProjectMemberships = null,
+    /// <summary>The employee's tray app is connected right now (see IEmployeeOnlineStatusReader).</summary>
+    bool IsOnline = false,
+    /// <summary>The caller may resend/revoke this employee's open invitation (IEmployeeInvitationAccess).</summary>
+    bool CanManageInvitation = false);
 
 public record EmployeeDetailJobInformation(
     string EmployeeNumber, Guid? LegalEntityId, string? LegalEntityName, string? DepartmentName, string? PositionName,
     Guid? PositionId, string? ReportingManagerName, string EmploymentTypeLabel, string Status,
     DateOnly HireDate, DateOnly? ProbationEndDate, string? WorkModeLabel,
-    string EmploymentTypeCode, Guid? WorkModeId);
+    string EmploymentTypeCode, Guid? WorkModeId, DateOnly? TerminationDate, Guid? ReportingManagerId = null,
+    string? Timezone = null,
+    // Position reserved for this employee by their onboarding invitation. The assignment stays
+    // "planned" (so PositionName is null) until they accept the invite and it is activated.
+    string? PendingPositionName = null);
 
 public record EmployeeDetailPersonalInformation(
     string FirstName, string LastName, string Email, string? Phone, DateOnly? DateOfBirth,
@@ -25,3 +34,14 @@ public record EmployeeDetailAddress(Guid Id, string AddressType, string AddressJ
 public record EmployeeDetailEmergencyContact(Guid Id, string Name, string Relationship, string Phone, string? Email, bool IsPrimary);
 
 public record EmployeeDetailPayroll(bool HasBankDetailsOnFile, string? BankName, string? MaskedAccountNumber, string? AccountType);
+
+public sealed record EmployeeBankDetailsRevealResponse(
+    string BankName,
+    string BranchName,
+    string AccountHolderName,
+    string AccountNumber,
+    string AccountType,
+    string? RoutingNumber);
+
+/// <summary>A project the employee belongs to that the viewer shares (see IProjectMemberRepository.ListSharedProjectMembershipsAsync).</summary>
+public record EmployeeDetailProjectMembership(Guid ProjectId, string ProjectName, DateTimeOffset MemberSince, bool IsActive);

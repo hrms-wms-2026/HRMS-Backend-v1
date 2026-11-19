@@ -2,7 +2,6 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
-using ONEVO.Application.Common.Models;
 using ONEVO.Application.Common.ServiceInterfaces;
 using ONEVO.Application.Features.Auth.Login.ServiceInterfaces;
 using ONEVO.Domain.Features.Auth.Entities;
@@ -13,12 +12,11 @@ namespace ONEVO.Infrastructure.Persistence.Seeders;
 
 /// <summary>
 /// Development/Test-only: seeds 22 named demo employees, one "Work Management Team Member" role
-/// scoped to exactly the work_management-module permissions, and (via SeedProjectsAndObjectivesAsync
+/// with contextual project access and no global Work Management permissions, and (via SeedProjectsAndObjectivesAsync
 /// in the WorkManagementDapiDemoSeeder.Objectives.cs partial) 5 hand-designed Projects with a
 /// 5-layer Objective tree each, all under the existing "dapi" smoke tenant. Must run after
 /// DevSmokeTestTenantSeeder (needs the dapi tenant/owner/legal entity/lookups already seeded) and
-/// before ProjectsAccessBootstrapSeeder (so its live Roles query - see
-/// ProjectsAccessBootstrapSeeder.cs:92-95 - picks up the new Role in the same boot). All inserted
+/// before the remaining tenant bootstrap seeders. All inserted
 /// rows use deterministic MD5-derived Guids so re-running on every dev boot is a no-op.
 /// This does not create schema and must never be treated as production bootstrap.
 /// </summary>

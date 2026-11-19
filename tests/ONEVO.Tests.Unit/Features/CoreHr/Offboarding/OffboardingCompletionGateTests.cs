@@ -1,5 +1,6 @@
 using FluentAssertions;
 using ONEVO.Application.Features.CoreHr.Offboarding.Commands.CompleteOffboarding;
+using ONEVO.Application.Features.CoreHr.Onboarding.RepositoryInterfaces;
 using ONEVO.Domain.Features.CoreHr.Entities;
 using Xunit;
 
@@ -35,5 +36,23 @@ public class OffboardingCompletionGateTests
     public void AllRequiredTasksResolved_NoTasksAtAll_ReturnsTrue()
     {
         OffboardingCompletionGate.AllRequiredTasksResolved(Array.Empty<EmployeeChecklistTask>()).Should().BeTrue();
+    }
+
+    [Fact]
+    public void AllRequiredTasksResolved_LinkedWorkTaskCompleted_ReturnsTrue()
+    {
+        var rows = new[] { new EmployeeChecklistTaskEffectiveState(
+            Task(true, EmployeeChecklistTaskStatuses.Pending), true, DateTimeOffset.UtcNow, "Done", "OFFICE-1", Guid.NewGuid()) };
+
+        OffboardingCompletionGate.AllRequiredTasksResolved(rows).Should().BeTrue();
+    }
+
+    [Fact]
+    public void AllRequiredTasksResolved_LinkedWorkTaskReopened_ReturnsFalse()
+    {
+        var rows = new[] { new EmployeeChecklistTaskEffectiveState(
+            Task(true, EmployeeChecklistTaskStatuses.Completed), false, null, "In Process", "OFFICE-1", Guid.NewGuid()) };
+
+        OffboardingCompletionGate.AllRequiredTasksResolved(rows).Should().BeFalse();
     }
 }

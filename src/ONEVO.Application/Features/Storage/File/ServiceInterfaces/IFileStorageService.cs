@@ -91,6 +91,16 @@ public interface IFileStorageService
         CancellationToken ct = default);
 
     /// <summary>
+    /// Opens a file using metadata previously returned by <see cref="GetRecordAsync"/>.
+    /// This avoids a duplicate metadata query after a caller has already completed
+    /// its authorization and conditional-request checks.
+    /// </summary>
+    Task<Result<FileStreamDto>> OpenReadAsync(
+        Guid tenantId,
+        FileRecordDto fileRecord,
+        CancellationToken ct = default);
+
+    /// <summary>
     /// Looks up a file record's metadata (including <see cref="FileRecordDto.UploadedByUserId"/>
     /// and <see cref="FileRecordDto.DeletedAt"/>) for a caller that needs to validate ownership
     /// or existence of an untrusted, client-supplied file id before deciding whether to link,

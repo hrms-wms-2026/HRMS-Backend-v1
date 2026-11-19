@@ -1,10 +1,10 @@
+using ONEVO.Application.Features.WorkManagement.Meetings.RepositoryInterfaces;
 using Moq;
 using ONEVO.Application.Common.Models;
 using ONEVO.Application.Common.RepositoryInterfaces;
 using ONEVO.Application.Common.ServiceInterfaces;
 using ONEVO.Application.Features.WorkManagement.Common.Services;
 using ONEVO.Application.Features.WorkManagement.Objectives.RepositoryInterfaces;
-using ONEVO.Application.Features.WorkManagement.Objectives.Services;
 using ONEVO.Application.Features.WorkManagement.Projects.RepositoryInterfaces;
 using ONEVO.Application.Features.WorkManagement.Tasks.Commands.DeleteTaskStatus;
 using ONEVO.Application.Features.WorkManagement.Tasks.RepositoryInterfaces;
@@ -12,6 +12,7 @@ using ONEVO.Domain.Features.WorkManagement.Objectives.Entities;
 using ONEVO.Domain.Features.WorkManagement.Projects.Entities;
 using ONEVO.Domain.Features.WorkManagement.Tasks.Entities;
 using TaskStatusEntity = ONEVO.Domain.Features.WorkManagement.Tasks.Entities.TaskStatus;
+using ONEVO.Application.Features.WorkManagement.Tasks.Services;
 using Xunit;
 
 namespace ONEVO.Tests.Unit.Features.WorkManagement.Tasks;
@@ -27,8 +28,8 @@ public class DeleteTaskStatusCommandHandlerTests
     private static readonly Guid StatusId = Guid.NewGuid();
 
     private (DeleteTaskStatusCommandHandler Handler, Mock<ITaskStatusRepository> Statuses) Build(
-        string statusCategory, bool anyTasksInStatus, Guid? callerEmployeeId = null,
-        bool? callerIsEffectiveManager = null, Guid? statusObjectiveId = null, List<TaskStatusEntity>? siblings = null)
+        string statusCategory, bool anyTasksInStatus, Guid? callerEmployeeId = null, Guid? statusObjectiveId = null,
+        List<TaskStatusEntity>? siblings = null)
     {
         var resolvedCallerEmployeeId = callerEmployeeId ?? OwnerEmployeeId;
 
@@ -63,11 +64,8 @@ public class DeleteTaskStatusCommandHandlerTests
             .Returns((Func<CancellationToken, Task<Result>> op, CancellationToken ct) => op(ct));
         unitOfWork.Setup(x => x.SaveChangesAsync(It.IsAny<CancellationToken>())).ReturnsAsync(1);
 
-        var membership = new Mock<IMilestoneMembershipCoordinator>();
-        membership.Setup(x => x.IsEffectiveManagerAsync(TenantId, ObjectiveId, resolvedCallerEmployeeId, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(callerIsEffectiveManager ?? (resolvedCallerEmployeeId == OwnerEmployeeId));
 
-        var handler = new DeleteTaskStatusCommandHandler(currentUser.Object, identity.Object, objectives.Object, projects.Object, statuses.Object, tasks.Object, unitOfWork.Object, membership.Object);
+        var handler = new DeleteTaskStatusCommandHandler(currentUser.Object, identity.Object, objectives.Object, projects.Object, statuses.Object, tasks.Object, unitOfWork.Object, new Mock<ITaskStatusChangeRequestConflictSweeper>().Object, new Mock<IMeetingRepository>().Object);
         return (handler, statuses);
     }
 

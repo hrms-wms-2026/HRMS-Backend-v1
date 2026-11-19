@@ -37,8 +37,21 @@ public sealed class AttendanceCorrectionNotificationTests
         fixture.Notifications.Should().ContainSingle(x =>
             x.RecipientUserId == fixture.ApproverUserId
             && x.TemplateCode == "attendance_correction_request_created"
-            && x.RelatedEntityType == "attendance_correction"
+            && x.RelatedEntityType == "inbox:attendance:correction"
             && x.RelatedEntityId == result.Value.Id);
+    }
+
+    [Fact]
+    public async Task Request_WhenApprovalRequired_EnqueuesInboxChangedForApproverAndRequesterBeforeTheSave()
+    {
+        var fixture = new Fixture(approvalRequired: true);
+
+        var result = await fixture.Workflow.RequestAsync(fixture.Request(), CancellationToken.None);
+
+        result.IsSuccess.Should().BeTrue();
+        fixture.Order.Should().Equal("inbox", "save");
+        fixture.InboxRecipients.Should().BeEquivalentTo([fixture.ApproverEmployeeId, fixture.EmployeeId]);
+        fixture.InboxItem.Should().Be(new ONEVO.Application.Features.Conversations.Contracts.ItemRef("attendance", "correction", result.Value!.Id));
     }
 
     [Fact]
@@ -134,6 +147,89 @@ public sealed class AttendanceCorrectionNotificationTests
             && x.TemplateCode == "attendance_correction_request_decided"
             && x.RelatedEntityId == pending.Id);
         fixture.UnitOfWork.TransactionCallCount.Should().Be(1);
+    }
+
+    [Theory]
+    [InlineData(AttendanceCorrection.TypeClockOut, true)]
+    [InlineData(AttendanceCorrection.TypeClockIn, false)]
+    public async Task Approve_AClockOutCorrection_ResolvesThatDaysOpenMissingClockOutAlertAsExcused(string type, bool resolves)
+    {
+        var fixture = new Fixture(approvalRequired: true, actingAsApprover: true);
+        var pending = fixture.PendingCorrection();
+        pending.CorrectionType = type;
+        if (type == AttendanceCorrection.TypeClockOut)
+        {
+            pending.RequestedClockInAt = null;
+            pending.RequestedClockOutAt = new DateTimeOffset(2026, 8, 24, 17, 30, 0, TimeSpan.Zero);
+            fixture.Record.ActualStart = new DateTimeOffset(2026, 8, 24, 9, 0, 0, TimeSpan.Zero);
+        }
+        fixture.Corrections.Setup(x => x.GetTrackedByIdAsync(fixture.TenantId, pending.Id, It.IsAny<CancellationToken>())).ReturnsAsync(pending);
+        fixture.Attendance.Setup(x => x.GetTrackedRecordAsync(fixture.TenantId, fixture.EmployeeId, fixture.WorkDate, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(fixture.Record);
+        var alert = new ONEVO.Domain.Features.TimeAttendance.Alerts.AttendanceAlert
+        {
+            Id = Guid.NewGuid(), TenantId = fixture.TenantId, EmployeeId = fixture.EmployeeId, WorkDate = fixture.WorkDate,
+            SignalKey = ONEVO.Domain.Features.TimeAttendance.Alerts.AttendanceAlertSignals.MissingClockOuts
+        };
+        fixture.Alerts.Setup(x => x.FindOpenAsync(fixture.TenantId, fixture.EmployeeId, fixture.WorkDate,
+                ONEVO.Domain.Features.TimeAttendance.Alerts.AttendanceAlertSignals.MissingClockOuts, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(alert);
+
+        var result = await fixture.Workflow.ApproveAsync(new ApproveAttendanceCorrectionCommand(pending.Id, null), CancellationToken.None);
+
+        result.IsSuccess.Should().BeTrue(result.Error);
+        if (resolves)
+        {
+            alert.Status.Should().Be(ONEVO.Domain.Features.TimeAttendance.Alerts.AttendanceAlertStatuses.Resolved);
+            alert.Outcome.Should().Be(ONEVO.Domain.Features.TimeAttendance.Alerts.AttendanceAlertOutcomes.Excused);
+            alert.Note.Should().Be("corrected");
+            alert.ResolvedByEmployeeId.Should().Be(fixture.ApproverEmployeeId);
+            alert.ResolvedAt.Should().NotBeNull();
+        }
+        else
+        {
+            alert.Status.Should().Be(ONEVO.Domain.Features.TimeAttendance.Alerts.AttendanceAlertStatuses.Open);
+            fixture.Alerts.Verify(x => x.FindOpenAsync(It.IsAny<Guid>(), It.IsAny<Guid>(), It.IsAny<DateOnly>(), It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
+        }
+    }
+
+    [Fact]
+    public async Task Approve_WithEditedValues_AppliesTheApproverValuesAndKeepsWhatWasRequested()
+    {
+        var fixture = new Fixture(approvalRequired: true, actingAsApprover: true);
+        var pending = fixture.PendingCorrection();
+        fixture.Corrections.Setup(x => x.GetTrackedByIdAsync(fixture.TenantId, pending.Id, It.IsAny<CancellationToken>())).ReturnsAsync(pending);
+        fixture.Attendance.Setup(x => x.GetTrackedRecordAsync(fixture.TenantId, fixture.EmployeeId, fixture.WorkDate, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(fixture.Record);
+        var edited = new DateTimeOffset(2026, 8, 24, 9, 5, 0, TimeSpan.Zero);
+
+        var result = await fixture.Workflow.ApproveAsync(new ApproveAttendanceCorrectionCommand(pending.Id, null,
+            new AttendanceCorrectionEditedValues(edited, null, null)), CancellationToken.None);
+
+        result.IsSuccess.Should().BeTrue(result.Error);
+        fixture.Record.ActualStart.Should().Be(edited);
+        pending.ApprovedClockInAt.Should().Be(edited);
+        pending.RequestedClockInAt.Should().Be(new DateTimeOffset(2026, 8, 24, 9, 15, 0, TimeSpan.Zero));
+    }
+
+    [Fact]
+    public async Task Approve_WithEditedValuesThatBreakTheRequestRules_Is422AndNothingIsApplied()
+    {
+        var fixture = new Fixture(approvalRequired: true, actingAsApprover: true);
+        var pending = fixture.PendingCorrection();
+        fixture.Corrections.Setup(x => x.GetTrackedByIdAsync(fixture.TenantId, pending.Id, It.IsAny<CancellationToken>())).ReturnsAsync(pending);
+        fixture.Attendance.Setup(x => x.GetTrackedRecordAsync(fixture.TenantId, fixture.EmployeeId, fixture.WorkDate, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(fixture.Record);
+        var originalStart = fixture.Record.ActualStart;
+
+        // A clock-in correction without a clock-in time fails the same rule a new request does.
+        var result = await fixture.Workflow.ApproveAsync(new ApproveAttendanceCorrectionCommand(pending.Id, null,
+            new AttendanceCorrectionEditedValues(null, null, null)), CancellationToken.None);
+
+        result.StatusCode.Should().Be(422);
+        pending.Status.Should().Be(AttendanceCorrection.StatusPending);
+        pending.ApprovedClockInAt.Should().BeNull();
+        fixture.Record.ActualStart.Should().Be(originalStart);
     }
 
     [Fact]
@@ -273,6 +369,11 @@ public sealed class AttendanceCorrectionNotificationTests
         public readonly FakeUnitOfWork UnitOfWork = new();
         public readonly List<NotificationCall> Notifications = [];
         public bool NotificationWasCreatedInsideTransaction { get; private set; }
+        public Mock<ONEVO.Application.Features.Inbox.Services.IInboxChangeNotifier> Inbox { get; } = new();
+        public Mock<ONEVO.Application.Features.TimeAttendance.Alerts.IAttendanceAlertRepository> Alerts { get; } = new();
+        public List<string> Order { get; } = new();
+        public List<Guid> InboxRecipients { get; } = new();
+        public ONEVO.Application.Features.Conversations.Contracts.ItemRef? InboxItem { get; private set; }
         public readonly AttendanceRecord Record;
         public AttendanceCorrection? AddedCorrection { get; private set; }
         public AttendanceCorrectionWorkflow Workflow;
@@ -341,7 +442,10 @@ public sealed class AttendanceCorrectionNotificationTests
             Corrections.Setup(x => x.AddAsync(It.IsAny<AttendanceCorrection>(), It.IsAny<CancellationToken>()))
                 .Callback<AttendanceCorrection, CancellationToken>((correction, _) => AddedCorrection = correction)
                 .Returns(Task.CompletedTask);
-            Corrections.Setup(x => x.SaveChangesAsync(It.IsAny<CancellationToken>())).ReturnsAsync(1);
+            Corrections.Setup(x => x.SaveChangesAsync(It.IsAny<CancellationToken>())).Callback(() => Order.Add("save")).ReturnsAsync(1);
+            Inbox.Setup(x => x.EnqueueAsync(It.IsAny<Guid>(), It.IsAny<IEnumerable<Guid>>(), It.IsAny<ONEVO.Application.Features.Conversations.Contracts.ItemRef>(), It.IsAny<CancellationToken>()))
+                .Callback((Guid _, IEnumerable<Guid> ids, ONEVO.Application.Features.Conversations.Contracts.ItemRef item, CancellationToken _) => { Order.Add("inbox"); InboxRecipients.AddRange(ids); InboxItem = item; })
+                .Returns(Task.CompletedTask);
             Positions.Setup(x => x.GetByIdAsync(TenantId, PositionId, It.IsAny<CancellationToken>()))
                 .ReturnsAsync(new Position { Id = PositionId, TenantId = TenantId, LegalEntityId = LegalEntityId, Name = "HR Manager" });
             Authority.Setup(x => x.ResolveVisibilityAsync(
@@ -368,7 +472,7 @@ public sealed class AttendanceCorrectionNotificationTests
 
             Workflow = new AttendanceCorrectionWorkflow(CurrentUser.Object, Clock.Object, Employees.Object,
                 LegalEntities.Object, Policies.Object, Attendance.Object, Corrections.Object,
-                Authority.Object, Positions.Object, Dispatcher.Object, UnitOfWork);
+                Authority.Object, Positions.Object, Dispatcher.Object, UnitOfWork, inbox: Inbox.Object, alerts: Alerts.Object);
         }
 
         public ClockInPolicy Policy { get; }

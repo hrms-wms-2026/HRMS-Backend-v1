@@ -68,21 +68,34 @@ public class ChecklistTemplatesControllerArchitectureTests
         Assert.Equal("matches", matchesMethod!.GetCustomAttribute<HttpGetAttribute>()!.Template);
     }
 
+    /// <summary>Templates (and their attachments) are readable only by the screens that pick or build
+    /// checklists: Add Employee, offboarding and the template builder - not by every signed-in user.</summary>
     [Fact]
-    public void ReadActions_RequireEmployeesReadPermission()
+    public void ReadActions_RequireAChecklistWorkflowPermission()
     {
-        Assert.Equal("employees:read", GetPermission(TemplatesControllerType.GetMethod(nameof(ChecklistTemplatesController.List))!));
-        Assert.Equal("employees:read", GetPermission(TemplatesControllerType.GetMethod(nameof(ChecklistTemplatesController.GetById))!));
-        Assert.Equal("employees:read", GetPermission(MatchesControllerType.GetMethod(nameof(OnboardingChecklistTemplatesController.Matches))!));
+        var readActions = new[]
+        {
+            TemplatesControllerType.GetMethod(nameof(ChecklistTemplatesController.List))!,
+            TemplatesControllerType.GetMethod(nameof(ChecklistTemplatesController.GetById))!,
+            TemplatesControllerType.GetMethod(nameof(ChecklistTemplatesController.GetFile))!,
+            MatchesControllerType.GetMethod(nameof(OnboardingChecklistTemplatesController.Matches))!,
+        };
+        foreach (var method in readActions)
+        {
+            Assert.Null(method.GetCustomAttribute<AllowAnonymousAttribute>());
+            var permission = method.GetCustomAttribute<RequireAnyPermissionAttribute>();
+            Assert.NotNull(permission);
+            Assert.Equal(new[] { "employees:write", "employees:offboard", "checklists:manage" }, permission!.Permissions);
+        }
     }
 
     [Theory]
     [InlineData(nameof(ChecklistTemplatesController.Create))]
     [InlineData(nameof(ChecklistTemplatesController.Update))]
     [InlineData(nameof(ChecklistTemplatesController.Archive))]
-    public void MutatingActions_RequireEmployeesWritePermission(string methodName)
+    public void MutatingActions_RequireChecklistsManagePermission(string methodName)
     {
-        Assert.Equal("employees:write", GetPermission(TemplatesControllerType.GetMethod(methodName)!));
+        Assert.Equal("checklists:manage", GetPermission(TemplatesControllerType.GetMethod(methodName)!));
     }
 
     [Fact]

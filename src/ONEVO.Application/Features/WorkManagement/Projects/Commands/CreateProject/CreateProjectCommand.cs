@@ -22,5 +22,6 @@ public sealed record CreateProjectCommand(
     Stream? LogoContent,
     string? BannerFileName = null,
     string? BannerContentType = null,
-    Stream? BannerContent = null
+    Stream? BannerContent = null,
+    string? Icon = null
 ) : IRequest<Result<ProjectCreationResponse>>;

@@ -13,6 +13,7 @@ using ONEVO.Application.Features.OrgStructure.RepositoryInterfaces;
 using ONEVO.Domain.Features.CoreHr.Entities;
 using ONEVO.Domain.Features.OrgStructure.Entities;
 using ONEVO.Application.Features.CoreHr.Offboarding.ServiceInterfaces;
+using ONEVO.Application.Features.CoreHr.Employee.ServiceInterfaces;
 using IEmployeeRepository = ONEVO.Application.Features.CoreHr.Employee.RepositoryInterfaces.IEmployeeRepository;
 
 namespace ONEVO.Application.Features.CoreHr.Employee.Commands.ChangeEmployeePosition;
@@ -44,6 +45,7 @@ public class ChangeEmployeePositionCommandHandler : IRequestHandler<ChangeEmploy
     private readonly IUserRepository _userRepository;
     private readonly ITenantRepository _tenantRepository;
     private readonly IEmployeeOffboardingLockGuard _offboardingLockGuard;
+    private readonly IEmployeeManageScopeGuard _manageScopeGuard;
 
     public ChangeEmployeePositionCommandHandler(
         IEmployeeRepository employeeRepository,
@@ -57,7 +59,8 @@ public class ChangeEmployeePositionCommandHandler : IRequestHandler<ChangeEmploy
         IOutboxWriter outboxWriter,
         IUserRepository userRepository,
         ITenantRepository tenantRepository,
-        IEmployeeOffboardingLockGuard offboardingLockGuard)
+        IEmployeeOffboardingLockGuard offboardingLockGuard,
+        IEmployeeManageScopeGuard manageScopeGuard)
     {
         _employeeRepository = employeeRepository;
         _positionRepository = positionRepository;
@@ -71,6 +74,7 @@ public class ChangeEmployeePositionCommandHandler : IRequestHandler<ChangeEmploy
         _userRepository = userRepository;
         _tenantRepository = tenantRepository;
         _offboardingLockGuard = offboardingLockGuard;
+        _manageScopeGuard = manageScopeGuard;
     }
 
     public async Task<Result<ChangeEmployeePositionResponse>> Handle(ChangeEmployeePositionCommand request, CancellationToken ct)
@@ -80,6 +84,10 @@ public class ChangeEmployeePositionCommandHandler : IRequestHandler<ChangeEmploy
         var employee = await _employeeRepository.GetTrackedByIdAsync(tenantId, request.EmployeeId, ct);
         if (employee is null)
             return Result<ChangeEmployeePositionResponse>.NotFound("The employee could not be found.");
+
+        var scopeResult = await _manageScopeGuard.EnsureCanManage(tenantId, employee.Id, ct);
+        if (scopeResult is not null)
+            return Result<ChangeEmployeePositionResponse>.Forbidden(scopeResult.Error!);
 
         var lockResult = await _offboardingLockGuard.EnsureMutable(tenantId, employee.Id, ct);
         if (lockResult is not null)

@@ -91,6 +91,25 @@ public class MonitoringToggleResolverService : IMonitoringToggleResolver
         return resolved;
     }
 
+    public async Task<bool> IsEnabledForEmployeeAsync(
+        Guid tenantId, Guid employeeId, MonitoringCapability capability, CancellationToken ct = default)
+    {
+        // Distinct "employee:" key segment so it never collides with the User.Id-keyed entries above.
+        var cacheKey = $"tenant:{tenantId}:monitoring-toggle:employee:{employeeId}:{capability}";
+        var cached = await _cache.GetAsync<bool?>(cacheKey, ct);
+        if (cached.HasValue)
+            return cached.Value;
+
+        // Looked up by Employee.Id directly (no active-status filter): employee-detail reads also
+        // show history for employees who have since left.
+        var employee = await _db.Employees
+            .AsNoTracking()
+            .FirstOrDefaultAsync(e => e.TenantId == tenantId && e.Id == employeeId, ct);
+        var resolved = employee is not null && await ResolveForEmployeeAsync(tenantId, employee, capability, ct);
+        await _cache.SetAsync(cacheKey, resolved, CacheTtl, ct);
+        return resolved;
+    }
+
     public async Task<int> GetIdleThresholdMinutesAsync(
         Guid tenantId,
         Guid employeeId,
@@ -353,6 +372,15 @@ public class MonitoringToggleResolverService : IMonitoringToggleResolver
         if (employee is null)
             return false;
 
+        return await ResolveForEmployeeAsync(tenantId, employee, capability, ct);
+    }
+
+    private async Task<bool> ResolveForEmployeeAsync(
+        Guid tenantId,
+        Employee employee,
+        MonitoringCapability capability,
+        CancellationToken ct)
+    {
         // 1. Employee-level override
         var employeeOverride = await _db.EmployeeMonitoringOverrides
             .AsNoTracking()
@@ -496,7 +524,18 @@ public class MonitoringToggleResolverService : IMonitoringToggleResolver
 
         var employee = await ResolveEmployeeAsync(tenantId, userId, legalEntityId, ct);
         var resolved = false;
-        if (employee?.WorkModeId is Guid workModeId)
+        var employeeOverride = employee is null
+            ? null
+            : await _db.EmployeeMonitoringOverrides
+                .AsNoTracking()
+                .Where(o => o.TenantId == tenantId && o.EmployeeId == employee.Id)
+                .Select(o => o.PhotoRequired)
+                .FirstOrDefaultAsync(ct);
+        if (employeeOverride is bool overridden)
+        {
+            resolved = overridden;
+        }
+        else if (employee?.WorkModeId is Guid workModeId)
         {
             resolved = await _db.TimeAttendanceWorkModes
                 .AsNoTracking()
@@ -507,6 +546,19 @@ public class MonitoringToggleResolverService : IMonitoringToggleResolver
 
         await _cache.SetAsync(cacheKey, resolved, CacheTtl, ct);
         return resolved;
+    }
+
+    public async Task<bool?> GetPhotoRequiredOverrideAsync(
+        Guid tenantId, Guid userId, Guid legalEntityId, CancellationToken ct = default)
+    {
+        var employee = await ResolveEmployeeAsync(tenantId, userId, legalEntityId, ct);
+        if (employee is null)
+            return null;
+        return await _db.EmployeeMonitoringOverrides
+            .AsNoTracking()
+            .Where(o => o.TenantId == tenantId && o.EmployeeId == employee.Id)
+            .Select(o => o.PhotoRequired)
+            .FirstOrDefaultAsync(ct);
     }
 
     private static bool GetCapability(MonitoringFeatureToggles t, MonitoringCapability c) => c switch

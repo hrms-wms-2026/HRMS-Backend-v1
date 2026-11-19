@@ -16,10 +16,10 @@ using ONEVO.Infrastructure.Persistence.Repositories.CoreHr;
 using ONEVO.Tests.Integration.E2E;
 using ONEVO.Tests.Integration.Support;
 using ONEVO.Tests.Integration.Tenancy;
-using Npgsql;
 using Xunit;
 using WorkAreaSources = ONEVO.Application.Features.TimeAttendance.Services.ExpectedWorkAreaResolver;
 using TodaySnapshotSource = ONEVO.Application.Features.TimeAttendance.Services.AttendanceTodayStateService;
+using ONEVO.Infrastructure.Persistence.Interceptors;
 
 namespace ONEVO.Tests.Integration.Features.TimeAttendance;
 
@@ -108,11 +108,11 @@ public sealed class WorkAreaChangeRequestRuntimeHttpIntegrationTestsFixture : IA
 
     public async Task InitializeAsync()
     {
-        _connectionString = Environment.GetEnvironmentVariable("ONEVO_TEST_DB") ?? string.Empty;
+        _connectionString = Environment.GetEnvironmentVariable("CROWNUS_TEST_DB") ?? string.Empty;
         if (string.IsNullOrWhiteSpace(_connectionString))
         {
-            // Cloned from the shared, already-migrated template - see SharedPostgresTemplate.
-            _connectionString = await SharedPostgresTemplate.CreateDatabaseAsync();
+            // Cloned from the shared, already-migrated template - see SharedSqlServerTemplate.
+            _connectionString = await SharedSqlServerTemplate.CreateDatabaseAsync();
         }
         else
         {
@@ -131,11 +131,11 @@ public sealed class WorkAreaChangeRequestRuntimeHttpIntegrationTestsFixture : IA
 
         await WaitForSeedersAsync();
 
-        var loginResponse = await SendAsync(HttpMethod.Post, AdminHost, "/admin/v1/auth/login",
-            new { email = "test_admin@onevo.dev", password = "test_password_123" });
-        var adminCookies = ParseSetCookies(loginResponse);
-        _adminCsrfToken = adminCookies["admin_csrf"];
-        _adminCookie = $"admin_session={adminCookies["admin_session"]}";
+        // F-02: sign-in completes mandatory MFA enrollment; no gate bypass.
+        var adminSession = await PlatformAdminTestSignIn.SignInAsync(
+            _client, "test_admin@onevo.dev", "test_password_123", AdminHost);
+        _adminCsrfToken = adminSession.CsrfToken;
+        _adminCookie = adminSession.SessionCookie;
 
         var ownerA = await ProvisionAndLoginOwnerAsync("wa-run-a", "Work Area Runtime A Co", "owner-a@wa-run.test");
         var ownerB = await ProvisionAndLoginOwnerAsync("wa-run-b", "Work Area Runtime B Co", "owner-b@wa-run.test");
@@ -415,8 +415,8 @@ public sealed class WorkAreaChangeRequestRuntimeHttpIntegrationTestsFixture : IA
         exchangeResponse.StatusCode.Should().Be(HttpStatusCode.OK, exchangeJson.ToString());
         var cookies = ParseSetCookies(exchangeResponse);
 
-        var sessionCookie = $"onevo_session={cookies["onevo_session"]}; onevo_csrf={cookies["onevo_csrf"]}";
-        var csrfHeader = Uri.UnescapeDataString(cookies["onevo_csrf"]);
+        var sessionCookie = $"crownus_session={cookies["crownus_session"]}; crownus_csrf={cookies["crownus_csrf"]}";
+        var csrfHeader = Uri.UnescapeDataString(cookies["crownus_csrf"]);
         return new TenantSession(host, sessionCookie, csrfHeader);
     }
 
@@ -755,6 +755,14 @@ public sealed class WorkAreaChangeRequestRuntimeHttpIntegrationTests : IClassFix
 
         // Step 10: database invariants.
         await using var db = _fixture.OpenScopedDb();
+        // A strict tenant table: visible only inside its own tenant, never to a system session.
+        await db.Database.OpenConnectionAsync();
+        await using (var tenantMode = TenantRlsInterceptor.SetTenantCommand(
+            db.Database.GetDbConnection(), _fixture.TenantAId.ToString(), "tenant"))
+        {
+            await tenantMode.ExecuteNonQueryAsync();
+        }
+
         (await db.WorkAreaChangeRequests.AsNoTracking()
             .CountAsync(x => x.TenantId == _fixture.TenantAId && x.EmployeeId == _fixture.RequesterAEmployeeId
                 && x.Date == _fixture.WorkDate && x.Status == WorkAreaChangeRequest.StatusApproved))

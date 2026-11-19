@@ -1,6 +1,7 @@
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 using ONEVO.Application.Common.Models;
+using ONEVO.Application.Features.Storage.File.ServiceInterfaces;
 using ONEVO.Application.Features.Storage.Quota.Helpers;
 using ONEVO.Domain.Features.Storage.File.Entities;
 using ONEVO.Infrastructure.Configuration;
@@ -17,7 +18,8 @@ public class FileStorageServiceTests
         FakeFileRecordRepository fileRecords,
         FakeStorageQuotaService quota,
         FakeObjectStorageAdapter objectStorage,
-        FakeUnitOfWork unitOfWork)
+        FakeUnitOfWork unitOfWork,
+        IAvatarImageProcessor? avatarImageProcessor = null)
     {
         return new FileStorageService(
             reservations,
@@ -25,6 +27,7 @@ public class FileStorageServiceTests
             quota,
             objectStorage,
             new UploadPurposePolicy(),
+            avatarImageProcessor ?? new FakeAvatarImageProcessor(),
             unitOfWork,
             new FakeDateTimeProvider(),
             Options.Create(new FileStorageOptions()),
@@ -242,7 +245,9 @@ public class FileStorageServiceTests
         var objectStorage = new FakeObjectStorageAdapter { ShouldFailPut = true };
         var service = CreateService(reservations, fileRecords, quota, objectStorage, new FakeUnitOfWork());
 
-        var bytes = System.Text.Encoding.UTF8.GetBytes("fake image bytes");
+        // Real PNG magic bytes - SEC-13's signature check (UploadPurposePolicy.ValidateSignature)
+        // runs before the R2 put this test exercises, so the content must look like a real PNG.
+        var bytes = new byte[] { 0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A, 0, 0, 0, 0 };
         using var content = new MemoryStream(bytes);
 
         var result = await service.UploadAsync(
@@ -265,7 +270,10 @@ public class FileStorageServiceTests
         var objectStorage = new FakeObjectStorageAdapter();
         var service = CreateService(
             reservations, new FakeFileRecordRepository(), quota, objectStorage, new FakeUnitOfWork());
-        using var content = new MemoryStream(System.Text.Encoding.UTF8.GetBytes("fake image bytes"));
+        // FakeAvatarImageProcessor echoes the input bytes back unchanged under a renamed .webp
+        // extension - SEC-13's signature check then runs against that .webp name, so the input
+        // needs real WEBP magic bytes for this fake passthrough to look valid.
+        using var content = new MemoryStream(new byte[] { 0x52, 0x49, 0x46, 0x46, 0, 0, 0, 0, 0x57, 0x45, 0x42, 0x50 });
 
         var result = await service.UploadAsync(
             tenantId, Guid.NewGuid(), "photo.png", "image/png", "employee_avatar", content, CancellationToken.None);
@@ -274,6 +282,69 @@ public class FileStorageServiceTests
         Assert.Single(objectStorage.DeletedObjectKeys);
         Assert.Equal(1, quota.ReleaseCallCount);
         Assert.Equal(0, reservations.AtomicCompletionCount);
+    }
+
+    [Fact]
+    public async Task UploadAsync_EmployeeAvatar_StoresNormalizedWebpWithoutChangingOriginalName()
+    {
+        var tenantId = Guid.NewGuid();
+        var avatarProcessor = new FakeAvatarImageProcessor();
+        var objectStorage = new FakeObjectStorageAdapter();
+        var service = CreateService(
+            new FakeFileUploadReservationRepository(),
+            new FakeFileRecordRepository(),
+            new FakeStorageQuotaService(),
+            objectStorage,
+            new FakeUnitOfWork(),
+            avatarProcessor);
+        // Same passthrough-fake reasoning as UploadAsync_MetadataCompletionFailure above: the
+        // content must look like a valid WEBP since that's the extension it's checked against.
+        using var content = new MemoryStream(new byte[] { 0x52, 0x49, 0x46, 0x46, 0, 0, 0, 0, 0x57, 0x45, 0x42, 0x50 });
+
+        var result = await service.UploadAsync(
+            tenantId,
+            Guid.NewGuid(),
+            "employee-photo.png",
+            "image/png",
+            "employee_avatar",
+            content,
+            CancellationToken.None);
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal(1, avatarProcessor.CallCount);
+        Assert.Equal("employee-photo.png", result.Value!.OriginalFileName);
+        Assert.Equal("employee-photo.webp", result.Value.SafeFileName);
+        Assert.Equal("image/webp", result.Value.ContentType);
+        Assert.Equal("image/webp", objectStorage.LastPutContentType);
+        Assert.EndsWith("/employee-photo.webp", Assert.Single(objectStorage.PutObjectKeys));
+    }
+
+    [Fact]
+    public async Task UploadAsync_NonAvatar_DoesNotInvokeAvatarProcessor()
+    {
+        var avatarProcessor = new FakeAvatarImageProcessor();
+        var service = CreateService(
+            new FakeFileUploadReservationRepository(),
+            new FakeFileRecordRepository(),
+            new FakeStorageQuotaService(),
+            new FakeObjectStorageAdapter(),
+            new FakeUnitOfWork(),
+            avatarProcessor);
+        // Real PDF magic bytes - SEC-13's signature check runs against the "document.pdf" name.
+        using var content = new MemoryStream(new byte[] { 0x25, 0x50, 0x44, 0x46, 0, 0, 0, 0 });
+
+        var result = await service.UploadAsync(
+            Guid.NewGuid(),
+            Guid.NewGuid(),
+            "document.pdf",
+            "application/pdf",
+            "generic_document",
+            content,
+            CancellationToken.None);
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal(0, avatarProcessor.CallCount);
+        Assert.Equal("application/pdf", result.Value!.ContentType);
     }
 
     [Fact]
@@ -334,6 +405,72 @@ public class FileStorageServiceTests
         Assert.True(result.IsSuccess);
         Assert.Equal("image/png", result.Value!.ContentType);
         Assert.NotNull(result.Value!.Content);
+    }
+
+    [Fact]
+    public async Task OpenReadAsync_QuarantinedFile_ReturnsNotFound()
+    {
+        // SEC-13 (2026-10-12): future-proofing - nothing in production code sets Quarantined
+        // today (no scanner exists), so this seeds it directly to prove the read-side gate is
+        // wired and ready for when a real scanner starts setting it.
+        var tenantId = Guid.NewGuid();
+        var fileRecords = new FakeFileRecordRepository();
+        var record = new FileRecord
+        {
+            Id = Guid.NewGuid(),
+            TenantId = tenantId,
+            StorageKey = "tenants/logo/photo.png",
+            OriginalFileName = "photo.png",
+            SafeFileName = "photo.png",
+            ContentType = "image/png",
+            FileSizeBytes = 1024,
+            ChecksumSha256 = new string('a', 64),
+            UploadedByUserId = Guid.NewGuid(),
+            Status = FileRecordStatus.Quarantined,
+            CreatedAt = DateTimeOffset.UtcNow
+        };
+        await fileRecords.AddAsync(record, CancellationToken.None);
+        var service = CreateService(
+            new FakeFileUploadReservationRepository(), fileRecords, new FakeStorageQuotaService(),
+            new FakeObjectStorageAdapter(), new FakeUnitOfWork());
+
+        var result = await service.OpenReadAsync(tenantId, record.Id, CancellationToken.None);
+
+        Assert.False(result.IsSuccess);
+        Assert.Equal(404, result.StatusCode);
+    }
+
+    [Fact]
+    public async Task OpenReadAsync_PendingScanFile_StillServed_DocumentingTodaysKnownGap()
+    {
+        // Pins today's known, accepted-as-not-a-launch-blocker gap (SEC-13): a file stuck at
+        // PendingScan forever (no scanner flips it) is served exactly like Available. A future
+        // change to this must be a deliberate, reviewed diff - not an accidental regression
+        // discovered later via this test silently starting to fail for the wrong reason.
+        var tenantId = Guid.NewGuid();
+        var fileRecords = new FakeFileRecordRepository();
+        var record = new FileRecord
+        {
+            Id = Guid.NewGuid(),
+            TenantId = tenantId,
+            StorageKey = "tenants/logo/photo.png",
+            OriginalFileName = "photo.png",
+            SafeFileName = "photo.png",
+            ContentType = "image/png",
+            FileSizeBytes = 1024,
+            ChecksumSha256 = new string('a', 64),
+            UploadedByUserId = Guid.NewGuid(),
+            Status = FileRecordStatus.PendingScan,
+            CreatedAt = DateTimeOffset.UtcNow
+        };
+        await fileRecords.AddAsync(record, CancellationToken.None);
+        var service = CreateService(
+            new FakeFileUploadReservationRepository(), fileRecords, new FakeStorageQuotaService(),
+            new FakeObjectStorageAdapter(), new FakeUnitOfWork());
+
+        var result = await service.OpenReadAsync(tenantId, record.Id, CancellationToken.None);
+
+        Assert.True(result.IsSuccess);
     }
 
     [Fact]

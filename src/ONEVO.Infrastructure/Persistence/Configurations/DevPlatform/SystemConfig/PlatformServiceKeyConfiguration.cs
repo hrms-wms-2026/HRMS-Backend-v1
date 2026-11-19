@@ -38,7 +38,6 @@ public class PlatformServiceKeyConfiguration : IEntityTypeConfiguration<Platform
 
         // Encrypted text column - never returned by API
         builder.Property(k => k.ApiKeyEncrypted)
-            .HasColumnType("text")
             .IsRequired();
 
         builder.Property(k => k.IsActive)

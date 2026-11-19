@@ -104,10 +104,10 @@ public sealed class DevSmokeTestTenantSeeder : IHostedService
     private static readonly DateOnly SmokeEmployeeHireDate = new(2025, 1, 1);
 
     // Local/dev-only seat policy for the smoke tenants. Not a production default: billing has
-    // not defined a real seat policy for these test tenants, so this is just enough headroom
-    // (Acme seeds 3 employees, Dapi seeds 1) for local onboarding finalization to proceed
-    // without SeatEntitlementService returning Undetermined.
+    // not defined a real seat policy for these test tenants. Dapi carries a larger tenant-specific
+    // minimum because its history/demo seeder operates across the tenant's full employee roster.
     private const int DevSmokeIncludedSeats = 25;
+    private const int DapiIncludedSeats = 50;
     private const bool DevSmokeOverageAllowed = false;
 
     private const string GitHubProvider = "github";
@@ -117,13 +117,13 @@ public sealed class DevSmokeTestTenantSeeder : IHostedService
 
     private static readonly IReadOnlyList<string> HrManagerPermissionCodes =
     [
-        "org:read", "org:manage", "employees:read", "employees:write", "roles:read",
+        "org:read", "org:manage", "employees:write", "checklists:manage", "roles:read",
         "calendar:read", "leave:read", "leave:manage", "leave:approve"
     ];
 
     private static readonly IReadOnlyList<string> WorkManagerPermissionCodes =
     [
-        "org:read", "employees:read", "projects:read", "tasks:read", "tasks:write"
+        "org:read", "projects:create"
     ];
 
     private readonly IServiceProvider _services;
@@ -150,32 +150,62 @@ public sealed class DevSmokeTestTenantSeeder : IHostedService
             return;
         }
 
-        try
+        // In tests a missing tenant must fail loudly at startup, not as an unrelated test failure
+        // later. A timeout (a stalled Docker host) gets one more attempt first.
+        var isTest = _environment.IsEnvironment("Test");
+        for (var attempt = 1; ; attempt++)
         {
-            await using var scope = _services.CreateAsyncScope();
-            var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
-            var tenantContext = scope.ServiceProvider.GetRequiredService<IWritableTenantContext>();
-            var passwordHasher = scope.ServiceProvider.GetRequiredService<IPasswordHasher>();
-            var encryption = scope.ServiceProvider.GetRequiredService<IEncryptionService>();
-            var workModeSeeder = scope.ServiceProvider.GetRequiredService<IWorkModeSeeder>();
+            try
+            {
+                await SeedOnceAsync(cancellationToken);
+                return;
+            }
+            catch (Exception ex) when (isTest && attempt == 1 && IsTimeout(ex))
+            {
+                _logger.LogWarning(ex, "Smoke-test tenant seeding timed out. Retrying once.");
+            }
+            catch (Exception ex) when (!isTest)
+            {
+                _logger.LogError(ex, "Development smoke-test tenant seeder failed. Continuing startup.");
+                return;
+            }
+        }
+    }
 
-            tenantContext.SetAdminMode();
-            await SeedAsync(
-                db,
-                tenantContext,
-                passwordHasher,
-                encryption,
-                _configuration,
-                workModeSeeder,
-                cancellationToken);
-            _logger.LogInformation(
-                "Development smoke-test tenants seeded: {Slugs}",
-                string.Join(", ", new[] { AcmeSlug, DapiSlug }));
-        }
-        catch (Exception ex)
+    private static bool IsTimeout(Exception ex)
+    {
+        for (var current = ex; current is not null; current = current.InnerException)
         {
-            _logger.LogError(ex, "Development smoke-test tenant seeder failed. Continuing startup.");
+            if (current is TimeoutException or Microsoft.Data.SqlClient.SqlException { Number: -2 })
+            {
+                return true;
+            }
         }
+
+        return false;
+    }
+
+    private async Task SeedOnceAsync(CancellationToken cancellationToken)
+    {
+        await using var scope = _services.CreateAsyncScope();
+        var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+        var tenantContext = scope.ServiceProvider.GetRequiredService<IWritableTenantContext>();
+        var passwordHasher = scope.ServiceProvider.GetRequiredService<IPasswordHasher>();
+        var encryption = scope.ServiceProvider.GetRequiredService<IEncryptionService>();
+        var workModeSeeder = scope.ServiceProvider.GetRequiredService<IWorkModeSeeder>();
+
+        tenantContext.SetAdminMode();
+        await SeedAsync(
+            db,
+            tenantContext,
+            passwordHasher,
+            encryption,
+            _configuration,
+            workModeSeeder,
+            cancellationToken);
+        _logger.LogInformation(
+            "Development smoke-test tenants seeded: {Slugs}",
+            string.Join(", ", new[] { AcmeSlug, DapiSlug }));
     }
 
     public Task StopAsync(CancellationToken cancellationToken) => Task.CompletedTask;
@@ -470,8 +500,10 @@ public sealed class DevSmokeTestTenantSeeder : IHostedService
             await db.Database.ExecuteSqlInterpolatedAsync(
                 $"""
                 INSERT INTO global_email_directory (email, tenant_id)
-                VALUES ({email}, {tenantId})
-                ON CONFLICT (email, tenant_id) DO NOTHING
+                SELECT {email}, {tenantId}
+                WHERE NOT EXISTS (
+                    SELECT 1 FROM global_email_directory
+                    WHERE email = {email} AND tenant_id = {tenantId})
                 """,
                 ct);
         }
@@ -763,6 +795,10 @@ public sealed class DevSmokeTestTenantSeeder : IHostedService
         DateTimeOffset now,
         CancellationToken ct)
     {
+        var includedSeats = tenantId == DapiTenantId
+            ? DapiIncludedSeats
+            : DevSmokeIncludedSeats;
+
         var plan = await db.SubscriptionPlans
             .FirstOrDefaultAsync(p => p.Code == "starter_51_200", ct);
         if (plan is null)
@@ -789,7 +825,7 @@ public sealed class DevSmokeTestTenantSeeder : IHostedService
                 CalculatedMonthlyPrice = 0m,
                 CalculatedAnnualPrice = 0m,
                 BillingCurrency = "USD",
-                IncludedSeats = DevSmokeIncludedSeats,
+                IncludedSeats = includedSeats,
                 OverageAllowed = DevSmokeOverageAllowed,
                 CreatedById = userId,
                 CreatedAt = now
@@ -804,10 +840,11 @@ public sealed class DevSmokeTestTenantSeeder : IHostedService
         // (e.g. from before the plan's module list was corrected) self-heals on the next
         // backend startup instead of being permanently stuck.
         subscription.SelectedModulesJson = plan.IncludedModulesJson ?? "[]";
-        // Only fill in a missing seat policy - never overwrite an explicit value someone (or a
-        // future seeder revision) already set, per the seeder's general "don't clobber owned
-        // records" pattern.
-        subscription.IncludedSeats ??= DevSmokeIncludedSeats;
+        // Preserve explicit higher limits. Dapi's development subscription is raised to the
+        // current demo minimum so an older 25-seat seeded row self-heals on startup.
+        if (subscription.IncludedSeats is null
+            || (tenantId == DapiTenantId && subscription.IncludedSeats < DapiIncludedSeats))
+            subscription.IncludedSeats = includedSeats;
         subscription.OverageAllowed ??= DevSmokeOverageAllowed;
         subscription.UpdatedAt = now;
     }
@@ -843,7 +880,7 @@ public sealed class DevSmokeTestTenantSeeder : IHostedService
             {
                 Id = Guid.NewGuid(),
                 Provider = GitHubProvider,
-                AppName = "ONEVO GitHub Development",
+                AppName = "CROWNUS GitHub Development",
                 ClientId = clientId!.Trim(),
                 AuthorizationUrl = GitHubAuthorizationUrl,
                 TokenUrl = GitHubTokenUrl,
@@ -861,7 +898,7 @@ public sealed class DevSmokeTestTenantSeeder : IHostedService
             app.ClientId = clientId.Trim();
         }
 
-        app.AppName = "ONEVO GitHub Development";
+        app.AppName = "CROWNUS GitHub Development";
         app.AuthorizationUrl = GitHubAuthorizationUrl;
         app.TokenUrl = GitHubTokenUrl;
         app.DefaultScopes = ["read:user"];
@@ -923,7 +960,7 @@ public sealed class DevSmokeTestTenantSeeder : IHostedService
                 DisplayName = "GitHub",
                 Description = "Connect GitHub accounts for work management activity.",
                 ConnectionScope = "both",
-                OnevoAppProvider = GitHubProvider,
+                CrownusAppProvider = GitHubProvider,
                 IsActive = true,
                 CreatedById = platformUserId,
                 CreatedAt = now
@@ -934,7 +971,7 @@ public sealed class DevSmokeTestTenantSeeder : IHostedService
         entry.DisplayName = "GitHub";
         entry.Description = "Connect GitHub accounts for work management activity.";
         entry.ConnectionScope = "both";
-        entry.OnevoAppProvider = GitHubProvider;
+        entry.CrownusAppProvider = GitHubProvider;
         entry.IsActive = true;
     }
 
@@ -1010,7 +1047,7 @@ public sealed class DevSmokeTestTenantSeeder : IHostedService
                 Id = Guid.NewGuid(),
                 DocumentType = "terms",
                 Version = "1.0",
-                Title = "ONEVO Terms & Conditions (Bootstrap Dev)",
+                Title = "Crownus Terms & Conditions (Bootstrap Dev)",
                 IsRequired = true,
                 BlockScope = "dashboard",
                 Status = "published",
@@ -1034,7 +1071,7 @@ public sealed class DevSmokeTestTenantSeeder : IHostedService
                 Id = Guid.NewGuid(),
                 DocumentType = "privacy_notice",
                 Version = "1.0",
-                Title = "ONEVO Privacy Notice (Bootstrap Dev)",
+                Title = "Crownus Privacy Notice (Bootstrap Dev)",
                 IsRequired = true,
                 BlockScope = "dashboard",
                 Status = "published",

@@ -13,6 +13,9 @@ public class RequirePermissionAttribute : Attribute, IAuthorizationFilter
     public RequirePermissionAttribute(string permission)
         => _permission = permission;
 
+    /// <summary>The required permission (read by dashboard widget providers).</summary>
+    public string Permission => _permission;
+
     public void OnAuthorization(AuthorizationFilterContext context)
     {
         var currentUser = context.HttpContext.RequestServices.GetService<ICurrentUser>();
@@ -27,7 +30,7 @@ public class RequirePermissionAttribute : Attribute, IAuthorizationFilter
         {
             context.Result = new ObjectResult(new
             {
-                type = "https://onevo.com/errors/forbidden",
+                type = ONEVO.Api.Errors.ProblemTypes.For("forbidden"),
                 title = "Forbidden",
                 status = 403,
                 detail = $"Permission '{_permission}' required."

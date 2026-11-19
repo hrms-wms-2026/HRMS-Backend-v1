@@ -1,17 +1,25 @@
 using MediatR;
 using Microsoft.AspNetCore.Authorization;
-using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using ONEVO.Api.Contracts.CoreHr.Employees;
 using ONEVO.Api.Contracts.Storage;
 using ONEVO.Api.Filters;
 using ONEVO.Application.Features.CoreHr.Employee.Commands.AddDependent;
+using ONEVO.Application.Features.CoreHr.Employee.Commands.AddMyDocument;
+using ONEVO.Application.Features.CoreHr.Employee.Commands.DeleteMyDocument;
+using ONEVO.Application.Features.CoreHr.Employee.Queries.ListMyDocuments;
+using ONEVO.Application.Features.CoreHr.Employee.Queries.ListEmployeeDocuments;
+using ONEVO.Application.Features.CoreHr.Employee.Commands.BulkChangeEmployeePosition;
+using ONEVO.Application.Features.CoreHr.Employee.Commands.BulkChangeEmploymentType;
+using ONEVO.Application.Features.CoreHr.Offboarding.Commands.BulkStartOffboarding;
 using ONEVO.Application.Features.CoreHr.Employee.Commands.ChangeEmployeePosition;
 using ONEVO.Application.Features.CoreHr.Employee.Commands.AddEmergencyContact;
 using ONEVO.Application.Features.CoreHr.Employee.Commands.DeleteDependent;
 using ONEVO.Application.Features.CoreHr.Employee.Commands.DeleteEmergencyContact;
 using ONEVO.Application.Features.CoreHr.Employee.Commands.LinkMyAvatar;
+using ONEVO.Application.Features.CoreHr.Employee.Commands.RemoveMyAvatar;
 using ONEVO.Application.Features.CoreHr.Employee.Commands.ResendEmployeeInvitation;
+using ONEVO.Application.Features.CoreHr.Employee.Commands.RevealEmployeeBankDetails;
 using ONEVO.Application.Features.CoreHr.Employee.Commands.RevokeEmployeeInvitation;
 using ONEVO.Application.Features.CoreHr.Employee.Commands.UpdateBankDetails;
 using ONEVO.Application.Features.CoreHr.Employee.Commands.UpdateDependent;
@@ -19,11 +27,34 @@ using ONEVO.Application.Features.CoreHr.Employee.Commands.UpdateEmergencyContact
 using ONEVO.Application.Features.CoreHr.Employee.Commands.UpdateEmployeeJobDetails;
 using ONEVO.Application.Features.CoreHr.Employee.Commands.UpdatePersonalInformation;
 using ONEVO.Application.Features.CoreHr.Employee.Queries.GetEmployee;
+using ONEVO.Application.Features.CoreHr.Employee.Queries.GetEmployeeApprovalActivity;
+using ONEVO.Application.Features.CoreHr.Employee.Queries.GetEmployeeChecklistOverview;
 using ONEVO.Application.Features.CoreHr.Employee.Queries.GetEmployeeDetail;
+using ONEVO.Application.Features.CoreHr.Employee.Queries.GetEmployeeHistory;
+using ONEVO.Application.Features.CoreHr.Employee.Queries.GetEmployeeIdentity;
+using ONEVO.Application.Features.CoreHr.Employee.Queries.GetEmployeeOverviewSignals;
+using ONEVO.Application.Features.CoreHr.Employee.Queries.GetEmployeeSignalItems;
 using ONEVO.Application.Features.CoreHr.Employee.Queries.GetEmployeePositionHistory;
+using ONEVO.Application.Features.CoreHr.Employee.Queries.GetEmployeeRecentActivity;
+using ONEVO.Application.Features.CoreHr.Employee.Queries.GetEmployeeUpcoming;
 using ONEVO.Application.Features.CoreHr.Employee.Queries.GetMyPayroll;
 using ONEVO.Application.Features.CoreHr.Employee.Queries.GetMyProfile;
 using ONEVO.Application.Features.CoreHr.Employee.Queries.ListEmployees;
+using ONEVO.Application.Features.Leave.Balance.Queries.GetEmployeeTimeOff;
+using ONEVO.Application.Features.Monitoring.ActivityMonitoring.Queries.EmployeeOverview.GetEmployeeActivityOverview;
+using ONEVO.Application.Features.TimeAttendance.Queries.EmployeeOverview.GetEmployeeAttendanceDiscipline;
+using ONEVO.Application.Features.TimeAttendance.Queries.EmployeeOverview.GetEmployeeAttendanceOverview;
+using ONEVO.Application.Features.TimeAttendance.Queries.EmployeeOverview.GetEmployeeAttendanceDays;
+using ONEVO.Application.Features.WorkManagement.EmployeeOverview.Queries.GetEmployeeDelivery;
+using ONEVO.Application.Features.WorkManagement.EmployeeOverview.Queries.GetEmployeeWorkOverview;
+using ONEVO.Application.Features.WorkManagement.EmployeeOverview.Queries.GetEmployeeWorkTasks;
+using ONEVO.Application.Features.Monitoring.ActivityMonitoring.Queries.EmployeeWorkActivity.GetEmployeeActivityByHour;
+using ONEVO.Application.Features.Monitoring.ActivityMonitoring.Queries.EmployeeWorkActivity.GetEmployeeAppUsage;
+using ONEVO.Application.Features.Monitoring.ActivityMonitoring.Queries.EmployeeWorkActivity.GetEmployeeWorkPattern;
+using ONEVO.Application.Features.WorkManagement.EmployeeOverview.Queries.WorkActivity.GetEmployeeDeliveryTrend;
+using ONEVO.Application.Features.WorkManagement.EmployeeOverview.Queries.WorkActivity.GetEmployeeNeedsAttention;
+using ONEVO.Application.Features.WorkManagement.EmployeeOverview.Queries.WorkActivity.GetEmployeeRecentTasks;
+using ONEVO.Application.Features.WorkManagement.EmployeeWorkGraph.Queries.GetEmployeeWorkGraph;
 
 namespace ONEVO.Api.Controllers.Tenant.CoreHr;
 
@@ -43,17 +74,34 @@ public class EmployeesController : ControllerBase
     /// by the caller's management-coverage-derived visibility scope unless they hold
     /// org:manage.</summary>
     [HttpGet]
-    [RequirePermission("employees:read")]
     public async Task<IActionResult> List(
         [FromQuery] string? search = null,
         [FromQuery] Guid? departmentId = null,
         [FromQuery] Guid? legalEntityId = null,
         [FromQuery] int page = 1,
         [FromQuery] int pageSize = 25,
+        [FromQuery] Guid? positionId = null,
+        [FromQuery(Name = "employmentType")] string[]? employmentTypes = null,
+        [FromQuery] Guid? managerId = null,
+        [FromQuery] string? sortBy = null,
+        [FromQuery] string? sortDir = null,
+        [FromQuery] bool activeOnly = false,
         CancellationToken ct = default)
     {
-        var result = await _mediator.Send(
-            new ListEmployeesQuery(search, departmentId, legalEntityId, page, pageSize), ct);
+         var result = await _mediator.Send(
+            new ListEmployeesQuery(
+                search,
+                departmentId,
+                legalEntityId,
+                page,
+                pageSize,
+                positionId,
+                employmentTypes,
+                managerId,
+                sortBy,
+                string.Equals(sortDir, "desc", StringComparison.OrdinalIgnoreCase),
+                activeOnly), ct);
+
 
         return result.IsSuccess
             ? Ok(result.Value)
@@ -63,7 +111,6 @@ public class EmployeesController : ControllerBase
     /// <summary>Get a single employee by ID. Returns 404 if the employee does not exist in the
     /// caller's tenant, 403 if it exists but is outside the caller's visibility scope.</summary>
     [HttpGet("{id:guid}")]
-    [RequirePermission("employees:read")]
     public async Task<IActionResult> GetById(Guid id, CancellationToken ct = default)
     {
         var result = await _mediator.Send(new GetEmployeeQuery(id), ct);
@@ -73,10 +120,23 @@ public class EmployeesController : ControllerBase
             : Problem(result.Error, statusCode: result.StatusCode ?? 400);
     }
 
+    /// <summary>Name and avatar only - universal display identity for any employee in this
+    /// tenant, deliberately gated on nothing beyond authentication (no employees:read, no
+    /// visibility-scope check). For showing "who owns/is assigned to this" elsewhere in the
+    /// app; the full HR record stays behind GetById/GetDetail above.</summary>
+    [HttpGet("{id:guid}/identity")]
+    public async Task<IActionResult> GetIdentity(Guid id, CancellationToken ct = default)
+    {
+        var result = await _mediator.Send(new GetEmployeeIdentityQuery(id), ct);
+
+        return result.IsSuccess
+            ? Ok(result.Value)
+            : Problem(result.Error, statusCode: result.StatusCode ?? 400);
+    }
+
     /// <summary>Full section-by-section detail read for one employee. Payroll is included only
     /// when the caller holds employees:read:sensitive - omitted (not a 403) otherwise.</summary>
     [HttpGet("{id:guid}/detail")]
-    [RequirePermission("employees:read")]
     public async Task<IActionResult> GetDetail(Guid id, CancellationToken ct = default)
     {
         var result = await _mediator.Send(new GetEmployeeDetailQuery(id), ct);
@@ -86,14 +146,276 @@ public class EmployeesController : ControllerBase
             : Problem(result.Error, statusCode: result.StatusCode ?? 400);
     }
 
+    /// <summary>Reveal an employee's complete primary bank details. The normal detail response
+    /// remains masked; every successful reveal is recorded in the append-only audit log.</summary>
+    [HttpPost("{id:guid}/bank-details/reveal")]
+    [RequirePermission("employees:read:sensitive")]
+    [ProducesResponseType(StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<IActionResult> RevealBankDetails(Guid id, CancellationToken ct = default)
+    {
+        Response.Headers.CacheControl = "no-store";
+        Response.Headers.Pragma = "no-cache";
+
+        var result = await _mediator.Send(new RevealEmployeeBankDetailsCommand(id), ct);
+        return result.IsSuccess
+            ? Ok(result.Value)
+            : Problem(result.Error, statusCode: result.StatusCode ?? 400);
+    }
+
     /// <summary>Job Journey: primary-employment position history for one employee, oldest first.
     /// Planned assignments are excluded. ApprovedByName is set only when an approved access-grant
     /// request exists for that assignment.</summary>
     [HttpGet("{id:guid}/position-history")]
-    [RequirePermission("employees:read")]
     public async Task<IActionResult> GetPositionHistory(Guid id, CancellationToken ct = default)
     {
         var result = await _mediator.Send(new GetEmployeePositionHistoryQuery(id), ct);
+        return result.IsSuccess ? Ok(result.Value) : Problem(result.Error, statusCode: result.StatusCode ?? 400);
+    }
+
+    /// <summary>Work Network graph: the employee's projects, modules (objectives) and open tasks
+    /// as nodes/links. Coverage-scoped like the detail read; see GetEmployeeWorkGraphQueryHandler.</summary>
+    [HttpGet("{id:guid}/work-graph")]
+    [RequireVisibleEmployee]
+    public async Task<IActionResult> GetWorkGraph(Guid id, CancellationToken ct = default)
+    {
+        var result = await _mediator.Send(new GetEmployeeWorkGraphQuery(id), ct);
+        return result.IsSuccess ? Ok(result.Value) : Problem(result.Error, statusCode: result.StatusCode ?? 400);
+    }
+
+    /// <summary>Overview attendance card: present/late/missing-clock-out/leave counts and the
+    /// per-day strip for one employee over from..to (default: current month).</summary>
+    [HttpGet("{id:guid}/overview/attendance")]
+    [RequireVisibleEmployee]
+    public async Task<IActionResult> GetOverviewAttendance(
+        Guid id, [FromQuery] DateOnly? from = null, [FromQuery] DateOnly? to = null, CancellationToken ct = default)
+    {
+        var result = await _mediator.Send(new GetEmployeeAttendanceOverviewQuery(id, from, to), ct);
+        return result.IsSuccess ? Ok(result.Value) : Problem(result.Error, statusCode: result.StatusCode ?? 400);
+    }
+
+    /// <summary>Overview attendance card day list: every day of from..to up to today (newest first) with
+    /// status, clock-in/out, worked and break minutes, late/early minutes. Fetched only when the card is opened.</summary>
+    [HttpGet("{id:guid}/overview/attendance/days")]
+    [RequireVisibleEmployee]
+    public async Task<IActionResult> GetOverviewAttendanceDays(
+        Guid id, [FromQuery] DateOnly? from = null, [FromQuery] DateOnly? to = null, CancellationToken ct = default)
+    {
+        var result = await _mediator.Send(new GetEmployeeAttendanceDaysQuery(id, from, to), ct);
+        return result.IsSuccess ? Ok(result.Value) : Problem(result.Error, statusCode: result.StatusCode ?? 400);
+    }
+
+    /// <summary>Overview attendance-discipline card: late clock-ins, early clock-outs, missing
+    /// clock-outs, over-break days/minutes and (when location tracking is on) location alerts.</summary>
+    [HttpGet("{id:guid}/overview/attendance-discipline")]
+    [RequireVisibleEmployee]
+    public async Task<IActionResult> GetOverviewAttendanceDiscipline(
+        Guid id, [FromQuery] DateOnly? from = null, [FromQuery] DateOnly? to = null,
+        [FromQuery] string? compare = null, CancellationToken ct = default)
+    {
+        var result = await _mediator.Send(new GetEmployeeAttendanceDisciplineQuery(id, from, to, compare), ct);
+        return result.IsSuccess ? Ok(result.Value) : Problem(result.Error, statusCode: result.StatusCode ?? 400);
+    }
+
+    /// <summary>Overview time-off card: this year's leave balances (hours) plus the next
+    /// approved leave. Year-based - it does not follow the month period.</summary>
+    [HttpGet("{id:guid}/overview/time-off")]
+    [RequireVisibleEmployee]
+    public async Task<IActionResult> GetOverviewTimeOff(
+        Guid id, [FromQuery] int? year = null, CancellationToken ct = default)
+    {
+        var result = await _mediator.Send(new GetEmployeeTimeOffQuery(id, year), ct);
+        return result.IsSuccess ? Ok(result.Value) : Problem(result.Error, statusCode: result.StatusCode ?? 400);
+    }
+
+    /// <summary>Overview work card: assigned/completed/in-progress/overdue task counts and
+    /// completion + on-time rates for one employee over from..to (default: current month).</summary>
+    [HttpGet("{id:guid}/overview/work")]
+    [RequireVisibleEmployee]
+    [RequireAnyModule("worksync_foundation", "projects", "objectives_milestones", "tasks", "boards", "planning_sprints")]
+    public async Task<IActionResult> GetOverviewWork(
+        Guid id, [FromQuery] DateOnly? from = null, [FromQuery] DateOnly? to = null, CancellationToken ct = default)
+    {
+        var result = await _mediator.Send(new GetEmployeeWorkOverviewQuery(id, from, to), ct);
+        return result.IsSuccess ? Ok(result.Value) : Problem(result.Error, statusCode: result.StatusCode ?? 400);
+    }
+
+    /// <summary>Overview work card task list: every task behind the card's counts for from..to (default:
+    /// current month) with status, priority, project and module, grouped overdue / not started /
+    /// in progress / completed and ordered by priority. Fetched only when the card is opened.</summary>
+    [HttpGet("{id:guid}/overview/work/tasks")]
+    [RequireVisibleEmployee]
+    [RequireAnyModule("worksync_foundation", "projects", "objectives_milestones", "tasks", "boards", "planning_sprints")]
+    public async Task<IActionResult> GetOverviewWorkTasks(
+        Guid id, [FromQuery] DateOnly? from = null, [FromQuery] DateOnly? to = null, CancellationToken ct = default)
+    {
+        var result = await _mediator.Send(new GetEmployeeWorkTasksQuery(id, from, to), ct);
+        return result.IsSuccess ? Ok(result.Value) : Problem(result.Error, statusCode: result.StatusCode ?? 400);
+    }
+
+    /// <summary>Overview delivery card: tasks completed, on-time completion and story points; with
+    /// compare=previous also the previous period's figures.</summary>
+    [HttpGet("{id:guid}/overview/delivery")]
+    [RequireVisibleEmployee]
+    [RequireAnyModule("worksync_foundation", "projects", "objectives_milestones", "tasks", "boards", "planning_sprints")]
+    public async Task<IActionResult> GetOverviewDelivery(
+        Guid id, [FromQuery] DateOnly? from = null, [FromQuery] DateOnly? to = null,
+        [FromQuery] string? compare = null, CancellationToken ct = default)
+    {
+        var result = await _mediator.Send(new GetEmployeeDeliveryQuery(id, from, to, compare), ct);
+        return result.IsSuccess ? Ok(result.Value) : Problem(result.Error, statusCode: result.StatusCode ?? 400);
+    }
+
+    /// <summary>Overview activity panel: active / idle / meeting minutes summed from the persisted
+    /// daily summaries; with compare=previous also the previous period. Reports
+    /// activityMonitoringEnabled=false (and zeros) when monitoring is off for the employee.</summary>
+    [HttpGet("{id:guid}/overview/activity")]
+    [RequireVisibleEmployee]
+    public async Task<IActionResult> GetOverviewActivity(
+        Guid id, [FromQuery] DateOnly? from = null, [FromQuery] DateOnly? to = null,
+        [FromQuery] string? compare = null, CancellationToken ct = default)
+    {
+        var result = await _mediator.Send(new GetEmployeeActivityOverviewQuery(id, from, to, compare), ct);
+        return result.IsSuccess ? Ok(result.Value) : Problem(result.Error, statusCode: result.StatusCode ?? 400);
+    }
+
+    /// <summary>Overview approval activity: requests the employee made in from..to across leave,
+    /// attendance and Work Management (newest 10 plus pending/approved/rejected counts). Each source
+    /// is included only when the caller may read it or is viewing their own record.</summary>
+    [HttpGet("{id:guid}/overview/approvals")]
+    [RequireVisibleEmployee]
+    public async Task<IActionResult> GetOverviewApprovals(
+        Guid id, [FromQuery] DateOnly? from = null, [FromQuery] DateOnly? to = null, CancellationToken ct = default)
+    {
+        var result = await _mediator.Send(new GetEmployeeApprovalActivityQuery(id, from, to), ct);
+        return result.IsSuccess ? Ok(result.Value) : Problem(result.Error, statusCode: result.StatusCode ?? 400);
+    }
+
+    /// <summary>Work & Activity Needs attention card: open tasks overdue or due within 3 days (up to 50 + total).</summary>
+    [HttpGet("{id:guid}/work-activity/needs-attention")]
+    [RequireVisibleEmployee]
+    [RequireAnyModule("worksync_foundation", "projects", "objectives_milestones", "tasks", "boards", "planning_sprints")]
+    public async Task<IActionResult> GetWorkActivityNeedsAttention(Guid id, CancellationToken ct = default)
+    {
+        var result = await _mediator.Send(new GetEmployeeNeedsAttentionQuery(id), ct);
+        return result.IsSuccess ? Ok(result.Value) : Problem(result.Error, statusCode: result.StatusCode ?? 400);
+    }
+
+    /// <summary>Work & Activity Recent tasks card: the 5 most recently changed assigned tasks.</summary>
+    [HttpGet("{id:guid}/work-activity/recent-tasks")]
+    [RequireVisibleEmployee]
+    [RequireAnyModule("worksync_foundation", "projects", "objectives_milestones", "tasks", "boards", "planning_sprints")]
+    public async Task<IActionResult> GetWorkActivityRecentTasks(Guid id, CancellationToken ct = default)
+    {
+        var result = await _mediator.Send(new GetEmployeeRecentTasksQuery(id), ct);
+        return result.IsSuccess ? Ok(result.Value) : Problem(result.Error, statusCode: result.StatusCode ?? 400);
+    }
+
+    /// <summary>Work & Activity delivery chart: completed tasks per month for the 6 months ending at `to`'s month.</summary>
+    [HttpGet("{id:guid}/work-activity/delivery-trend")]
+    [RequireVisibleEmployee]
+    [RequireAnyModule("worksync_foundation", "projects", "objectives_milestones", "tasks", "boards", "planning_sprints")]
+    public async Task<IActionResult> GetWorkActivityDeliveryTrend(Guid id, [FromQuery] DateOnly? to = null, CancellationToken ct = default)
+    {
+        var result = await _mediator.Send(new GetEmployeeDeliveryTrendQuery(id, to), ct);
+        return result.IsSuccess ? Ok(result.Value) : Problem(result.Error, statusCode: result.StatusCode ?? 400);
+    }
+
+    /// <summary>Work & Activity hourly chart: active minutes per local hour of day over the period (max 31 days).</summary>
+    [HttpGet("{id:guid}/work-activity/activity-by-hour")]
+    [RequireVisibleEmployee]
+    public async Task<IActionResult> GetWorkActivityByHour(
+        Guid id, [FromQuery] DateOnly? from = null, [FromQuery] DateOnly? to = null, CancellationToken ct = default)
+    {
+        var result = await _mediator.Send(new GetEmployeeActivityByHourQuery(id, from, to), ct);
+        return result.IsSuccess ? Ok(result.Value) : Problem(result.Error, statusCode: result.StatusCode ?? 400);
+    }
+
+    /// <summary>Work & Activity Application usage card: top 5 apps with minutes, sessions and last use (max 31 days).</summary>
+    [HttpGet("{id:guid}/work-activity/app-usage")]
+    [RequireVisibleEmployee]
+    public async Task<IActionResult> GetWorkActivityAppUsage(
+        Guid id, [FromQuery] DateOnly? from = null, [FromQuery] DateOnly? to = null, CancellationToken ct = default)
+    {
+        var result = await _mediator.Send(new GetEmployeeAppUsageQuery(id, from, to), ct);
+        return result.IsSuccess ? Ok(result.Value) : Problem(result.Error, statusCode: result.StatusCode ?? 400);
+    }
+
+    /// <summary>Work & Activity Work pattern card: focus blocks, top app and longest idle period (max 31 days).</summary>
+    [HttpGet("{id:guid}/work-activity/work-pattern")]
+    [RequireVisibleEmployee]
+    public async Task<IActionResult> GetWorkActivityWorkPattern(
+        Guid id, [FromQuery] DateOnly? from = null, [FromQuery] DateOnly? to = null, CancellationToken ct = default)
+    {
+        var result = await _mediator.Send(new GetEmployeeWorkPatternQuery(id, from, to), ct);
+        return result.IsSuccess ? Ok(result.Value) : Problem(result.Error, statusCode: result.StatusCode ?? 400);
+    }
+
+    /// <summary>Overview signals: every active violation for the employee in from..to, ordered by
+    /// importance rank. Drives the KPI strip and Needs Attention card. Module-gated or
+    /// out-of-scope sources are omitted inside the handler, not rejected here.</summary>
+    [HttpGet("{id:guid}/overview/signals")]
+    [RequireVisibleEmployee]
+    public async Task<IActionResult> GetOverviewSignals(
+        Guid id, [FromQuery] DateOnly? from = null, [FromQuery] DateOnly? to = null, CancellationToken ct = default)
+    {
+        var result = await _mediator.Send(new GetEmployeeOverviewSignalsQuery(id, from, to), ct);
+        return result.IsSuccess ? Ok(result.Value) : Problem(result.Error, statusCode: result.StatusCode ?? 400);
+    }
+
+    /// <summary>Needs Attention drill-down: the days / alerts / cases / tasks / approvals behind one
+    /// overview signal (at most 50, newest first; total is the full count). 404 for an unknown key,
+    /// 403 when that signal's source is hidden from the caller.</summary>
+    [HttpGet("{id:guid}/overview/signals/{key}/items")]
+    [RequireVisibleEmployee]
+    public async Task<IActionResult> GetOverviewSignalItems(
+        Guid id, string key, [FromQuery] DateOnly? from = null, [FromQuery] DateOnly? to = null, CancellationToken ct = default)
+    {
+        var result = await _mediator.Send(new GetEmployeeSignalItemsQuery(id, key, from, to), ct);
+        return result.IsSuccess ? Ok(result.Value) : Problem(result.Error, statusCode: result.StatusCode ?? 400);
+    }
+
+    /// <summary>Overview checklists card: onboarding/offboarding task progress grouped by category.
+    /// Lifetime view (not period-aware).</summary>
+    [HttpGet("{id:guid}/overview/checklists")]
+    [RequireVisibleEmployee]
+    public async Task<IActionResult> GetOverviewChecklists(Guid id, CancellationToken ct = default)
+    {
+        var result = await _mediator.Send(new GetEmployeeChecklistOverviewQuery(id), ct);
+        return result.IsSuccess ? Ok(result.Value) : Problem(result.Error, statusCode: result.StatusCode ?? 400);
+    }
+
+    /// <summary>Overview employee history: joined, probation, position and reporting-manager changes,
+    /// approved leave, completed checklist tasks and termination - newest first. Lifetime view.</summary>
+    [HttpGet("{id:guid}/overview/history")]
+    [RequireVisibleEmployee]
+    public async Task<IActionResult> GetOverviewHistory(Guid id, [FromQuery] int limit = 20, CancellationToken ct = default)
+    {
+        var result = await _mediator.Send(new GetEmployeeHistoryQuery(id, limit), ct);
+        return result.IsSuccess ? Ok(result.Value) : Problem(result.Error, statusCode: result.StatusCode ?? 400);
+    }
+
+    /// <summary>Overview upcoming items: calendar events (private ones excluded), approved leave and
+    /// release reminders in the next N days (default 14, max 60), earliest first. `limit` (default 10, max 50)
+    /// caps the items returned; `total` in the response counts the whole window. Not period-aware.</summary>
+    [HttpGet("{id:guid}/overview/upcoming")]
+    [RequireVisibleEmployee]
+    public async Task<IActionResult> GetOverviewUpcoming(Guid id, [FromQuery] int days = 14, [FromQuery] int limit = 10, CancellationToken ct = default)
+    {
+        var result = await _mediator.Send(new GetEmployeeUpcomingQuery(id, days, limit), ct);
+        return result.IsSuccess ? Ok(result.Value) : Problem(result.Error, statusCode: result.StatusCode ?? 400);
+    }
+
+    /// <summary>Overview recent activity: what the employee did (attendance, leave, Work Management),
+    /// newest first; pass the previous response's nextBefore as `before` for older items. Partial by
+    /// design - see GetEmployeeRecentActivityQueryHandler.</summary>
+    [HttpGet("{id:guid}/overview/recent-activity")]
+    [RequireVisibleEmployee]
+    public async Task<IActionResult> GetOverviewRecentActivity(
+        Guid id, [FromQuery] DateTimeOffset? before = null, [FromQuery] int limit = 20, CancellationToken ct = default)
+    {
+        var result = await _mediator.Send(new GetEmployeeRecentActivityQuery(id, before, limit), ct);
         return result.IsSuccess ? Ok(result.Value) : Problem(result.Error, statusCode: result.StatusCode ?? 400);
     }
 
@@ -128,11 +450,50 @@ public class EmployeesController : ControllerBase
             : Problem(result.Error, statusCode: result.StatusCode ?? 400);
     }
 
+    /// <summary>Promote/transfer many employees into one position. Each employee goes through the
+    /// single change-position rules; the response reports the outcome per employee.</summary>
+    [HttpPost("bulk/change-position")]
+    [RequirePermission("employees:write")]
+    public async Task<IActionResult> BulkChangePosition(
+        [FromBody] BulkChangePositionRequest request, CancellationToken ct = default)
+    {
+        var result = await _mediator.Send(new BulkChangeEmployeePositionCommand(
+            request.EmployeeIds, request.PositionId, request.EffectiveFrom, request.ChangeReason, request.ReportsToEmployeeId), ct);
+
+        return result.IsSuccess
+            ? Ok(result.Value)
+            : Problem(result.Error, statusCode: result.StatusCode ?? 400);
+    }
+
+    [HttpPost("bulk/employment-type")]
+    [RequirePermission("employees:write")]
+    public async Task<IActionResult> BulkChangeEmploymentType(
+        [FromBody] BulkChangeEmploymentTypeRequest request, CancellationToken ct = default)
+    {
+        var result = await _mediator.Send(new BulkChangeEmploymentTypeCommand(request.EmployeeIds, request.EmploymentTypeCode), ct);
+
+        return result.IsSuccess
+            ? Ok(result.Value)
+            : Problem(result.Error, statusCode: result.StatusCode ?? 400);
+    }
+
+    [HttpPost("bulk/offboarding/start")]
+    [RequirePermission("employees:offboard")]
+    public async Task<IActionResult> BulkStartOffboarding(
+        [FromBody] BulkStartOffboardingRequest request, CancellationToken ct = default)
+    {
+        var result = await _mediator.Send(new BulkStartOffboardingCommand(
+            request.EmployeeIds, request.Reason, request.LastWorkingDate, request.KnowledgeRiskLevel, request.RehireEligibility, request.Notes), ct);
+
+        return result.IsSuccess
+            ? Ok(result.Value)
+            : Problem(result.Error, statusCode: result.StatusCode ?? 400);
+    }
+
     /// <summary>Resend an employee onboarding invitation. Only succeeds when the employee's
     /// current invitation has expired without being accepted - see
     /// ResendEmployeeInvitationCommandHandler for the exact guard.</summary>
     [HttpPost("{id:guid}/resend-invitation")]
-    [RequirePermission("invitations:manage")]
     public async Task<IActionResult> ResendInvitation(Guid id, CancellationToken ct = default)
     {
         var result = await _mediator.Send(new ResendEmployeeInvitationCommand(id), ct);
@@ -145,7 +506,6 @@ public class EmployeesController : ControllerBase
     /// <summary>Revoke an employee's current onboarding invitation and free its reserved seat.
     /// Unlike resend, this works on a still-pending invitation, not only an expired one.</summary>
     [HttpPost("{id:guid}/revoke-invitation")]
-    [RequirePermission("invitations:manage")]
     public async Task<IActionResult> RevokeInvitation(Guid id, CancellationToken ct = default)
     {
         var result = await _mediator.Send(new RevokeEmployeeInvitationCommand(id), ct);
@@ -174,6 +534,58 @@ public class EmployeesController : ControllerBase
         var result = await _mediator.Send(new LinkMyAvatarCommand(request.FileId), ct);
         return result.IsSuccess
             ? Ok(new { avatarFileId = result.Value })
+            : Problem(result.Error, statusCode: result.StatusCode ?? 400);
+    }
+
+    /// <summary>Removes the caller's current avatar.</summary>
+    [HttpDelete("me/avatar")]
+    public async Task<IActionResult> RemoveMyAvatar(CancellationToken ct = default)
+    {
+        var result = await _mediator.Send(new RemoveMyAvatarCommand(), ct);
+        return result.IsSuccess
+            ? NoContent()
+            : Problem(result.Error, statusCode: result.StatusCode ?? 400);
+    }
+
+    /// <summary>An employee's personal documents, read-only, for HR/managers. Requires employees:read
+    /// and the employee inside the caller's management coverage (checked in the handler).</summary>
+    [HttpGet("{id:guid}/documents")]
+    public async Task<IActionResult> ListEmployeeDocuments(Guid id, CancellationToken ct = default)
+    {
+        var result = await _mediator.Send(new ListEmployeeDocumentsQuery(id), ct);
+        return result.IsSuccess
+            ? Ok(result.Value)
+            : Problem(result.Error, statusCode: result.StatusCode ?? 400);
+    }
+
+    /// <summary>The caller's own personal documents (CV, ID, certificates), newest first.
+    /// Self-service only - files are readable through /files/{id} by their owner alone.</summary>
+    [HttpGet("me/documents")]
+    public async Task<IActionResult> ListMyDocuments(CancellationToken ct = default)
+    {
+        var result = await _mediator.Send(new ListMyDocumentsQuery(), ct);
+        return result.IsSuccess
+            ? Ok(result.Value)
+            : Problem(result.Error, statusCode: result.StatusCode ?? 400);
+    }
+
+    /// <summary>Links a pending employee_document upload to the caller's documents.</summary>
+    [HttpPost("me/documents")]
+    public async Task<IActionResult> AddMyDocument([FromBody] AddMyDocumentRequest request, CancellationToken ct = default)
+    {
+        var result = await _mediator.Send(new AddMyDocumentCommand(request.FileId, request.Type, request.Name), ct);
+        return result.IsSuccess
+            ? StatusCode(StatusCodes.Status201Created, result.Value)
+            : Problem(result.Error, statusCode: result.StatusCode ?? 400);
+    }
+
+    /// <summary>Removes one of the caller's documents and deletes its stored file.</summary>
+    [HttpDelete("me/documents/{documentId:guid}")]
+    public async Task<IActionResult> DeleteMyDocument(Guid documentId, CancellationToken ct = default)
+    {
+        var result = await _mediator.Send(new DeleteMyDocumentCommand(documentId), ct);
+        return result.IsSuccess
+            ? NoContent()
             : Problem(result.Error, statusCode: result.StatusCode ?? 400);
     }
 

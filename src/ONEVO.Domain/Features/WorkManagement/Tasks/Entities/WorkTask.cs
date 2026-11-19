@@ -10,15 +10,45 @@ public static class WorkTaskPriorities
     public const string Critical = "critical";
 }
 
+public static class WorkTaskKinds
+{
+    public const string Standard = "standard";
+    public const string EmployeeChecklist = "employee_checklist";
+    /// <summary>A meeting occurrence (meetings-as-tasks Phase 2). Hidden from every ordinary task query by
+    /// <see cref="WorkTaskQueryFilters.ExcludeMeetings"/>.</summary>
+    public const string Meeting = "meeting";
+}
+
+/// <summary>The named query filters on WorkTask. A query that must see meetings ignores only
+/// <see cref="ExcludeMeetings"/> (and applies MeetingVisibility itself); <see cref="TenantScope"/> is the
+/// composed tenant/soft-delete filter every entity has.</summary>
+public static class WorkTaskQueryFilters
+{
+    public const string ExcludeMeetings = "ExcludeMeetings";
+    public const string TenantScope = "TenantScope";
+}
+
+public static class WorkTaskVisibilityScopes
+{
+    public const string Module = "module";
+    public const string Assignees = "assignees";
+}
+
 /// <summary>
 /// Core Work Management item. Table name stays "tasks" - the C# class is WorkTask to avoid
 /// colliding with System.Threading.Tasks.Task.
 /// </summary>
 public class WorkTask : BaseEntity
 {
+    public string TaskKind { get; set; } = WorkTaskKinds.Standard;
+    public string VisibilityScope { get; set; } = WorkTaskVisibilityScopes.Module;
     public Guid ProjectId { get; set; }
     public Guid? ParentTaskId { get; set; }
     public Guid ObjectiveId { get; set; }
+    /// <summary>The Module whose current owner is this object's creator position - the approver of
+    /// edits by anyone below it. Null means "use the default": Module → its parent, Task → its own
+    /// Module, Sprint → the project root Module.</summary>
+    public Guid? CreatorPositionObjectiveId { get; set; }
     public Guid? SprintId { get; set; }
     public string ShortId { get; set; } = string.Empty;
     public string Title { get; set; } = string.Empty;

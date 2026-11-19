@@ -1,5 +1,6 @@
 using FluentAssertions;
 using ONEVO.Application.Features.Monitoring.ActivityMonitoring.DTOs.Responses;
+using ONEVO.Application.Features.Monitoring.ActivityMonitoring.Services;
 using ONEVO.Domain.Features.Monitoring.ActivityMonitoring.Entities;
 using ONEVO.Domain.Features.Monitoring.AppUsage.Entities;
 using ONEVO.Domain.Features.Monitoring.Meetings.Entities;
@@ -79,6 +80,10 @@ public class ActivityDailySummaryAggregatorTests
     [Fact]
     public void Process_change_breaks_focus_streak()
     {
+        // ComputeFocus was retired in favor of the shared WorkPatternWindowClassifier - see
+        // WorkPatternWindowClassifierTests for the classifier's own dedicated coverage. This
+        // test now proves the aggregator's FocusMinutes (sourced from the classifier) still
+        // shows the same "process change breaks the streak" behavior end to end.
         var baseTime = new DateTimeOffset(2026, 8, 5, 9, 0, 0, TimeSpan.Zero);
         var snapshots = new List<ActivitySnapshot>
         {
@@ -88,10 +93,29 @@ public class ActivityDailySummaryAggregatorTests
             Snap(300, 0, 1, 1, 70, "chrome.exe", baseTime.AddMinutes(15)),
         };
 
-        var (focusMinutes, sessions) = ActivityDailySummaryAggregator.ComputeFocus(snapshots);
+        var summary = ActivityDailySummaryAggregator.Aggregate(
+            Guid.NewGuid(), Guid.NewGuid(), new DateOnly(2026, 8, 5), snapshots, baseTime);
 
-        focusMinutes.Should().Be(0);
-        sessions.Should().Be(0);
+        summary.FocusMinutes.Should().Be(0);
+        summary.DeepFocusSessionsCount.Should().Be(0);
+    }
+
+    [Fact]
+    public void Aggregate_UsesSharedClassifier_ForFocusAndProductive()
+    {
+        // Mirrors WorkPatternWindowClassifierTests.Classify_ThirtyMinuteSameProcessStreak_IsFocus,
+        // proving the aggregator now delegates to the shared classifier instead of its own
+        // retired ComputeFocus/AggregateAppUsage-based ProductiveAppMinutes.
+        var baseTime = new DateTimeOffset(2026, 9, 24, 9, 0, 0, TimeSpan.Zero);
+        var snaps = Enumerable.Range(1, 30)
+            .Select(i => Snap(60, 0, 1, 1, 50, "code.exe", baseTime.AddMinutes(i)))
+            .ToList();
+
+        var summary = ActivityDailySummaryAggregator.Aggregate(
+            Guid.NewGuid(), Guid.NewGuid(), DateOnly.FromDateTime(baseTime.Date), snaps, baseTime);
+
+        summary.FocusMinutes.Should().Be(30);
+        summary.ProductiveAppMinutes.Should().Be(30); // code.exe is Productive-classified
     }
 
     [Fact]
@@ -180,7 +204,10 @@ public class ActivityDailySummaryAggregatorTests
             Guid.NewGuid(), Guid.NewGuid(), new DateOnly(2026, 8, 17), [], baseTime,
             appUsageSnapshots: appUsage);
 
-        summary.ProductiveAppMinutes.Should().Be(2);
+        // ProductiveAppMinutes is now sourced from WorkPatternWindowClassifier (ActivitySnapshot-
+        // based - see Aggregate()'s repurposing note), not this AppUsageSnapshot-derived path. No
+        // ActivitySnapshot rows are passed in this fixture, so it's correctly 0 here.
+        summary.ProductiveAppMinutes.Should().Be(0);
         summary.PersonalAppMinutes.Should().Be(1);
         summary.UnknownAppMinutes.Should().Be(1);
 

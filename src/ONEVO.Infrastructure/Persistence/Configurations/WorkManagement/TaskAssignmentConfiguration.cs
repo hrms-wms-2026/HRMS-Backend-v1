@@ -11,8 +11,8 @@ public class TaskAssignmentConfiguration : IEntityTypeConfiguration<TaskAssignme
         builder.ToTable("task_assignments");
         builder.HasKey(a => a.Id);
 
-        builder.HasIndex(a => new { a.TaskId, a.UserId }).IsUnique()
-            .HasDatabaseName("ix_task_assignments_one_per_task_user");
+        builder.HasIndex(a => a.TaskId).IsUnique()
+            .HasDatabaseName("ix_task_assignments_one_per_task");
 
         builder.HasOne<WorkTask>().WithMany().HasForeignKey(a => a.TaskId).OnDelete(DeleteBehavior.Cascade);
     }

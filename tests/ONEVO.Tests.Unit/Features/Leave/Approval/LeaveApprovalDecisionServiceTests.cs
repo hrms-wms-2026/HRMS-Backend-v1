@@ -7,6 +7,7 @@ using ONEVO.Application.Features.Leave.Approval.Commands;
 using ONEVO.Application.Features.Leave.Approval.Options;
 using ONEVO.Application.Features.Leave.Approval.OutboxHandlers;
 using ONEVO.Application.Features.Leave.Approval.RepositoryInterfaces;
+using ONEVO.Application.Features.Leave.Approval.Services;
 using ONEVO.Application.Features.Leave.Request.Services;
 using ONEVO.Domain.Features.CoreHr.Entities;
 using ONEVO.Domain.Features.Leave.BalanceAudit.Entities;
@@ -58,6 +59,57 @@ public class LeaveApprovalDecisionServiceTests
     }
 
     [Fact]
+    public async Task Approval_mode_none_auto_approves_and_moves_pending_hours_to_used_without_an_approver()
+    {
+        var harness = Harness.Create(
+            LeaveRequestStatuses.Pending,
+            paidHours: 8m,
+            pendingHours: 8m,
+            usedHours: 5m,
+            approvalMode: LeaveApprovalModes.None);
+
+        var result = await harness.Sut.FinalizeNoApprovalAsync(harness.Request.Id, CancellationToken.None);
+
+        result.IsSuccess.Should().BeTrue(result.Error);
+        harness.Request.Status.Should().Be(LeaveRequestStatuses.Approved);
+        harness.Request.ApprovedBy.Should().BeNull();
+        harness.Entitlement.PendingHours.Should().Be(0m);
+        harness.Entitlement.UsedHours.Should().Be(13m);
+        harness.Audits.Should().ContainSingle(a => a.ChangeType == LeaveBalanceChangeTypes.Deduction
+            && a.HoursChanged == -8m);
+    }
+
+    [Fact]
+    public async Task HandOver_skips_the_callers_step_and_gives_the_same_place_in_the_order_to_the_picked_person()
+    {
+        var harness = Harness.Create(LeaveRequestStatuses.Pending);
+        var target = Guid.NewGuid();
+
+        var result = await harness.Sut.HandOverAsync(harness.Request.Id, target, " Out next week ", CancellationToken.None);
+
+        result.IsSuccess.Should().BeTrue(result.Error);
+        harness.Approver.Status.Should().Be(LeaveRequestApproverStatuses.Skipped);
+        harness.Approver.Comment.Should().Be("Out next week");
+        harness.AddedApprovers.Should().ContainSingle(a => a.ApproverEmployeeId == target
+            && a.Status == LeaveRequestApproverStatuses.Pending && a.SequenceOrder == harness.Approver.SequenceOrder);
+        harness.Request.Status.Should().Be(LeaveRequestStatuses.Pending);
+    }
+
+    [Fact]
+    public async Task HandOver_refuses_the_requester_and_someone_already_on_the_request()
+    {
+        var harness = Harness.Create(LeaveRequestStatuses.Pending);
+
+        var toRequester = await harness.Sut.HandOverAsync(harness.Request.Id, harness.Request.EmployeeId, null, CancellationToken.None);
+        var toSelf = await harness.Sut.HandOverAsync(harness.Request.Id, harness.Approver.ApproverEmployeeId, null, CancellationToken.None);
+
+        toRequester.StatusCode.Should().Be(409);
+        toSelf.StatusCode.Should().Be(409);
+        harness.AddedApprovers.Should().BeEmpty();
+        harness.Approver.Status.Should().Be(LeaveRequestApproverStatuses.Pending);
+    }
+
+    [Fact]
     public async Task RejectAsync_ReleasesPendingPaidHoursWithoutUsedDeduction()
     {
         var harness = Harness.Create(LeaveRequestStatuses.Pending, paidHours: 2m, pendingHours: 2m, usedHours: 4m);
@@ -70,27 +122,95 @@ public class LeaveApprovalDecisionServiceTests
     }
 
     [Fact]
-    public async Task RequestInfoAsync_PausesRequestAndKeepsPendingBalanceReserved()
+    public async Task ChangeDecision_ApprovedToRejected_GivesTheUsedHoursBack()
     {
-        var harness = Harness.Create(LeaveRequestStatuses.Pending, paidHours: 2m, pendingHours: 2m, usedHours: 1m);
-        var result = await harness.Sut.RequestInfoAsync(harness.Request.Id, "Need certificate", CancellationToken.None);
+        var harness = Harness.Create(LeaveRequestStatuses.Approved, paidHours: 8m, pendingHours: 0m, usedHours: 8m);
+        harness.Approver.Status = LeaveRequestApproverStatuses.Approved;
+        harness.Request.ApprovedBy = harness.Employee.Id;
+
+        var result = await harness.Sut.ChangeDecisionAsync(harness.Request.Id, "reject", "Team is short that week", CancellationToken.None);
+
         result.IsSuccess.Should().BeTrue();
-        harness.Request.Status.Should().Be(LeaveRequestStatuses.InformationRequested);
-        harness.Approver.Status.Should().Be(LeaveRequestApproverStatuses.InformationRequested);
-        harness.Entitlement.PendingHours.Should().Be(2m);
+        harness.Request.Status.Should().Be(LeaveRequestStatuses.Rejected);
+        harness.Request.ApprovedBy.Should().BeNull();
+        harness.Approver.Status.Should().Be(LeaveRequestApproverStatuses.Rejected);
+        harness.Approver.Comment.Should().Be("Changed from approved: Team is short that week");
+        harness.Entitlement.UsedHours.Should().Be(0m);
+        harness.Entitlement.PendingHours.Should().Be(0m);
+        harness.Audits.Should().ContainSingle(a => a.ChangeType == LeaveBalanceChangeTypes.Adjustment && a.HoursChanged == 8m);
     }
 
     [Fact]
-    public async Task RespondInfoAsync_ResumesRequestForSameApprover()
+    public async Task ChangeDecision_RejectedToApproved_DeductsTheHoursAgain()
     {
-        var harness = Harness.Create(LeaveRequestStatuses.InformationRequested, paidHours: 1m, pendingHours: 1m, usedHours: 0m);
-        harness.Approver.Status = LeaveRequestApproverStatuses.InformationRequested;
-        harness.Employee.Id = harness.Request.EmployeeId;
-        var result = await harness.Sut.RespondInfoAsync(harness.Request.Id, "Attached", [], CancellationToken.None);
+        var harness = Harness.Create(LeaveRequestStatuses.Rejected, paidHours: 8m, pendingHours: 0m, usedHours: 4m);
+        harness.Approver.Status = LeaveRequestApproverStatuses.Rejected;
+
+        var result = await harness.Sut.ChangeDecisionAsync(harness.Request.Id, "approve", null, CancellationToken.None);
+
         result.IsSuccess.Should().BeTrue();
-        harness.Request.Status.Should().Be(LeaveRequestStatuses.Pending);
-        harness.Approver.Status.Should().Be(LeaveRequestApproverStatuses.Pending);
-        harness.InfoMessages.Should().ContainSingle();
+        harness.Request.Status.Should().Be(LeaveRequestStatuses.Approved);
+        harness.Request.ApprovedBy.Should().Be(harness.Employee.Id);
+        harness.Approver.Status.Should().Be(LeaveRequestApproverStatuses.Approved);
+        harness.Approver.Comment.Should().Be("Changed from rejected");
+        harness.Entitlement.UsedHours.Should().Be(12m);
+        harness.Audits.Should().ContainSingle(a => a.ChangeType == LeaveBalanceChangeTypes.Deduction && a.HoursChanged == -8m);
+    }
+
+    [Fact]
+    public async Task ChangeDecision_RejectedToApproved_WhenBalanceNoLongerCoversIt_AllowsNegativeBalance()
+    {
+        // Entitlement is 20h; 15h already used, so 8h no longer fits.
+        var harness = Harness.Create(LeaveRequestStatuses.Rejected, paidHours: 8m, pendingHours: 0m, usedHours: 15m);
+        harness.Approver.Status = LeaveRequestApproverStatuses.Rejected;
+
+        var result = await harness.Sut.ChangeDecisionAsync(harness.Request.Id, "approve", null, CancellationToken.None);
+
+        result.IsSuccess.Should().BeTrue(result.Error);
+        harness.Request.Status.Should().Be(LeaveRequestStatuses.Approved);
+        harness.Entitlement.UsedHours.Should().Be(23m);
+        result.Value!.RemainingHours.Should().BeNegative();
+    }
+
+    [Fact]
+    public async Task ChangeDecision_AfterTheLeaveStarted_ReturnsConflict()
+    {
+        var harness = Harness.Create(LeaveRequestStatuses.Approved, paidHours: 8m, pendingHours: 0m, usedHours: 8m);
+        harness.Approver.Status = LeaveRequestApproverStatuses.Approved;
+        harness.Request.ApprovedBy = harness.Employee.Id;
+        harness.Request.StartAt = new DateTimeOffset(2026, 8, 22, 9, 0, 0, TimeSpan.Zero);
+
+        var result = await harness.Sut.ChangeDecisionAsync(harness.Request.Id, "reject", "Too late", CancellationToken.None);
+
+        result.StatusCode.Should().Be(409);
+        result.Error.Should().Contain("already started");
+        harness.Request.Status.Should().Be(LeaveRequestStatuses.Approved);
+    }
+
+    [Fact]
+    public async Task ChangeDecision_WhenSomeoneElseDecided_ReturnsForbidden()
+    {
+        var harness = Harness.Create(LeaveRequestStatuses.Approved, otherApprover: true, paidHours: 8m, pendingHours: 0m, usedHours: 8m);
+        harness.Approver.Status = LeaveRequestApproverStatuses.Approved;
+        harness.Request.ApprovedBy = harness.Approver.ApproverEmployeeId;
+
+        var result = await harness.Sut.ChangeDecisionAsync(harness.Request.Id, "reject", "Not mine", CancellationToken.None);
+
+        result.StatusCode.Should().Be(403);
+        harness.Request.Status.Should().Be(LeaveRequestStatuses.Approved);
+    }
+
+    [Fact]
+    public async Task ChangeDecision_ToTheSameDecision_ReturnsConflict()
+    {
+        var harness = Harness.Create(LeaveRequestStatuses.Approved, paidHours: 8m, pendingHours: 0m, usedHours: 8m);
+        harness.Approver.Status = LeaveRequestApproverStatuses.Approved;
+        harness.Request.ApprovedBy = harness.Employee.Id;
+
+        var result = await harness.Sut.ChangeDecisionAsync(harness.Request.Id, "approve", null, CancellationToken.None);
+
+        result.StatusCode.Should().Be(409);
+        harness.Entitlement.UsedHours.Should().Be(8m);
     }
 
     private sealed class Harness
@@ -100,10 +220,17 @@ public class LeaveApprovalDecisionServiceTests
         public LeaveEntitlement Entitlement { get; }
         public Employee Employee { get; }
         public List<LeaveBalanceAudit> Audits { get; } = [];
-        public List<LeaveRequestInfoMessage> InfoMessages { get; } = [];
+        public List<LeaveRequestApprover> AddedApprovers { get; } = [];
         public LeaveApprovalDecisionService Sut { get; }
 
-        private Harness(string status, bool otherApprover, bool selfApprove, decimal paidHours, decimal pendingHours, decimal usedHours)
+        private Harness(
+            string status,
+            bool otherApprover,
+            bool selfApprove,
+            decimal paidHours,
+            decimal pendingHours,
+            decimal usedHours,
+            string approvalMode)
         {
             var tenantId = Guid.NewGuid();
             var userId = Guid.NewGuid();
@@ -186,15 +313,16 @@ public class LeaveApprovalDecisionServiceTests
                         LastName = "Nair",
                         HireDate = new DateOnly(2024, 1, 1)
                     },
-                    "Annual Leave", "AL", LeaveApprovalModes.AnyOne, [Approver], InfoMessages));
+                    "Annual Leave", "AL", approvalMode,
+                    approvalMode == LeaveApprovalModes.None ? [] : [Approver]));
             repo.Setup(x => x.AddBalanceAuditAsync(It.IsAny<LeaveBalanceAudit>(), It.IsAny<CancellationToken>()))
                 .Callback<LeaveBalanceAudit, CancellationToken>((a, _) => Audits.Add(a))
                 .Returns(Task.CompletedTask);
-            repo.Setup(x => x.AddInfoMessageAsync(It.IsAny<LeaveRequestInfoMessage>(), It.IsAny<CancellationToken>()))
-                .Callback<LeaveRequestInfoMessage, CancellationToken>((m, _) => InfoMessages.Add(m))
-                .Returns(Task.CompletedTask);
             repo.Setup(x => x.AreAvailableFileRecordsAsync(tenantId, It.IsAny<IReadOnlyCollection<Guid>>(), It.IsAny<CancellationToken>()))
                 .ReturnsAsync(true);
+            repo.Setup(x => x.AddApproverAsync(It.IsAny<LeaveRequestApprover>(), It.IsAny<CancellationToken>()))
+                .Callback<LeaveRequestApprover, CancellationToken>((a, _) => AddedApprovers.Add(a))
+                .Returns(Task.CompletedTask);
             repo.Setup(x => x.SaveChangesAsync(It.IsAny<CancellationToken>())).Returns(Task.CompletedTask);
 
             var outbox = new Mock<IOutboxWriter>();
@@ -207,12 +335,6 @@ public class LeaveApprovalDecisionServiceTests
             outbox.Setup(x => x.EnqueueAsync(
                     It.IsAny<string>(),
                     It.IsAny<LeaveRequestRejectedPayload>(),
-                    It.IsAny<Guid?>(),
-                    It.IsAny<CancellationToken>()))
-                .Returns(Task.CompletedTask);
-            outbox.Setup(x => x.EnqueueAsync(
-                    It.IsAny<string>(),
-                    It.IsAny<LeaveInformationRequestedPayload>(),
                     It.IsAny<Guid?>(),
                     It.IsAny<CancellationToken>()))
                 .Returns(Task.CompletedTask);
@@ -235,7 +357,8 @@ public class LeaveApprovalDecisionServiceTests
             bool selfApprove = false,
             decimal paidHours = 1m,
             decimal pendingHours = 1m,
-            decimal usedHours = 0m) =>
-            new(status, otherApprover, selfApprove, paidHours, pendingHours, usedHours);
+            decimal usedHours = 0m,
+            string approvalMode = LeaveApprovalModes.AnyOne) =>
+            new(status, otherApprover, selfApprove, paidHours, pendingHours, usedHours, approvalMode);
     }
 }

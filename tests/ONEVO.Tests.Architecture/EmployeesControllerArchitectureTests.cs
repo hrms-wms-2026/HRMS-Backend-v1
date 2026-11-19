@@ -32,18 +32,15 @@ public sealed class EmployeesControllerArchitectureTests
     // parameter from the query string or request body; tenant context always comes from
     // ICurrentUser inside the handler.
     [Fact]
-    public void EmployeesController_List_StillRequiresEmployeesReadPermission()
+    public void EmployeesController_NoLongerUsesEmployeesReadPermission()
     {
+        // Employee visibility is relationship-based (management coverage): the directory and
+        // per-employee endpoints never gate on a permission code.
         var path = FindRepositoryPath(
             "src", "ONEVO.Api", "Controllers", "Tenant", "CoreHr", "EmployeesController.cs");
         var source = File.ReadAllText(path);
 
-        var listActionIndex = source.IndexOf("public async Task<IActionResult> List(", StringComparison.Ordinal);
-        Assert.True(listActionIndex > 0, "Could not locate the List action.");
-
-        var precedingSource = source[..listActionIndex];
-        var lastAttributeIndex = precedingSource.LastIndexOf("[RequirePermission(\"employees:read\")]", StringComparison.Ordinal);
-        Assert.True(lastAttributeIndex > 0, "List action is missing [RequirePermission(\"employees:read\")].");
+        Assert.DoesNotContain("\"employees:read\"", source, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -58,6 +55,57 @@ public sealed class EmployeesControllerArchitectureTests
         var signature = source[listActionIndex..listActionEnd];
 
         Assert.DoesNotContain("tenantId", signature, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void EmployeesController_GetWorkGraph_RequiresVisibleEmployeeAndUsesTheWorkGraphRoute()
+    {
+        var path = FindRepositoryPath(
+            "src", "ONEVO.Api", "Controllers", "Tenant", "CoreHr", "EmployeesController.cs");
+        var source = File.ReadAllText(path);
+
+        var actionIndex = source.IndexOf("public async Task<IActionResult> GetWorkGraph(", StringComparison.Ordinal);
+        Assert.True(actionIndex > 0, "Could not locate the GetWorkGraph action.");
+
+        var preceding = source[..actionIndex];
+        var routeIndex = preceding.LastIndexOf("[HttpGet(\"{id:guid}/work-graph\")]", StringComparison.Ordinal);
+        var permissionIndex = preceding.LastIndexOf("[RequireVisibleEmployee]", StringComparison.Ordinal);
+        Assert.True(routeIndex > 0, "GetWorkGraph is missing [HttpGet(\"{id:guid}/work-graph\")].");
+        Assert.True(permissionIndex > routeIndex, "GetWorkGraph is missing [RequireVisibleEmployee] after its route attribute.");
+    }
+
+    [Theory]
+    [InlineData("overview/attendance", "GetOverviewAttendance")]
+    [InlineData("overview/attendance-discipline", "GetOverviewAttendanceDiscipline")]
+    [InlineData("overview/time-off", "GetOverviewTimeOff")]
+    [InlineData("overview/work", "GetOverviewWork")]
+    [InlineData("overview/delivery", "GetOverviewDelivery")]
+    [InlineData("overview/activity", "GetOverviewActivity")]
+    [InlineData("overview/approvals", "GetOverviewApprovals")]
+    [InlineData("work-activity/needs-attention", "GetWorkActivityNeedsAttention")]
+    [InlineData("work-activity/recent-tasks", "GetWorkActivityRecentTasks")]
+    [InlineData("work-activity/delivery-trend", "GetWorkActivityDeliveryTrend")]
+    [InlineData("work-activity/activity-by-hour", "GetWorkActivityByHour")]
+    [InlineData("work-activity/app-usage", "GetWorkActivityAppUsage")]
+    [InlineData("work-activity/work-pattern", "GetWorkActivityWorkPattern")]
+    [InlineData("overview/checklists", "GetOverviewChecklists")]
+    [InlineData("overview/history", "GetOverviewHistory")]
+    [InlineData("overview/upcoming", "GetOverviewUpcoming")]
+    [InlineData("overview/recent-activity", "GetOverviewRecentActivity")]
+    public void EmployeesController_OverviewWidgetActions_RequireVisibleEmployeeAndUseTheirRoute(string route, string action)
+    {
+        var path = FindRepositoryPath(
+            "src", "ONEVO.Api", "Controllers", "Tenant", "CoreHr", "EmployeesController.cs");
+        var source = File.ReadAllText(path);
+
+        var actionIndex = source.IndexOf($"public async Task<IActionResult> {action}(", StringComparison.Ordinal);
+        Assert.True(actionIndex > 0, $"Could not locate the {action} action.");
+
+        var preceding = source[..actionIndex];
+        var routeIndex = preceding.LastIndexOf($"[HttpGet(\"{{id:guid}}/{route}\")]", StringComparison.Ordinal);
+        var permissionIndex = preceding.LastIndexOf("[RequireVisibleEmployee]", StringComparison.Ordinal);
+        Assert.True(routeIndex > 0, $"{action} is missing its [HttpGet] route for {route}.");
+        Assert.True(permissionIndex > routeIndex, $"{action} is missing [RequireVisibleEmployee] after its route attribute.");
     }
 
     private static string FindRepositoryPath(params string[] segments)

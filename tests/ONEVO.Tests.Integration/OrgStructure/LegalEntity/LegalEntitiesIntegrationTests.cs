@@ -56,10 +56,10 @@ public sealed class LegalEntitiesIntegrationTestsFixture : IAsyncLifetime
 
     public async Task InitializeAsync()
     {
-        var connectionString = Environment.GetEnvironmentVariable("ONEVO_TEST_DB");
+        var connectionString = Environment.GetEnvironmentVariable("CROWNUS_TEST_DB");
         if (string.IsNullOrWhiteSpace(connectionString))
         {
-            connectionString = await SharedPostgresTemplate.CreateDatabaseAsync();
+            connectionString = await SharedSqlServerTemplate.CreateDatabaseAsync();
         }
         else
         {
@@ -77,11 +77,11 @@ public sealed class LegalEntitiesIntegrationTestsFixture : IAsyncLifetime
         await WaitForSeedersAsync();
         await GrantCoreHrStorageAllowanceAsync();
 
-        var loginResponse = await SendAsync(HttpMethod.Post, AdminHost, "/admin/v1/auth/login",
-            new { email = "test_admin@onevo.dev", password = "test_password_123" });
-        var adminCookies = ParseSetCookies(loginResponse);
-        _adminCsrfToken = adminCookies["admin_csrf"];
-        _adminCookie = $"admin_session={adminCookies["admin_session"]}";
+        // F-02: sign-in completes mandatory MFA enrollment; no gate bypass.
+        var adminSession = await PlatformAdminTestSignIn.SignInAsync(
+            _client, "test_admin@onevo.dev", "test_password_123", AdminHost);
+        _adminCsrfToken = adminSession.CsrfToken;
+        _adminCookie = adminSession.SessionCookie;
 
         TenantA = await ProvisionAndLoginOwnerAsync("legal-ent-a", "Legal Ent A Co", "owner-a@legal-ent.test");
         TenantB = await ProvisionAndLoginOwnerAsync("legal-ent-b", "Legal Ent B Co", "owner-b@legal-ent.test");
@@ -186,8 +186,8 @@ public sealed class LegalEntitiesIntegrationTestsFixture : IAsyncLifetime
         exchangeResponse.StatusCode.Should().Be(HttpStatusCode.OK);
         var cookies = ParseSetCookies(exchangeResponse);
 
-        var sessionCookie = $"onevo_session={cookies["onevo_session"]}; onevo_csrf={cookies["onevo_csrf"]}";
-        var csrfHeader = Uri.UnescapeDataString(cookies["onevo_csrf"]);
+        var sessionCookie = $"crownus_session={cookies["crownus_session"]}; crownus_csrf={cookies["crownus_csrf"]}";
+        var csrfHeader = Uri.UnescapeDataString(cookies["crownus_csrf"]);
 
         return new TenantSession(host, sessionCookie, csrfHeader);
     }
@@ -302,8 +302,8 @@ public sealed class LegalEntitiesIntegrationTestsFixture : IAsyncLifetime
         exchangeResponse.StatusCode.Should().Be(HttpStatusCode.OK, exchangeJson.ToString());
         var cookies = ParseSetCookies(exchangeResponse);
 
-        var sessionCookie = $"onevo_session={cookies["onevo_session"]}; onevo_csrf={cookies["onevo_csrf"]}";
-        var csrfHeader = Uri.UnescapeDataString(cookies["onevo_csrf"]);
+        var sessionCookie = $"crownus_session={cookies["crownus_session"]}; crownus_csrf={cookies["crownus_csrf"]}";
+        var csrfHeader = Uri.UnescapeDataString(cookies["crownus_csrf"]);
         return new TenantSession(host, sessionCookie, csrfHeader);
     }
 
@@ -498,7 +498,7 @@ public sealed class LegalEntitiesIntegrationTestsFixture : IAsyncLifetime
 /// have real data to work against without any direct DB seeding of this
 /// feature's own rows.
 ///
-/// Database resolution mirrors TenantProvisioningE2ETests: set ONEVO_TEST_DB
+/// Database resolution mirrors TenantProvisioningE2ETests: set CROWNUS_TEST_DB
 /// to run against a local PostgreSQL server with no Docker; otherwise a
 /// Testcontainers instance is started.
 /// </summary>
@@ -1194,11 +1194,11 @@ public sealed class LegalEntitiesIntegrationTests : IClassFixture<LegalEntitiesI
     [Fact]
     public async Task GetGeneralSettings_RegularEmployeeAnotherCompany_Returns403_ViaPermissionGate()
     {
-        // The RequirePermission("legal_entity:update") attribute on this route rejects a
-        // caller without that permission before GetAccessibleByIdAsync's own
-        // accessible-company filter is ever reached - under the current flat RBAC model,
-        // holding legal_entity:update already implies management access
-        // (LegalEntityAccessPolicy.HasManagementAccess), so no HTTP-reachable caller can
+        // The RequireAnyPermission("legal_entity:read", "legal_entity:update") attribute on
+        // this route rejects a caller without either permission before GetAccessibleByIdAsync's
+        // own accessible-company filter is ever reached - under the current flat RBAC model,
+        // holding either already implies tenant-wide read access
+        // (LegalEntityAccessPolicy.HasReadAccess), so no HTTP-reachable caller can
         // exercise the filter's non-management branch. This test documents that the
         // required "regular user cannot GET another company" behavior still holds today;
         // GetLegalEntityGeneralSettingsQueryHandlerTests covers the filter itself in

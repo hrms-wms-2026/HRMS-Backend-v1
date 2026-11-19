@@ -30,11 +30,11 @@ public sealed class CheckInTestFactory : WebApplicationFactory<Program>
             {
                 ["ConnectionStrings:DefaultConnection"] = _connectionString,
                 ["Jwt:Secret"] = "checkin-test-jwt-secret-min-32-chars-long!!",
-                ["Jwt:TenantIssuer"] = "onevo-api",
-                ["Jwt:TenantAudience"] = "onevo-api",
+                ["Jwt:TenantIssuer"] = "crownus-api",
+                ["Jwt:TenantAudience"] = "crownus-api",
                 ["TrayApp:Jwt:Secret"] = "checkin-test-tray-jwt-secret-min-32chars!!",
-                ["TrayApp:Jwt:Issuer"] = "onevo-tray",
-                ["TrayApp:Jwt:Audience"] = "onevo-tray-app",
+                ["TrayApp:Jwt:Issuer"] = "crownus-tray",
+                ["TrayApp:Jwt:Audience"] = "crownus-tray-app",
                 ["Tenancy:RootDomain"] = "localhost",
                 ["Urls:AppBaseUrl"] = "https://localhost",
                 ["Encryption:MasterKey"] = "checkin-test-master-key-32-chars-xxxxxx!",
@@ -54,7 +54,7 @@ public sealed class CheckInTestFactory : WebApplicationFactory<Program>
 
             services.AddDbContext<ApplicationDbContext>((sp, options) =>
             {
-                options.UseNpgsql(_connectionString)
+                options.UseTestSqlServer(_connectionString)
                        .UseSnakeCaseNamingConvention();
             });
 
@@ -220,6 +220,12 @@ public sealed class CheckInTestFactory : WebApplicationFactory<Program>
         public Task<Result<FileStreamDto>> OpenReadAsync(
             Guid tenantId,
             Guid fileId,
+            CancellationToken ct = default)
+            => Task.FromResult(Result<FileStreamDto>.NotFound("File not found."));
+
+        public Task<Result<FileStreamDto>> OpenReadAsync(
+            Guid tenantId,
+            FileRecordDto fileRecord,
             CancellationToken ct = default)
             => Task.FromResult(Result<FileStreamDto>.NotFound("File not found."));
 

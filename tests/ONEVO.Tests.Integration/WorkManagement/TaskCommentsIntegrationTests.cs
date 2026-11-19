@@ -48,10 +48,10 @@ public sealed class TaskCommentsIntegrationTestsFixture : IAsyncLifetime
 
     public async Task InitializeAsync()
     {
-        var connectionString = Environment.GetEnvironmentVariable("ONEVO_TEST_DB");
+        var connectionString = Environment.GetEnvironmentVariable("CROWNUS_TEST_DB");
         if (string.IsNullOrWhiteSpace(connectionString))
         {
-            connectionString = await SharedPostgresTemplate.CreateDatabaseAsync();
+            connectionString = await SharedSqlServerTemplate.CreateDatabaseAsync();
         }
         else
         {
@@ -69,11 +69,11 @@ public sealed class TaskCommentsIntegrationTestsFixture : IAsyncLifetime
         await WaitForSeedersAsync();
         await GrantCoreHrStorageAllowanceAsync();
 
-        var loginResponse = await SendJsonAsync(HttpMethod.Post, AdminHost, "/admin/v1/auth/login",
-            new { email = "test_admin@onevo.dev", password = "test_password_123" });
-        var adminCookies = ParseSetCookies(loginResponse);
-        _adminCsrfToken = adminCookies["admin_csrf"];
-        _adminCookie = $"admin_session={adminCookies["admin_session"]}";
+        // F-02: sign-in completes mandatory MFA enrollment; no gate bypass.
+        var adminSession = await PlatformAdminTestSignIn.SignInAsync(
+            _client, "test_admin@onevo.dev", "test_password_123", AdminHost);
+        _adminCsrfToken = adminSession.CsrfToken;
+        _adminCookie = adminSession.SessionCookie;
 
         TenantA = await ProvisionAndLoginOwnerAsync("tc-int-a", "Task Comments Int A Co", "owner-a@tc-int.test");
         TenantB = await ProvisionAndLoginOwnerAsync("tc-int-b", "Task Comments Int B Co", "owner-b@tc-int.test");
@@ -447,8 +447,8 @@ public sealed class TaskCommentsIntegrationTestsFixture : IAsyncLifetime
         exchangeResponse.StatusCode.Should().Be(HttpStatusCode.OK);
         var cookies = ParseSetCookies(exchangeResponse);
 
-        var sessionCookie = $"onevo_session={cookies["onevo_session"]}; onevo_csrf={cookies["onevo_csrf"]}";
-        var csrfHeader = Uri.UnescapeDataString(cookies["onevo_csrf"]);
+        var sessionCookie = $"crownus_session={cookies["crownus_session"]}; crownus_csrf={cookies["crownus_csrf"]}";
+        var csrfHeader = Uri.UnescapeDataString(cookies["crownus_csrf"]);
 
         return new TenantSession(tenantId, host, sessionCookie, csrfHeader);
     }
@@ -650,7 +650,9 @@ public sealed class TaskCommentsIntegrationTests : IClassFixture<TaskCommentsInt
     public async Task CommentAttachment_UploadedThenLinked_ServedThroughGetTaskFile()
     {
         var taskId = await _fixture.SeedTaskAsync();
-        var fileBytes = System.Text.Encoding.UTF8.GetBytes("comment attachment bytes");
+        // Real PDF magic bytes (%PDF) - SEC-13's signature check verifies actual content now.
+        var fileBytes = new byte[] { 0x25, 0x50, 0x44, 0x46 }
+            .Concat(System.Text.Encoding.UTF8.GetBytes("comment attachment bytes")).ToArray();
         var uploadResponse = await _fixture.SendPendingUploadAsync(_fixture.TenantA, "comment_attachment", "note.pdf", "application/pdf", fileBytes);
         uploadResponse.StatusCode.Should().Be(HttpStatusCode.Created, await uploadResponse.Content.ReadAsStringAsync());
         var fileId = (await TaskCommentsIntegrationTestsFixture.ReadJsonAsync(uploadResponse)).GetProperty("fileId").GetGuid();

@@ -1,4 +1,5 @@
 using MediatR;
+using ONEVO.Application.Common.Helpers;
 using ONEVO.Application.Common.Models;
 using ONEVO.Application.Common.RepositoryInterfaces;
 using ONEVO.Application.Common.ServiceInterfaces;
@@ -7,6 +8,8 @@ using ONEVO.Application.Features.WorkManagement.Objectives.RepositoryInterfaces;
 using ONEVO.Application.Features.WorkManagement.Objectives.Services;
 using ONEVO.Application.Features.WorkManagement.Projects.RepositoryInterfaces;
 using ONEVO.Application.Features.WorkManagement.Tasks.RepositoryInterfaces;
+using ONEVO.Domain.Features.WorkManagement.Projects.Entities;
+using ONEVO.Domain.Features.WorkManagement.Tasks.Entities;
 
 namespace ONEVO.Application.Features.WorkManagement.Tasks.Commands.EditTaskCategory;
 
@@ -53,6 +56,8 @@ public class EditTaskCategoryCommandHandler : IRequestHandler<EditTaskCategoryCo
         var project = await _projects.GetByIdForTenantAsync(tenantId, category.ProjectId, ct);
         if (project is null || !project.IsActive)
             return Result.NotFound("Project not found.");
+        if (project.SystemPurpose == ProjectSystemPurposes.Office)
+            return Result.Conflict("The Office project categories are system-managed.");
 
         var defaultObjective = await _objectives.GetDefaultByProjectIdAsync(tenantId, project.Id, ct);
         if (defaultObjective is null)
@@ -61,10 +66,27 @@ public class EditTaskCategoryCommandHandler : IRequestHandler<EditTaskCategoryCo
         if (!await _membership.IsEffectiveManagerAsync(tenantId, defaultObjective.Id, callerEmployeeId.Value, ct))
             return Result.Forbidden("Only an owner or member of this project can edit task categories.");
 
+        var newName = request.Name.Trim();
+        if (category.SystemKey is not null && !string.Equals(category.Name, newName, StringComparison.Ordinal))
+            return Result.Conflict("System categories can't be renamed.");
+        if (category.SystemKey is null && TaskCategorySystemKeys.IsReservedName(newName))
+            return Result.Conflict("This project already has a Meeting category.");
+        if (request.Kind is not null && request.Kind != category.Kind
+            && (category.SystemKey is not null || !TaskCategoryKinds.UserSelectable.Contains(request.Kind)))
+            return Result.Failure(category.SystemKey is not null ? "A system category's type can't change." : "Choose Task, Bug, Story, Feature or Testing.",
+                400, TaskCategoryErrorCodes.InvalidKind);
+        var newIcon = EntityIconRules.Normalize(request.Icon);
+        if (request.Icon is not null && category.SystemKey is not null && newIcon != category.Icon)
+            return Result.Conflict("A system category's icon can't change.");
+
         return await _unitOfWork.ExecuteInTransactionAsync(async innerCt =>
         {
-            category.Name = request.Name.Trim();
+            category.Name = newName;
             category.DisplayOrder = request.DisplayOrder;
+            if (request.Kind is not null)
+                category.Kind = request.Kind;
+            if (request.Icon is not null)
+                category.Icon = newIcon;
             category.UpdatedAt = DateTimeOffset.UtcNow;
             _categories.Update(category);
             await _unitOfWork.SaveChangesAsync(innerCt);

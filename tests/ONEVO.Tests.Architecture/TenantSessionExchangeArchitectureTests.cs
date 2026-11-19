@@ -113,25 +113,20 @@ public sealed class TenantSessionExchangeArchitectureTests
         var authExtensions = ReadSource("src", "ONEVO.Api", "Extensions", "AuthenticationExtensions.cs");
         var responseWriter = ReadSource("src", "ONEVO.Api", "Controllers", "Tenant", "Auth", "TenantAuthResponseWriter.cs");
 
-        authExtensions.Should().NotContain("Cookie.Domain",
-            "onevo_session must stay host-scoped - no shared parent-domain cookie");
+        // Scoped to the TenantScheme cookie block specifically, not the whole file - AdminScheme
+        // (a different cookie, admin_session/admin_csrf) legitimately carries an optional
+        // AdminCookieDomain, since the admin frontend always lives on a different subdomain than
+        // this shared API host. Only TenantScheme/crownus_session must stay host-scoped.
+        var tenantSchemeStart = authExtensions.IndexOf(".AddCookie(\"TenantScheme\"", StringComparison.Ordinal);
+        var tenantSchemeEnd = authExtensions.IndexOf(".AddCookie(\"AdminScheme\"", StringComparison.Ordinal);
+        tenantSchemeStart.Should().BeGreaterThan(-1, "TenantScheme cookie configuration must exist");
+        tenantSchemeEnd.Should().BeGreaterThan(tenantSchemeStart, "AdminScheme configuration must follow TenantScheme");
+        var tenantSchemeBlock = authExtensions[tenantSchemeStart..tenantSchemeEnd];
+
+        tenantSchemeBlock.Should().NotContain("Cookie.Domain",
+            "crownus_session must stay host-scoped - no shared parent-domain cookie");
         responseWriter.Should().NotContain("Domain =",
             "no cookie written by the tenant controllers may carry a shared parent-domain Domain attribute");
-    }
-
-    [Fact]
-    public void TenantSessionExchangeMigration_EnablesRowLevelSecurityWithTenantIsolationPolicy()
-    {
-        var migrationsDirectory = Path.Combine(FindRepositoryRoot(), "src", "ONEVO.Infrastructure", "Migrations");
-        var migrationFile = Directory.EnumerateFiles(migrationsDirectory, "*_AddTenantSessionExchangeChallenges.cs")
-            .SingleOrDefault();
-
-        migrationFile.Should().NotBeNull("the session exchange migration must exist");
-        var source = File.ReadAllText(migrationFile!);
-
-        source.Should().Contain("ENABLE ROW LEVEL SECURITY");
-        source.Should().Contain("FORCE ROW LEVEL SECURITY");
-        source.Should().Contain("CREATE POLICY tenant_isolation");
     }
 
     [Fact]

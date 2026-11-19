@@ -41,6 +41,14 @@ public class EfTenantRepository : ITenantRepository
             .ToListAsync(ct);
     }
 
+    public async Task<IReadOnlyList<Tenant>> ListPageByIdAsync(Guid? afterId, int take, CancellationToken ct = default)
+    {
+        var query = _db.Tenants.AsNoTracking();
+        if (afterId is Guid after)
+            query = query.Where(t => t.Id > after);
+        return await query.OrderBy(t => t.Id).Take(take).ToListAsync(ct);
+    }
+
     public Task<int> CountAsync(
         TenantStatus? statusFilter,
         string? searchTerm,
@@ -59,10 +67,10 @@ public class EfTenantRepository : ITenantRepository
 
         if (!string.IsNullOrWhiteSpace(search))
         {
-            var pattern = $"%{search.Trim()}%";
+            var pattern = $"%{search.Trim().Replace("[", "[[]")}%";
             query = query.Where(t =>
-                EF.Functions.ILike(t.Name, pattern) ||
-                EF.Functions.ILike(t.Slug, pattern));
+                EF.Functions.Like(EF.Functions.Collate(t.Name, "Latin1_General_100_CI_AS_SC"), pattern) ||
+                EF.Functions.Like(EF.Functions.Collate(t.Slug, "Latin1_General_100_CI_AS_SC"), pattern));
         }
 
         return query;

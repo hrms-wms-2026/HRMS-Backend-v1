@@ -1,5 +1,3 @@
-using Microsoft.AspNetCore.Http;
-
 namespace ONEVO.Api.Contracts.WorkManagement.Projects;
 
 public class CreateProjectFormRequest
@@ -12,6 +10,8 @@ public class CreateProjectFormRequest
     public DateOnly TargetDate { get; set; }
     public DateOnly? ReleaseDate { get; set; }
     public string? Color { get; set; }
+    /// <summary>"lucide:{name}" or "emoji:{emoji}"; optional.</summary>
+    public string? Icon { get; set; }
     public decimal? ActualHours { get; set; }
     public decimal DefaultObjectiveAllocatedHours { get; set; }
 

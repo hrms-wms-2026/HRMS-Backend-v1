@@ -14,10 +14,11 @@ public class ClockInPolicyConfiguration : IEntityTypeConfiguration<ClockInPolicy
 
         builder.Property(p => p.Name).HasMaxLength(120).IsRequired();
         builder.Property(p => p.ScopeType).HasMaxLength(30).IsRequired();
-        builder.Property(p => p.DepartmentIds).HasColumnType("uuid[]");
-        builder.Property(p => p.PositionIds).HasColumnType("uuid[]");
-        builder.Property(p => p.EmployeeIds).HasColumnType("uuid[]");
+        builder.Property(p => p.DepartmentIds);
+        builder.Property(p => p.PositionIds);
+        builder.Property(p => p.EmployeeIds);
         builder.Property(p => p.NotificationRecipientResolver).HasMaxLength(50).IsRequired();
+        builder.Property(p => p.DeductionRulesChangedAt).HasColumnName("deduction_rules_changed_at");
 
         builder.HasIndex(p => p.TenantId)
             .HasDatabaseName("ix_clock_in_policies_tenant_id");

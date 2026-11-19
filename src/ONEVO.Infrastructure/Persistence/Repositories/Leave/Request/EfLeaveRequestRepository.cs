@@ -37,6 +37,26 @@ public class EfLeaveRequestRepository : ILeaveRequestRepository
             ct);
     }
 
+    public async Task<bool> HasOverlappingPendingOrApprovedRequestExceptAsync(
+        Guid tenantId,
+        Guid employeeId,
+        DateTimeOffset startAt,
+        DateTimeOffset endAt,
+        Guid excludeRequestId,
+        CancellationToken ct = default)
+    {
+        return await _db.LeaveRequests.AsNoTracking().AnyAsync(
+            request =>
+                request.TenantId == tenantId &&
+                request.EmployeeId == employeeId &&
+                request.Id != excludeRequestId &&
+                (request.Status == LeaveRequestStatuses.Pending ||
+                 request.Status == LeaveRequestStatuses.Approved) &&
+                request.StartAt < endAt &&
+                request.EndAt > startAt,
+            ct);
+    }
+
     public async Task<IReadOnlyList<LeaveRequestListRow>> ListOwnAsync(
         Guid tenantId,
         Guid employeeId,
@@ -46,8 +66,10 @@ public class EfLeaveRequestRepository : ILeaveRequestRepository
         var query =
             from request in _db.LeaveRequests.AsNoTracking()
             join leaveType in _db.LeaveTypes.AsNoTracking() on request.LeaveTypeId equals leaveType.Id
+            join approvedBy in _db.Employees.AsNoTracking() on request.ApprovedBy equals approvedBy.Id into approvedByJoin
+            from approvedBy in approvedByJoin.DefaultIfEmpty()
             where request.TenantId == tenantId && request.EmployeeId == employeeId
-            select new { request, leaveType };
+            select new { request, leaveType, ApprovedByName = approvedBy == null ? null : (approvedBy.FirstName + " " + approvedBy.LastName).Trim() };
 
         if (!string.IsNullOrWhiteSpace(filter.Status))
             query = query.Where(x => x.request.Status == filter.Status);
@@ -63,12 +85,41 @@ public class EfLeaveRequestRepository : ILeaveRequestRepository
         }
         if (filter.LeaveTypeId is { } leaveTypeId)
             query = query.Where(x => x.request.LeaveTypeId == leaveTypeId);
+        if (filter.CreatedFrom is { } createdFrom)
+            query = query.Where(x => x.request.CreatedAt >= createdFrom);
+        if (filter.CreatedTo is { } createdTo)
+            query = query.Where(x => x.request.CreatedAt < createdTo);
 
         var rows = await query
             .OrderByDescending(x => x.request.CreatedAt)
             .ToListAsync(ct);
 
-        return rows.Select(x => new LeaveRequestListRow(x.request, x.leaveType.Name, x.leaveType.Code)).ToList();
+        // Approval progress per request: one grouped query for the whole page, not one per row.
+        var requestIds = rows.Select(x => x.request.Id).ToList();
+        var progress = new Dictionary<Guid, (int Approved, int Total)>();
+        if (requestIds.Count > 0)
+        {
+            var counts = await _db.LeaveRequestApprovers.AsNoTracking()
+                .Where(a => a.TenantId == tenantId && requestIds.Contains(a.LeaveRequestId) &&
+                    a.Status != LeaveRequestApproverStatuses.Skipped && a.Status != LeaveRequestApproverStatuses.Cancelled)
+                .GroupBy(a => a.LeaveRequestId)
+                .Select(g => new { RequestId = g.Key, Total = g.Count(), Approved = g.Count(a => a.Status == LeaveRequestApproverStatuses.Approved) })
+                .ToListAsync(ct);
+            foreach (var count in counts)
+                progress[count.RequestId] = (count.Approved, count.Total);
+        }
+
+        return rows.Select(x =>
+        {
+            var (approved, total) = progress.GetValueOrDefault(x.request.Id);
+            return new LeaveRequestListRow(
+                x.request,
+                x.leaveType.Name,
+                x.leaveType.Code,
+                string.IsNullOrWhiteSpace(x.ApprovedByName) ? null : x.ApprovedByName,
+                approved,
+                total);
+        }).ToList();
     }
 
     public async Task<IReadOnlyList<LeaveApprovalDelegateRow>> ListActiveDelegatesAsync(
@@ -90,6 +141,36 @@ public class EfLeaveRequestRepository : ILeaveRequestRepository
             .Select(row => new LeaveApprovalDelegateRow(row.ApproverEmployeeId, row.DelegateEmployeeId))
             .ToListAsync(ct);
     }
+
+    public async Task<IReadOnlyList<LeaveApprovalDelegateListRow>> ListDelegatesForApproverAsync(
+        Guid tenantId,
+        Guid approverEmployeeId,
+        CancellationToken ct = default)
+    {
+        var rows = await (
+            from row in _db.LeaveApprovalDelegates.AsNoTracking()
+            join person in _db.Employees.AsNoTracking() on row.DelegateEmployeeId equals person.Id
+            where row.TenantId == tenantId && row.ApproverEmployeeId == approverEmployeeId
+            orderby row.StartDate
+            select new LeaveApprovalDelegateListRow(
+                row.Id,
+                row.DelegateEmployeeId,
+                (person.FirstName + " " + person.LastName).Trim(),
+                row.StartDate,
+                row.EndDate)
+        ).ToListAsync(ct);
+        return rows;
+    }
+
+    public async Task AddDelegateAsync(LeaveApprovalDelegate entity, CancellationToken ct = default)
+        => await _db.LeaveApprovalDelegates.AddAsync(entity, ct);
+
+    public Task<LeaveApprovalDelegate?> GetTrackedDelegateAsync(
+        Guid tenantId, Guid id, CancellationToken ct = default)
+        => _db.LeaveApprovalDelegates.FirstOrDefaultAsync(row => row.TenantId == tenantId && row.Id == id, ct);
+
+    public void RemoveDelegate(LeaveApprovalDelegate entity)
+        => _db.LeaveApprovalDelegates.Remove(entity);
 
     public async Task<int> CountDistinctEmployeesPendingOrApprovedInRangeAsync(
         Guid tenantId,
@@ -128,7 +209,9 @@ public class EfLeaveRequestRepository : ILeaveRequestRepository
         var executionStrategy = _db.Database.CreateExecutionStrategy();
         await executionStrategy.ExecuteAsync(async () =>
         {
+            // Joins a transaction the caller already opened (e.g. an approver-created leave inside an Inbox action).
             await using var transaction = _db.Database.IsRelational()
+                && _db.Database.CurrentTransaction is null
                 ? await _db.Database.BeginTransactionAsync(ct)
                 : null;
 
@@ -147,6 +230,9 @@ public class EfLeaveRequestRepository : ILeaveRequestRepository
             writeSet.Entitlement.PendingHours = targetPendingHours;
             writeSet.Entitlement.UpdatedAt = _clock.UtcNow;
 
+            if (_db.Entry(writeSet.Entitlement).State == EntityState.Detached)
+                await _db.LeaveEntitlements.AddAsync(writeSet.Entitlement, ct);
+
             await _db.LeaveRequests.AddAsync(writeSet.Request, ct);
             await _db.LeaveRequestApprovers.AddRangeAsync(writeSet.Approvers, ct);
             await _db.LeaveRequestDocuments.AddRangeAsync(writeSet.Documents, ct);
@@ -160,6 +246,7 @@ public class EfLeaveRequestRepository : ILeaveRequestRepository
 
     public async Task<bool> AreAvailableFileRecordsAsync(
         Guid tenantId,
+        Guid uploadedByUserId,
         IReadOnlyCollection<Guid> fileRecordIds,
         CancellationToken ct = default)
     {
@@ -170,8 +257,25 @@ public class EfLeaveRequestRepository : ILeaveRequestRepository
         var available = await _db.FileRecords.AsNoTracking()
             .CountAsync(f => f.TenantId == tenantId
                 && distinct.Contains(f.Id)
-                && f.Status == FileRecordStatus.Available,
+                && f.UploadedByUserId == uploadedByUserId
+                && f.DeletedAt == null
+                && f.Status != FileRecordStatus.Quarantined
+                && f.Status != FileRecordStatus.Deleted,
                 ct);
         return available == distinct.Length;
+    }
+
+    public async Task<IReadOnlyDictionary<Guid, IReadOnlyList<Guid>>> ListApproverEmployeeIdsAsync(
+        Guid tenantId, IReadOnlyCollection<Guid> requestIds, CancellationToken ct = default)
+    {
+        if (requestIds.Count == 0)
+            return new Dictionary<Guid, IReadOnlyList<Guid>>();
+        var ids = requestIds.ToList();
+        var rows = await _db.LeaveRequestApprovers.AsNoTracking()
+            .Where(a => a.TenantId == tenantId && ids.Contains(a.LeaveRequestId))
+            .Select(a => new { a.LeaveRequestId, a.ApproverEmployeeId })
+            .ToListAsync(ct);
+        return rows.GroupBy(r => r.LeaveRequestId)
+            .ToDictionary(g => g.Key, g => (IReadOnlyList<Guid>)g.Select(r => r.ApproverEmployeeId).Distinct().ToList());
     }
 }

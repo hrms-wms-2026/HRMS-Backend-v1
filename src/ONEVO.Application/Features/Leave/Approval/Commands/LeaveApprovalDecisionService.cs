@@ -50,6 +50,62 @@ public sealed class LeaveApprovalDecisionService
     public Task<Result<LeaveApprovalDecisionResponse>> ApproveAsync(Guid requestId, string? comment, CancellationToken ct) =>
         DecideAsync(requestId, comment, ct);
 
+    /// <summary>Finalises a request governed by the explicit no-approval policy mode. This is the
+    /// same balance/audit/outbox finalisation used by an approved request, without inventing an
+    /// approver row or requiring a human approver identity.</summary>
+    public async Task<Result<LeaveApprovalDecisionResponse>> FinalizeNoApprovalAsync(
+        Guid requestId, CancellationToken ct)
+    {
+        var state = await _repository.GetStateAsync(_currentUser.TenantId, requestId, ct);
+        if (state is null)
+            return Result<LeaveApprovalDecisionResponse>.NotFound(LeaveApprovalMessages.NotFound);
+        if (state.ApprovalMode != LeaveApprovalModes.None)
+            return Result<LeaveApprovalDecisionResponse>.Conflict("The request requires approval.");
+        if (state.Entitlement is null)
+            return Result<LeaveApprovalDecisionResponse>.Conflict(LeaveApprovalMessages.MissingPolicy);
+
+        var now = _clock.UtcNow;
+        state.Request.Status = LeaveRequestStatuses.Approved;
+        state.Request.ApprovedAt = now;
+        state.Request.ApprovedBy = null;
+        state.Request.UpdatedAt = now;
+        state.Entitlement.PendingHours -= state.Request.PaidHours;
+        state.Entitlement.UsedHours += state.Request.PaidHours;
+        state.Entitlement.UpdatedAt = now;
+
+        if (state.Request.PaidHours > 0m)
+        {
+            await _repository.AddBalanceAuditAsync(new LeaveBalanceAudit
+            {
+                Id = Guid.NewGuid(), TenantId = _currentUser.TenantId,
+                EmployeeId = state.Request.EmployeeId, LeaveTypeId = state.Request.LeaveTypeId,
+                ChangeType = LeaveBalanceChangeTypes.Deduction,
+                HoursChanged = -state.Request.PaidHours,
+                BalanceAfter = LeaveApprovalMapper.CalculateRemaining(
+                    state.Entitlement.TotalHours, state.Entitlement.CarriedForwardHours,
+                    state.Entitlement.UsedHours, state.Entitlement.PendingHours),
+                Reason = "Leave request auto-approved (no approval required)",
+                RelatedRequestId = state.Request.Id, CreatedAt = now, CreatedBy = _currentUser.UserId
+            }, ct);
+        }
+
+        await _outbox.EnqueueAsync(OutboxMessageTypes.LeaveRequestApproved, new LeaveRequestApprovedPayload(
+            _currentUser.TenantId, state.Request.Id, state.Request.EmployeeId, state.Request.LeaveTypeId,
+            state.Request.StartAt, state.Request.EndAt, state.Request.PaidHours, state.Request.UnpaidHours,
+            Guid.Empty), _currentUser.TenantId, ct);
+        await _outbox.EnqueueAsync(OutboxMessageTypes.CalendarIncidentEvaluate,
+            new ONEVO.Application.Features.Calendar.OutboxHandlers.CalendarIncidentEvaluatePayload(
+                _currentUser.TenantId, [state.Request.EmployeeId]), _currentUser.TenantId, ct);
+        await NotifyEmployeeAsync(state, "leave_request_approved", new Dictionary<string, string>
+        {
+            ["leaveTypeName"] = state.LeaveTypeName,
+            ["startDate"] = state.Request.StartAt.ToString("yyyy-MM-dd"),
+            ["endDate"] = state.Request.EndAt.ToString("yyyy-MM-dd")
+        }, ct);
+        await _repository.SaveChangesAsync(ct);
+        return Result<LeaveApprovalDecisionResponse>.Success(await MapAsync(state, state.Request.PaidHours, ct));
+    }
+
     public async Task<Result<LeaveApprovalDecisionResponse>> RejectAsync(Guid requestId, string reason, CancellationToken ct)
     {
         var loaded = await LoadAsync(requestId, requireActionableApprover: true, ct);
@@ -95,94 +151,220 @@ public sealed class LeaveApprovalDecisionService
         return Result<LeaveApprovalDecisionResponse>.Success(await MapAsync(state, 0m, ct));
     }
 
-    public async Task<Result<LeaveApprovalDecisionResponse>> RequestInfoAsync(Guid requestId, string question, CancellationToken ct)
+    /// <summary>
+    /// Lets the approver who made a request final flip their decision before the leave starts.
+    /// approved -> rejected gives the used paid hours back; rejected -> approved re-checks the balance
+    /// and re-runs the approval mode (approvers skipped by the rejection come back as pending).
+    /// </summary>
+    public async Task<Result<LeaveApprovalDecisionResponse>> ChangeDecisionAsync(
+        Guid requestId, string decision, string? comment, CancellationToken ct)
     {
-        var loaded = await LoadAsync(requestId, requireActionableApprover: true, ct);
-        if (!loaded.IsSuccess)
-            return Result<LeaveApprovalDecisionResponse>.Failure(loaded.Error!, loaded.StatusCode ?? 400);
+        if (!_currentUser.IsAuthenticated)
+            return Result<LeaveApprovalDecisionResponse>.Forbidden(LeaveApprovalMessages.AuthRequired);
+        if (_currentUser.TenantId == Guid.Empty)
+            return Result<LeaveApprovalDecisionResponse>.Forbidden(LeaveApprovalMessages.TenantMissing);
 
-        var (state, currentEmployee, approverRow) = loaded.Value!;
-        state.Request.Status = LeaveRequestStatuses.InformationRequested;
-        state.Request.UpdatedAt = _clock.UtcNow;
-        approverRow!.Status = LeaveRequestApproverStatuses.InformationRequested;
-        approverRow.Comment = question.Trim();
-        approverRow.DecidedAt = null;
+        var currentEmployee = await _employees.GetByUserIdAsync(_currentUser.TenantId, _currentUser.UserId, ct);
+        if (currentEmployee is null)
+            return Result<LeaveApprovalDecisionResponse>.NotFound(LeaveApprovalMessages.NoEmployee);
 
-        await _repository.AddInfoMessageAsync(new LeaveRequestInfoMessage
+        var state = await _repository.GetStateAsync(_currentUser.TenantId, requestId, ct);
+        if (state is null)
+            return Result<LeaveApprovalDecisionResponse>.NotFound(LeaveApprovalMessages.NotFound);
+
+        if (state.Request.Status is not (LeaveRequestStatuses.Approved or LeaveRequestStatuses.Rejected))
+            return Result<LeaveApprovalDecisionResponse>.Conflict(LeaveApprovalMessages.NoFinalDecision);
+
+        var now = _clock.UtcNow;
+        if (LeaveDecisionChangeRules.HasStarted(state, now))
+            return Result<LeaveApprovalDecisionResponse>.Conflict(LeaveApprovalMessages.LeaveAlreadyStarted);
+
+        var row = LeaveDecisionChangeRules.FindDecidingRow(state, currentEmployee.Id);
+        if (row is null)
+            return Result<LeaveApprovalDecisionResponse>.Forbidden(LeaveApprovalMessages.NotDecider);
+
+        var wantsApprove = decision == ChangeLeaveDecisionValues.Approve;
+        if (wantsApprove == (state.Request.Status == LeaveRequestStatuses.Approved))
+            return Result<LeaveApprovalDecisionResponse>.Conflict(LeaveApprovalMessages.SameDecision);
+
+        return wantsApprove
+            ? await ChangeToApprovedAsync(state, row, currentEmployee, comment, now, ct)
+            : await ChangeToRejectedAsync(state, row, currentEmployee, comment!.Trim(), now, ct);
+    }
+
+    private async Task<Result<LeaveApprovalDecisionResponse>> ChangeToRejectedAsync(
+        LeaveApprovalState state, LeaveRequestApprover row, Employee currentEmployee, string reason, DateTimeOffset now, CancellationToken ct)
+    {
+        row.Status = LeaveRequestApproverStatuses.Rejected;
+        row.Comment = $"Changed from approved: {reason}";
+        row.DecidedAt = now;
+        state.Request.Status = LeaveRequestStatuses.Rejected;
+        state.Request.ApprovedBy = null;
+        state.Request.ApprovedAt = null;
+        state.Request.UpdatedAt = now;
+
+        if (state.Entitlement is not null && state.Request.PaidHours > 0m)
         {
-            Id = Guid.NewGuid(),
-            TenantId = _currentUser.TenantId,
-            LeaveRequestId = state.Request.Id,
-            SenderEmployeeId = currentEmployee.Id,
-            Message = question.Trim(),
-            CreatedAt = _clock.UtcNow
-        }, ct);
+            state.Entitlement.UsedHours = Math.Max(0m, state.Entitlement.UsedHours - state.Request.PaidHours);
+            state.Entitlement.UpdatedAt = now;
+            await _repository.AddBalanceAuditAsync(new LeaveBalanceAudit
+            {
+                Id = Guid.NewGuid(),
+                TenantId = _currentUser.TenantId,
+                EmployeeId = state.Request.EmployeeId,
+                LeaveTypeId = state.Request.LeaveTypeId,
+                ChangeType = LeaveBalanceChangeTypes.Adjustment,
+                HoursChanged = state.Request.PaidHours,
+                BalanceAfter = LeaveApprovalMapper.CalculateRemaining(
+                    state.Entitlement.TotalHours, state.Entitlement.CarriedForwardHours,
+                    state.Entitlement.UsedHours, state.Entitlement.PendingHours),
+                Reason = "Decision changed: approved -> rejected",
+                RelatedRequestId = state.Request.Id,
+                CreatedAt = now,
+                CreatedBy = _currentUser.UserId
+            }, ct);
+        }
 
-        await _outbox.EnqueueAsync(OutboxMessageTypes.LeaveInformationRequested, new LeaveInformationRequestedPayload(
+        await _outbox.EnqueueAsync(OutboxMessageTypes.LeaveRequestRejected, new LeaveRequestRejectedPayload(
             _currentUser.TenantId, state.Request.Id, state.Request.EmployeeId, state.Request.LeaveTypeId,
-            state.Request.StartAt, state.Request.EndAt, currentEmployee.Id, question.Trim()), _currentUser.TenantId, ct);
+            state.Request.StartAt, state.Request.EndAt, state.Request.PaidHours, state.Request.UnpaidHours,
+            currentEmployee.Id, reason), _currentUser.TenantId, ct);
 
-        var approverName = LeaveEntitlementName(currentEmployee);
-        await NotifyEmployeeAsync(state, "leave_request_information_requested", new Dictionary<string, string>
+        await NotifyEmployeeAsync(state, "leave_request_rejected", new Dictionary<string, string>
         {
-            ["approverName"] = approverName,
             ["leaveTypeName"] = state.LeaveTypeName,
             ["startDate"] = state.Request.StartAt.ToString("yyyy-MM-dd"),
-            ["endDate"] = state.Request.EndAt.ToString("yyyy-MM-dd")
+            ["endDate"] = state.Request.EndAt.ToString("yyyy-MM-dd"),
+            ["reason"] = reason
         }, ct);
 
         await _repository.SaveChangesAsync(ct);
         return Result<LeaveApprovalDecisionResponse>.Success(await MapAsync(state, 0m, ct));
     }
 
-    public async Task<Result<LeaveApprovalDecisionResponse>> RespondInfoAsync(
-        Guid requestId, string message, IReadOnlyList<Guid> fileRecordIds, CancellationToken ct)
+    private async Task<Result<LeaveApprovalDecisionResponse>> ChangeToApprovedAsync(
+        LeaveApprovalState state, LeaveRequestApprover row, Employee currentEmployee, string? comment, DateTimeOffset now, CancellationToken ct)
     {
-        var loaded = await LoadAsync(requestId, requireActionableApprover: false, ct);
-        if (!loaded.IsSuccess)
-            return Result<LeaveApprovalDecisionResponse>.Failure(loaded.Error!, loaded.StatusCode ?? 400);
+        if (!_options.AllowSelfApproval && state.Request.EmployeeId == currentEmployee.Id)
+            return Result<LeaveApprovalDecisionResponse>.Conflict(LeaveApprovalMessages.SelfApproval);
+        if (state.ApprovalMode is null)
+            return Result<LeaveApprovalDecisionResponse>.Conflict(LeaveApprovalMessages.MissingPolicy);
+        if (state.Entitlement is null)
+            return Result<LeaveApprovalDecisionResponse>.Conflict(LeaveApprovalMessages.BalanceChanged(0m));
 
-        var (state, currentEmployee, _) = loaded.Value!;
-        if (state.Request.EmployeeId != currentEmployee.Id)
-            return Result<LeaveApprovalDecisionResponse>.Forbidden(LeaveApprovalMessages.NotYours);
-        if (state.Request.Status != LeaveRequestStatuses.InformationRequested)
-            return Result<LeaveApprovalDecisionResponse>.Conflict(LeaveApprovalMessages.NotWaitingInfo);
+        row.Status = LeaveRequestApproverStatuses.Approved;
+        row.Comment = string.IsNullOrWhiteSpace(comment) ? "Changed from rejected" : $"Changed from rejected: {comment.Trim()}";
+        row.DecidedAt = now;
 
-        var paused = state.Approvers.SingleOrDefault(row => row.Status == LeaveRequestApproverStatuses.InformationRequested);
-        if (paused is null)
-            return Result<LeaveApprovalDecisionResponse>.Conflict(LeaveApprovalMessages.NoPausedApprover);
-
-        if (!await _repository.AreAvailableFileRecordsAsync(_currentUser.TenantId, fileRecordIds, ct))
-            return Result<LeaveApprovalDecisionResponse>.Failure(LeaveApprovalMessages.FileNotAvailable);
-
-        if (fileRecordIds.Count > 0)
+        // A rejection skips every other pending approver. Under any_one this approval completes the
+        // request anyway; under the other modes those approvers still have to decide.
+        if (state.ApprovalMode != LeaveApprovalModes.AnyOne)
         {
-            await _repository.AddDocumentsAsync(fileRecordIds.Distinct().Select(id => new LeaveRequestDocument
+            foreach (var skipped in state.Approvers.Where(a => a.Status == LeaveRequestApproverStatuses.Skipped))
             {
-                Id = Guid.NewGuid(),
-                TenantId = _currentUser.TenantId,
-                LeaveRequestId = state.Request.Id,
-                FileRecordId = id
-            }).ToList(), ct);
+                skipped.Status = LeaveRequestApproverStatuses.Pending;
+                skipped.DecidedAt = null;
+            }
         }
 
-        state.Request.Status = LeaveRequestStatuses.Pending;
-        state.Request.UpdatedAt = _clock.UtcNow;
-        paused.Status = LeaveRequestApproverStatuses.Pending;
-
-        await _repository.AddInfoMessageAsync(new LeaveRequestInfoMessage
+        var rows = state.Approvers
+            .Select(a => new ApprovalModeRow(a.ApproverEmployeeId, a.SequenceOrder, a.Status))
+            .ToList();
+        var decision = LeaveApprovalModeEvaluator.ApplyApproval(state.ApprovalMode, rows, currentEmployee.Id);
+        foreach (var skippedId in decision.ApproversToSkip)
         {
-            Id = Guid.NewGuid(),
-            TenantId = _currentUser.TenantId,
-            LeaveRequestId = state.Request.Id,
-            SenderEmployeeId = currentEmployee.Id,
-            Message = message.Trim(),
-            CreatedAt = _clock.UtcNow
-        }, ct);
+            var skipped = state.Approvers.Single(a => a.ApproverEmployeeId == skippedId);
+            skipped.Status = LeaveRequestApproverStatuses.Skipped;
+            skipped.DecidedAt = now;
+        }
 
-        await NotifyApproverAsync(paused.ApproverEmployeeId, state, ct);
+        state.Request.UpdatedAt = now;
+        state.Entitlement.UpdatedAt = now;
+        var paidMoved = 0m;
+        if (decision.RequestCompleted)
+        {
+            state.Request.Status = LeaveRequestStatuses.Approved;
+            state.Request.ApprovedBy = currentEmployee.Id;
+            state.Request.ApprovedAt = now;
+            state.Entitlement.UsedHours += state.Request.PaidHours;
+            paidMoved = state.Request.PaidHours;
+
+            if (state.Request.PaidHours > 0m)
+            {
+                await _repository.AddBalanceAuditAsync(new LeaveBalanceAudit
+                {
+                    Id = Guid.NewGuid(),
+                    TenantId = _currentUser.TenantId,
+                    EmployeeId = state.Request.EmployeeId,
+                    LeaveTypeId = state.Request.LeaveTypeId,
+                    ChangeType = LeaveBalanceChangeTypes.Deduction,
+                    HoursChanged = -state.Request.PaidHours,
+                    BalanceAfter = LeaveApprovalMapper.CalculateRemaining(
+                        state.Entitlement.TotalHours, state.Entitlement.CarriedForwardHours,
+                        state.Entitlement.UsedHours, state.Entitlement.PendingHours),
+                    Reason = "Decision changed: rejected -> approved",
+                    RelatedRequestId = state.Request.Id,
+                    CreatedAt = now,
+                    CreatedBy = _currentUser.UserId
+                }, ct);
+            }
+
+            await _outbox.EnqueueAsync(OutboxMessageTypes.LeaveRequestApproved, new LeaveRequestApprovedPayload(
+                _currentUser.TenantId, state.Request.Id, state.Request.EmployeeId, state.Request.LeaveTypeId,
+                state.Request.StartAt, state.Request.EndAt, state.Request.PaidHours, state.Request.UnpaidHours,
+                currentEmployee.Id), _currentUser.TenantId, ct);
+            // Meetings during the approved leave become calendar meeting exceptions (plan C2 trigger).
+            await _outbox.EnqueueAsync(OutboxMessageTypes.CalendarIncidentEvaluate,
+                new ONEVO.Application.Features.Calendar.OutboxHandlers.CalendarIncidentEvaluatePayload(_currentUser.TenantId, [state.Request.EmployeeId]),
+                _currentUser.TenantId, ct);
+
+            await NotifyEmployeeAsync(state, "leave_request_approved", new Dictionary<string, string>
+            {
+                ["leaveTypeName"] = state.LeaveTypeName,
+                ["startDate"] = state.Request.StartAt.ToString("yyyy-MM-dd"),
+                ["endDate"] = state.Request.EndAt.ToString("yyyy-MM-dd")
+            }, ct);
+        }
+        else
+        {
+            // Back in the approval flow: reserve the hours again until the others decide.
+            state.Request.Status = LeaveRequestStatuses.Pending;
+            state.Entitlement.PendingHours += state.Request.PaidHours;
+            foreach (var nextId in decision.NextApproverIds)
+                await NotifyApproverAsync(nextId, state, ct);
+        }
+
         await _repository.SaveChangesAsync(ct);
-        return Result<LeaveApprovalDecisionResponse>.Success(await MapAsync(state, 0m, ct));
+        return Result<LeaveApprovalDecisionResponse>.Success(await MapAsync(state, paidMoved, ct));
+    }
+
+    /// <summary>Escalation: the caller's pending step goes to someone else. Their row is skipped (with the note) and the
+    /// new approver gets a pending row at the same place in the order, plus the "your approval is needed" bell.</summary>
+    public async Task<Result> HandOverAsync(Guid requestId, Guid targetEmployeeId, string? note, CancellationToken ct)
+    {
+        var loaded = await LoadAsync(requestId, requireActionableApprover: true, ct);
+        if (!loaded.IsSuccess)
+            return Result.Failure(loaded.Error!, loaded.StatusCode ?? 400);
+        var (state, _, approverRow) = loaded.Value!;
+        // One row per approver: the mode evaluator looks rows up by approver.
+        if (targetEmployeeId == state.Request.EmployeeId || state.Approvers.Any(a => a.ApproverEmployeeId == targetEmployeeId))
+            return Result.Conflict("That person is already on this request.");
+        if (await _employees.GetByIdAsync(_currentUser.TenantId, targetEmployeeId, ct) is null)
+            return Result.NotFound("Employee not found.");
+
+        var now = _clock.UtcNow;
+        approverRow!.Status = LeaveRequestApproverStatuses.Skipped;
+        approverRow.Comment = string.IsNullOrWhiteSpace(note) ? null : note.Trim();
+        approverRow.DecidedAt = now;
+        await _repository.AddApproverAsync(new LeaveRequestApprover
+        {
+            Id = Guid.NewGuid(), TenantId = _currentUser.TenantId, LeaveRequestId = state.Request.Id, ApproverEmployeeId = targetEmployeeId,
+            SequenceOrder = approverRow.SequenceOrder, Status = LeaveRequestApproverStatuses.Pending,
+        }, ct);
+        state.Request.UpdatedAt = now;
+        await NotifyApproverAsync(targetEmployeeId, state, ct);
+        await _repository.SaveChangesAsync(ct);
+        return Result.Success();
     }
 
     private async Task<Result<LeaveApprovalDecisionResponse>> DecideAsync(Guid requestId, string? comment, CancellationToken ct)
@@ -201,8 +383,7 @@ public sealed class LeaveApprovalDecisionService
         var remainingBefore = LeaveApprovalMapper.CalculateRemaining(
             state.Entitlement.TotalHours, state.Entitlement.CarriedForwardHours,
             state.Entitlement.UsedHours, state.Entitlement.PendingHours);
-        if (state.Request.PaidHours > 0m &&
-            (state.Entitlement.PendingHours < state.Request.PaidHours || remainingBefore < 0m))
+        if (state.Request.PaidHours > 0m && state.Entitlement.PendingHours < state.Request.PaidHours)
         {
             return Result<LeaveApprovalDecisionResponse>.Conflict(LeaveApprovalMessages.BalanceChanged(remainingBefore));
         }
@@ -260,6 +441,10 @@ public sealed class LeaveApprovalDecisionService
                 _currentUser.TenantId, state.Request.Id, state.Request.EmployeeId, state.Request.LeaveTypeId,
                 state.Request.StartAt, state.Request.EndAt, state.Request.PaidHours, state.Request.UnpaidHours,
                 currentEmployee.Id), _currentUser.TenantId, ct);
+            // Meetings during the approved leave become calendar meeting exceptions (plan C2 trigger).
+            await _outbox.EnqueueAsync(OutboxMessageTypes.CalendarIncidentEvaluate,
+                new ONEVO.Application.Features.Calendar.OutboxHandlers.CalendarIncidentEvaluatePayload(_currentUser.TenantId, [state.Request.EmployeeId]),
+                _currentUser.TenantId, ct);
 
             await NotifyEmployeeAsync(state, "leave_request_approved", new Dictionary<string, string>
             {
@@ -323,7 +508,7 @@ public sealed class LeaveApprovalDecisionService
         var currentState = state.Approvers
             .OrderBy(x => x.SequenceOrder)
             .Select(x => x.Status)
-            .FirstOrDefault(status => status is LeaveRequestApproverStatuses.Pending or LeaveRequestApproverStatuses.InformationRequested)
+            .FirstOrDefault(status => status == LeaveRequestApproverStatuses.Pending)
             ?? state.Request.Status;
         return LeaveApprovalMapper.ToDecision(state.Request, paidMoved, remaining, currentState, warnings);
     }
@@ -345,7 +530,7 @@ public sealed class LeaveApprovalDecisionService
             return;
         await _notifications.SendTemplatedAsync(
             _currentUser.TenantId, state.Employee.UserId, template, placeholders,
-            "leave_request", state.Request.Id, ct);
+            ONEVO.Application.Features.Inbox.Contracts.InboxNotificationNavigation.RelatedEntityType("leave", "request"), state.Request.Id, ct);
     }
 
     private async Task NotifyApproverAsync(Guid approverEmployeeId, LeaveApprovalState state, CancellationToken ct)
@@ -362,7 +547,7 @@ public sealed class LeaveApprovalDecisionService
                 ["startDate"] = state.Request.StartAt.ToString("yyyy-MM-dd"),
                 ["endDate"] = state.Request.EndAt.ToString("yyyy-MM-dd")
             },
-            "leave_request", state.Request.Id, ct);
+            ONEVO.Application.Features.Inbox.Contracts.InboxNotificationNavigation.RelatedEntityType("leave", "request"), state.Request.Id, ct);
     }
 
     private static string LeaveEntitlementName(Employee employee) =>

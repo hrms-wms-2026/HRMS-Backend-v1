@@ -24,6 +24,7 @@ public class TrayPresenceEnforcementMiddlewareTests
     private readonly Guid _userId = Guid.NewGuid();
     private readonly Guid _tenantId = Guid.NewGuid();
     private readonly DateTimeOffset _now = DateTimeOffset.UtcNow;
+    private readonly Mock<ITrayActivationRepository> _repository = new();
 
     public TrayPresenceEnforcementMiddlewareTests()
     {
@@ -37,7 +38,8 @@ public class TrayPresenceEnforcementMiddlewareTests
         TrayDeviceRegistration? device,
         bool authenticated = true,
         bool allowWithoutActiveTray = false,
-        bool userRequiresTray = true)
+        bool userRequiresTray = true,
+        ITrayConnectionPresence? livePresence = null)
     {
         var tenantContext = new Mock<ITenantContext>();
         tenantContext.Setup(c => c.ContextMode).Returns(TenantContextMode.Tenant);
@@ -48,7 +50,7 @@ public class TrayPresenceEnforcementMiddlewareTests
         var clock = new Mock<IDateTimeProvider>();
         clock.Setup(c => c.UtcNow).Returns(_now);
 
-        var repository = new Mock<ITrayActivationRepository>();
+        var repository = _repository;
         repository
             .Setup(r => r.FindLatestActiveDeviceForUserAsync(_userId, _tenantId, It.IsAny<CancellationToken>()))
             .ReturnsAsync(device);
@@ -64,6 +66,7 @@ public class TrayPresenceEnforcementMiddlewareTests
         sp.Setup(s => s.GetService(typeof(IOptions<TrayPresenceOptions>))).Returns(options);
         sp.Setup(s => s.GetService(typeof(ITrayActivationRepository))).Returns(repository.Object);
         sp.Setup(s => s.GetService(typeof(IDateTimeProvider))).Returns(clock.Object);
+        sp.Setup(s => s.GetService(typeof(ITrayConnectionPresence))).Returns(livePresence!);
         sp.Setup(s => s.GetService(typeof(ILogger<TrayPresenceEnforcementMiddleware>)))
             .Returns(NullLogger<TrayPresenceEnforcementMiddleware>.Instance);
 
@@ -93,6 +96,33 @@ public class TrayPresenceEnforcementMiddlewareTests
         DeviceName = "Test Device",
         LastSeenAt = _now.AddSeconds(-10),
     };
+
+    [Fact]
+    public async Task EnforceMode_LiveHubConnection_PassesWithoutDeviceLookup()
+    {
+        var presence = new Mock<ITrayConnectionPresence>();
+        presence.Setup(p => p.IsConnected(_tenantId, _userId)).Returns(true);
+        var sut = Build(_next);
+        var ctx = MakeContext("Enforce", device: null, livePresence: presence.Object);
+
+        await sut.InvokeAsync(ctx, NullLogger<TrayPresenceEnforcementMiddleware>.Instance);
+
+        _nextCalled.Should().BeTrue();
+        _repository.Verify(r => r.FindLatestActiveDeviceForUserAsync(
+            It.IsAny<Guid>(), It.IsAny<Guid>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task EnforceMode_NotConnectedToHub_FallsBackToHeartbeat()
+    {
+        var presence = new Mock<ITrayConnectionPresence>();
+        var sut = Build(_next);
+        var ctx = MakeContext("Enforce", device: ConnectedDevice(), livePresence: presence.Object);
+
+        await sut.InvokeAsync(ctx, NullLogger<TrayPresenceEnforcementMiddleware>.Instance);
+
+        _nextCalled.Should().BeTrue();
+    }
 
     [Fact]
     public async Task ObserveMode_NoDevice_DoesNotBlock()

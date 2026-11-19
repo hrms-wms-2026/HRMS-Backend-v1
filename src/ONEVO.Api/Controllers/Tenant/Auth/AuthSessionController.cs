@@ -6,6 +6,7 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Configuration;
 using ONEVO.Api.Contracts.Auth;
 using ONEVO.Application.Common.ServiceInterfaces;
+using ONEVO.Application.Common.Tenancy;
 using ONEVO.Application.Features.Auth.Login.Queries.GetCurrentSession;
 using ONEVO.Application.Features.Auth.Login.ServiceInterfaces;
 
@@ -80,13 +81,13 @@ public class AuthSessionController : ControllerBase
     public async Task<IActionResult> Logout(CancellationToken ct)
     {
         await HttpContext.SignOutAsync("TenantScheme");
-        this.DeleteTenantCookie("onevo_csrf", httpOnly: false, _env);
-        this.DeleteTenantCookie("onevo_mfa", httpOnly: true, _env, path: "/api/v1/auth/mfa/verify");
-        this.DeleteTenantCookie("onevo_legal_pending", httpOnly: true, _env, path: "/api/v1/legal/acceptances/complete-login");
-        this.DeleteTenantCookie("onevo_legal_csrf", httpOnly: false, _env);
+        this.DeleteTenantCookie("crownus_csrf", httpOnly: false, _env);
+        this.DeleteTenantCookie("crownus_mfa", httpOnly: true, _env, path: "/api/v1/auth/mfa/verify");
+        this.DeleteTenantCookie("crownus_legal_pending", httpOnly: true, _env, path: "/api/v1/legal/acceptances/complete-login");
+        this.DeleteTenantCookie("crownus_legal_csrf", httpOnly: false, _env);
         var rootDomain = _configuration["Tenancy:RootDomain"];
         if (!string.IsNullOrEmpty(rootDomain))
-            this.ClearLastTenantHintCookie(rootDomain, _env);
+            this.ClearLastTenantHintCookie(rootDomain, _env, TenancyModeReader.Read(_configuration));
         return NoContent();
     }
 }

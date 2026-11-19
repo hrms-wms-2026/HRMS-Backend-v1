@@ -95,23 +95,6 @@ public sealed class EfCalendarEventRepository : ICalendarEventRepository
             select new ActiveEventTaskMembership(calendarEvent.Id, link.TaskId, task.ObjectiveId))
             .ToListAsync(ct);
 
-    public async Task<IReadOnlyList<ActiveCalendarEventMembership>> ListActiveMembershipsForObjectivesAsync(
-        Guid tenantId, IReadOnlyCollection<Guid> objectiveIds, CancellationToken ct = default)
-    {
-        if (objectiveIds.Count == 0)
-            return Array.Empty<ActiveCalendarEventMembership>();
-
-        return await (
-            from membership in _db.CalendarEventObjectives.AsNoTracking()
-            join calendarEvent in _db.CalendarEvents.AsNoTracking()
-                on membership.CalendarEventId equals calendarEvent.Id
-            where objectiveIds.Contains(membership.ObjectiveId)
-                && calendarEvent.TenantId == tenantId
-                && calendarEvent.Status == CalendarEventStatuses.Active
-            select new ActiveCalendarEventMembership(calendarEvent.Id, membership.ObjectiveId, calendarEvent.Color))
-            .ToListAsync(ct);
-    }
-
     public void RemoveMemberships(IReadOnlyCollection<CalendarEventObjective> memberships)
     {
         if (memberships.Count > 0)

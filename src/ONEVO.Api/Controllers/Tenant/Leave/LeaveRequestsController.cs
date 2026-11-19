@@ -5,6 +5,7 @@ using ONEVO.Api.Contracts.Leave.Requests;
 using ONEVO.Api.Filters;
 using ONEVO.Application.Features.Leave.Cancellation.Commands;
 using ONEVO.Application.Features.Leave.Request.Commands.SubmitLeaveRequest;
+using ONEVO.Application.Features.Leave.Request.Commands.UploadLeaveDocument;
 using ONEVO.Application.Features.Leave.Request.Queries.ListMyLeaveRequests;
 using ONEVO.Application.Features.Leave.Request.Queries.PreviewSubmitLeaveRequest;
 
@@ -31,6 +32,18 @@ public sealed class LeaveRequestsController : ControllerBase
             request.Reason,
             request.FileRecordIds ?? [],
             false), ct);
+        return result.IsSuccess ? Ok(result.Value) : Problem(result.Error, statusCode: result.StatusCode ?? 400);
+    }
+
+    [HttpPost("documents")]
+    [RequestSizeLimit(25_000_000)]
+    public async Task<IActionResult> UploadDocument(IFormFile file, CancellationToken ct)
+    {
+        if (file is null || file.Length == 0)
+            return Problem("A file is required.", statusCode: 400);
+
+        await using var stream = file.OpenReadStream();
+        var result = await _mediator.Send(new UploadLeaveDocumentCommand(file.FileName, file.ContentType, stream), ct);
         return result.IsSuccess ? Ok(result.Value) : Problem(result.Error, statusCode: result.StatusCode ?? 400);
     }
 

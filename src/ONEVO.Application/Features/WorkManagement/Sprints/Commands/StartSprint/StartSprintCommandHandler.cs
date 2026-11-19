@@ -1,77 +1,69 @@
 using MediatR;
 using ONEVO.Application.Common.Models;
-using ONEVO.Application.Common.RepositoryInterfaces;
 using ONEVO.Application.Common.ServiceInterfaces;
 using ONEVO.Application.Features.WorkManagement.Common.Services;
+using ONEVO.Application.Features.WorkManagement.ProjectMembers.RepositoryInterfaces;
+using ONEVO.Application.Features.WorkManagement.Sprints.DTOs;
 using ONEVO.Application.Features.WorkManagement.Sprints.DTOs.Responses;
 using ONEVO.Application.Features.WorkManagement.Sprints.RepositoryInterfaces;
 using ONEVO.Application.Features.WorkManagement.Sprints.Services;
+using ONEVO.Domain.Features.WorkManagement.Approvals.Entities;
 using ONEVO.Domain.Features.WorkManagement.Sprints.Entities;
 
 namespace ONEVO.Application.Features.WorkManagement.Sprints.Commands.StartSprint;
 
-/// <summary>Draft -> Active. The one point where a sprint's dates are ever set - there is no
-/// date-driven auto-advance anymore (see SprintLifecycleJob).</summary>
-public class StartSprintCommandHandler : IRequestHandler<StartSprintCommand, Result<SprintResponse>>
+/// <summary>Starts a Draft sprint through the approval engine: at or above its creator position → now; other project members → sprint.start request.</summary>
+public class StartSprintCommandHandler : IRequestHandler<StartSprintCommand, Result<SprintWriteOutcome>>
 {
     private readonly ICurrentUser _currentUser;
     private readonly ICallerIdentityResolver _identity;
     private readonly ISprintRepository _sprints;
-    private readonly ISprintAccessService _access;
-    private readonly ISprintActivityLogRepository _logs;
-    private readonly IUnitOfWork _unitOfWork;
+    private readonly IProjectMemberRepository _members;
+    private readonly ISprintWriteService _writes;
+    private readonly ISprintActionSubmitter _submitter;
 
     public StartSprintCommandHandler(
-        ICurrentUser currentUser, ICallerIdentityResolver identity,
-        ISprintRepository sprints, ISprintAccessService access, ISprintActivityLogRepository logs, IUnitOfWork unitOfWork)
+        ICurrentUser currentUser, ICallerIdentityResolver identity, ISprintRepository sprints, IProjectMemberRepository members,
+        ISprintWriteService writes, ISprintActionSubmitter submitter)
     {
         _currentUser = currentUser;
         _identity = identity;
         _sprints = sprints;
-        _access = access;
-        _logs = logs;
-        _unitOfWork = unitOfWork;
+        _members = members;
+        _writes = writes;
+        _submitter = submitter;
     }
 
-    public async Task<Result<SprintResponse>> Handle(StartSprintCommand request, CancellationToken ct)
+    public async Task<Result<SprintWriteOutcome>> Handle(StartSprintCommand request, CancellationToken ct)
     {
         if (!_currentUser.IsAuthenticated)
-            return Result<SprintResponse>.Forbidden("Authentication required.");
-
-        if (request.EndDate < request.StartDate)
-            return Result<SprintResponse>.Failure("End date must not be before start date.");
+            return Result<SprintWriteOutcome>.Forbidden("Authentication required.");
 
         var tenantId = _currentUser.TenantId;
         var callerEmployeeId = await _identity.ResolveCallerEmployeeIdAsync(tenantId, _currentUser.UserId, ct);
         if (callerEmployeeId is null)
-            return Result<SprintResponse>.Forbidden("No employee record for the current user.");
+            return Result<SprintWriteOutcome>.Forbidden("No employee record for the current user.");
 
         var sprint = await _sprints.GetTrackedByIdForTenantAsync(tenantId, request.SprintId, ct);
         if (sprint is null)
-            return Result<SprintResponse>.NotFound("Sprint not found.");
+            return Result<SprintWriteOutcome>.NotFound("Sprint not found.");
 
-        if (!await _access.CanManageAsync(tenantId, sprint, _currentUser.UserId, callerEmployeeId.Value, ct))
-            return Result<SprintResponse>.Forbidden("Only the sprint's creator or an owner of one of its tasks' modules can start this sprint.");
+        if (!await _members.HasActiveMembershipAsync(tenantId, sprint.ProjectId, callerEmployeeId.Value, ct))
+            return Result<SprintWriteOutcome>.Forbidden("Only project members can change sprints.");
 
-        if (sprint.Status != SprintStatuses.Draft)
-            return Result<SprintResponse>.Conflict("Only a Draft sprint can be started.");
+        var input = new SprintStartInput(request.StartDate, request.EndDate, request.Goal?.Trim());
+        var validation = await _writes.ValidateStartAsync(tenantId, sprint, input, ct);
+        if (!validation.IsSuccess)
+            return Result<SprintWriteOutcome>.Failure(validation.Error!, validation.StatusCode ?? 400);
 
-        return await _unitOfWork.ExecuteInTransactionAsync(async innerCt =>
-        {
-            sprint.StartDate = request.StartDate;
-            sprint.EndDate = request.EndDate;
-            if (request.Goal is not null) sprint.Goal = request.Goal.Trim();
-            sprint.Status = SprintStatuses.Active;
-            sprint.UpdatedAt = DateTimeOffset.UtcNow;
+        var outcome = await _submitter.SubmitAsync(
+            new SprintActionRequest(tenantId, callerEmployeeId.Value, sprint.ProjectId, sprint, WorkActionTypes.SprintStart, sprint.Name, input),
+            async innerCt =>
+            {
+                var applied = await _writes.ApplyStartAsync(tenantId, callerEmployeeId.Value, sprint, input, innerCt);
+                return applied.IsSuccess ? Result<Sprint?>.Success(sprint) : Result<Sprint?>.Failure(applied.Error!, applied.StatusCode ?? 400);
+            }, ct);
 
-            await _logs.AddAsync(SprintActivityLogFactory.Create(
-                tenantId, sprint.Id, callerEmployeeId.Value, SprintActivityActions.Started,
-                SprintStatuses.Draft, SprintStatuses.Active,
-                new { startDate = request.StartDate, endDate = request.EndDate }), innerCt);
-
-            await _unitOfWork.SaveChangesAsync(innerCt);
-
-            return Result<SprintResponse>.Success(SprintResponse.From(sprint, canManage: true));
-        }, ct);
+        return SprintOutcomes.ToWriteOutcome(outcome);
     }
 }

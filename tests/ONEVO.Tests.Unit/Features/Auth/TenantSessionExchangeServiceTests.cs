@@ -33,6 +33,17 @@ public sealed class TenantSessionExchangeServiceTests
             Tokens.Setup(t => t.HashToken(It.IsAny<string>())).Returns((string raw) => $"hash({raw})");
         }
 
+        public Fixture WithSingleHost(string rootDomain, string appBaseUrl)
+        {
+            Configuration = new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?>
+            {
+                ["Tenancy:Mode"] = "SingleHost",
+                ["Tenancy:RootDomain"] = rootDomain,
+                ["Urls:AppBaseUrl"] = appBaseUrl
+            }).Build();
+            return this;
+        }
+
         public Fixture WithConfiguration(string? rootDomain, string? appBaseUrl)
         {
             Configuration = MakeConfiguration(rootDomain, appBaseUrl);
@@ -89,6 +100,24 @@ public sealed class TenantSessionExchangeServiceTests
         captured.IpAddress.Should().Be("1.2.3.4");
         captured.UserAgent.Should().Be("ua");
         captured.ConsumedAt.Should().BeNull();
+    }
+
+    [Fact]
+    public async Task BuildContinueUrl_SingleHost_UsesRootHostWithTenantQuery()
+    {
+        var fixture = new Fixture().WithSingleHost("app.example.net", "https://app.example.net");
+        var tenant = ActiveTenant(Guid.NewGuid(), "acme");
+        var user = ActiveUser(tenant.Id, Guid.NewGuid());
+        fixture.Tokens.Setup(t => t.GenerateOpaqueToken()).Returns("raw code/+");
+
+        var result = await fixture.Build().CreateAsync(user, tenant, "password", null, null, default);
+
+        var uri = new Uri(result.Value!.TenantSessionExchange!.ContinueUrl);
+        uri.Host.Should().Be("app.example.net");
+        uri.AbsolutePath.Should().Be("/auth/continue");
+        var query = Microsoft.AspNetCore.WebUtilities.QueryHelpers.ParseQuery(uri.Query);
+        query["code"].ToString().Should().Be("raw code/+");
+        query["tenant"].ToString().Should().Be("acme");
     }
 
     [Fact]

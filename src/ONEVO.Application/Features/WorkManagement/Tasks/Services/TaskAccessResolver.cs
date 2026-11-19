@@ -1,9 +1,12 @@
 using ONEVO.Application.Common.Models;
 using ONEVO.Application.Features.Auth.Permission.ServiceInterfaces;
 using ONEVO.Application.Features.WorkManagement.Common.Services;
+using ONEVO.Application.Features.WorkManagement.Hierarchy;
 using ONEVO.Application.Features.WorkManagement.ProjectMembers.RepositoryInterfaces;
 using ONEVO.Application.Features.WorkManagement.Projects.RepositoryInterfaces;
 using ONEVO.Application.Features.WorkManagement.Tasks.RepositoryInterfaces;
+using ONEVO.Domain.Features.WorkManagement.Projects.Entities;
+using ONEVO.Domain.Features.WorkManagement.Tasks.Entities;
 
 namespace ONEVO.Application.Features.WorkManagement.Tasks.Services;
 
@@ -13,16 +16,19 @@ public sealed class TaskAccessResolver : ITaskAccessResolver
     private readonly IWorkTaskRepository _tasks;
     private readonly IProjectRepository _projects;
     private readonly IProjectMemberRepository _members;
+    private readonly IWorkHierarchyService _hierarchy;
     private readonly IPermissionResolver _permissionResolver;
 
     public TaskAccessResolver(
         ICallerIdentityResolver identity, IWorkTaskRepository tasks, IProjectRepository projects,
-        IProjectMemberRepository members, IPermissionResolver permissionResolver)
+        IProjectMemberRepository members, IPermissionResolver permissionResolver,
+        IWorkHierarchyService hierarchy)
     {
         _identity = identity;
         _tasks = tasks;
         _projects = projects;
         _members = members;
+        _hierarchy = hierarchy;
         _permissionResolver = permissionResolver;
     }
 
@@ -45,16 +51,121 @@ public sealed class TaskAccessResolver : ITaskAccessResolver
             return Result<TaskAccessContext>.NotFound("Task not found.");
 
         var permissions = await _permissionResolver.ResolveAsync(userId, tenantId, null, ct);
-        var hasReadPermission = permissions.Contains("projects:read") || permissions.Contains("*");
+        var hasReadPermission = permissions.Contains("*");
+
+        if (task.VisibilityScope == WorkTaskVisibilityScopes.Assignees)
+        {
+            if (hasReadPermission || task.CreatedById == userId || project.LeadId == callerEmployeeId.Value
+                || await _tasks.IsAssignedToEmployeeAsync(task.Id, callerEmployeeId.Value, ct))
+                return Result<TaskAccessContext>.Success(new TaskAccessContext(task, callerEmployeeId.Value));
+
+            return Result<TaskAccessContext>.NotFound("Task not found.");
+        }
+
         if (!hasReadPermission)
         {
             var accessibleObjectiveIds =
-                (await _members.GetActiveObjectiveIdsForEmployeeInProjectAsync(tenantId, project.Id, callerEmployeeId.Value, ct))
-                .ToHashSet();
+                (await _hierarchy.LoadTreeAsync(tenantId, project.Id, ct)).AtOrBelow(
+                    await _members.GetActiveObjectiveIdsForEmployeeInProjectAsync(tenantId, project.Id, callerEmployeeId.Value, ct));
             if (!accessibleObjectiveIds.Contains(task.ObjectiveId))
                 return Result<TaskAccessContext>.NotFound("Task not found.");
         }
 
         return Result<TaskAccessContext>.Success(new TaskAccessContext(task, callerEmployeeId.Value));
+    }
+
+    public async Task<IReadOnlyList<WorkTask>> ResolveViewableTasksAsync(
+        Guid tenantId, Guid userId, IReadOnlyList<WorkTask> tasks, CancellationToken ct = default)
+    {
+        if (tasks.Count == 0)
+            return tasks;
+        if (tenantId == Guid.Empty)
+            return Array.Empty<WorkTask>();
+
+        var callerEmployeeId = await _identity.ResolveCallerEmployeeIdAsync(tenantId, userId, ct);
+        if (callerEmployeeId is null)
+            return Array.Empty<WorkTask>();
+
+        var permissions = await _permissionResolver.ResolveAsync(userId, tenantId, null, ct);
+        var hasReadPermission = permissions.Contains("*");
+
+        // One project lookup and one membership lookup per project, not per task.
+        var projects = new Dictionary<Guid, Project>();
+        var accessibleObjectiveIds = new Dictionary<Guid, IReadOnlySet<Guid>>();
+        foreach (var projectId in tasks.Select(t => t.ProjectId).Distinct())
+        {
+            var project = await _projects.GetByIdForTenantAsync(tenantId, projectId, ct);
+            if (project is null || !project.IsActive)
+                continue;
+            projects[projectId] = project;
+
+            if (!hasReadPermission)
+            {
+                var memberObjectiveIds = await _members.GetActiveObjectiveIdsForEmployeeInProjectAsync(
+                    tenantId, projectId, callerEmployeeId.Value, ct);
+                accessibleObjectiveIds[projectId] =
+                    (await _hierarchy.LoadTreeAsync(tenantId, projectId, ct)).AtOrBelow(memberObjectiveIds);
+            }
+        }
+
+        var privateTasks = tasks.Where(t => t.VisibilityScope == WorkTaskVisibilityScopes.Assignees).ToList();
+        var assignments = privateTasks.Count == 0
+            ? new Dictionary<Guid, IReadOnlyList<Guid>>()
+            : await _tasks.GetAssignedEmployeeIdsByTaskIdsAsync(privateTasks.Select(t => t.Id).ToList(), ct);
+
+        var visible = new List<WorkTask>();
+        foreach (var task in tasks)
+        {
+            if (!projects.TryGetValue(task.ProjectId, out var project))
+                continue;
+
+            if (task.VisibilityScope == WorkTaskVisibilityScopes.Assignees)
+            {
+                if (hasReadPermission || task.CreatedById == userId || project.LeadId == callerEmployeeId.Value
+                    || assignments.GetValueOrDefault(task.Id, Array.Empty<Guid>()).Contains(callerEmployeeId.Value))
+                    visible.Add(task);
+                continue;
+            }
+
+            if (hasReadPermission
+                || accessibleObjectiveIds.TryGetValue(task.ProjectId, out var allowed) && allowed.Contains(task.ObjectiveId))
+                visible.Add(task);
+        }
+
+        return visible;
+    }
+
+    public async Task<IReadOnlyList<WorkTask>> FilterViewableTasksAsync(
+        Guid tenantId, Guid userId, Guid callerEmployeeId,
+        IReadOnlyList<WorkTask> tasks, CancellationToken ct = default)
+    {
+        if (tasks.Count == 0)
+            return tasks;
+
+        var privateTasks = tasks
+            .Where(task => task.VisibilityScope == WorkTaskVisibilityScopes.Assignees)
+            .ToList();
+        if (privateTasks.Count == 0)
+            return tasks;
+
+        var permissions = await _permissionResolver.ResolveAsync(userId, tenantId, null, ct);
+        if (permissions.Contains("*"))
+            return tasks;
+
+        var assignments = await _tasks.GetAssignedEmployeeIdsByTaskIdsAsync(
+            privateTasks.Select(task => task.Id).ToList(), ct);
+        var projectLeads = new Dictionary<Guid, Guid>();
+        foreach (var projectId in privateTasks.Select(task => task.ProjectId).Distinct())
+        {
+            var project = await _projects.GetByIdForTenantAsync(tenantId, projectId, ct);
+            if (project is not null)
+                projectLeads[projectId] = project.LeadId;
+        }
+
+        return tasks.Where(task =>
+            task.VisibilityScope != WorkTaskVisibilityScopes.Assignees
+            || task.CreatedById == userId
+            || projectLeads.GetValueOrDefault(task.ProjectId) == callerEmployeeId
+            || assignments.GetValueOrDefault(task.Id, Array.Empty<Guid>()).Contains(callerEmployeeId)).ToList();
     }
 }

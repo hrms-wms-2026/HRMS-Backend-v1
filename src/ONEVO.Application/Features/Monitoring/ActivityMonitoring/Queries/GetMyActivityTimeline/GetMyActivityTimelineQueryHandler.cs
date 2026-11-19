@@ -5,6 +5,7 @@ using ONEVO.Application.Features.CoreHr.Employee.RepositoryInterfaces;
 using ONEVO.Application.Features.Monitoring.ActivityMonitoring.DTOs.Responses;
 using ONEVO.Application.Features.Monitoring.ActivityMonitoring.RepositoryInterfaces;
 using ONEVO.Application.Features.Monitoring.ActivityMonitoring.Services;
+using ONEVO.Application.Features.Monitoring.Meetings.RepositoryInterfaces;
 
 namespace ONEVO.Application.Features.Monitoring.ActivityMonitoring.Queries.GetMyActivityTimeline;
 
@@ -12,7 +13,8 @@ public sealed class GetMyActivityTimelineQueryHandler(
     ICurrentUser currentUser,
     IDateTimeProvider dateTime,
     IEmployeeRepository employees,
-    IActivitySnapshotRepository snapshots)
+    IActivitySnapshotRepository snapshots,
+    IMeetingSignalRepository meetings)
     : IRequestHandler<GetMyActivityTimelineQuery, Result<ActivityTimelineDto>>
 {
     public async Task<Result<ActivityTimelineDto>> Handle(
@@ -32,8 +34,10 @@ public sealed class GetMyActivityTimelineQueryHandler(
 
         var snapshotsForDay = await snapshots.GetAllByEmployeeDateAsync(
             currentUser.TenantId, employee.Id, date, ct);
+        var meetingSignals = await meetings.GetAllByEmployeeDateAsync(
+            currentUser.TenantId, employee.Id, date, ct);
 
-        var segments = ActivityTimelineBuilder.BuildSegments(snapshotsForDay);
+        var segments = ActivityTimelineBuilder.BuildSegments(snapshotsForDay, meetingSignals);
 
         return Result<ActivityTimelineDto>.Success(new ActivityTimelineDto(date, segments));
     }

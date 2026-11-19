@@ -1,4 +1,5 @@
 using FluentValidation;
+using ONEVO.Application.Common.Helpers;
 
 namespace ONEVO.Application.Features.WorkManagement.Projects.Commands.EditProject;
 
@@ -19,6 +20,9 @@ public class EditProjectCommandValidator : AbstractValidator<EditProjectCommand>
         RuleFor(x => x.Color)
             .MaximumLength(20).WithMessage("Color must be 20 characters or fewer.")
             .When(x => x.Color is not null);
+
+        RuleFor(x => x.Icon)
+            .Must(EntityIconRules.IsValid).WithMessage(EntityIconRules.InvalidMessage);
 
         RuleFor(x => x.ActualHours)
             .GreaterThanOrEqualTo(0).WithMessage("Actual hours must not be negative.")

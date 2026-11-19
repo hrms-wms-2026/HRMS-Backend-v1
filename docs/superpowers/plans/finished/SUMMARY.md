@@ -109,3 +109,89 @@ Each entry's **Related:** line is a wiki-link (`[[bare-filename]]`, no extension
 ## Open items
 
 - `DEV_SMOKE_ORG_MODULE_PERMISSION_SEED_FIX_REPORT.md` and `LEGAL_ENTITY_PERMISSION_AND_ACCESS_FILTER_REPORT.md` were untracked files sitting mid-merge (uncommitted) in the repo at the time of this move — moving them was a plain filesystem relocation only, no git operations were run against the in-progress merge.
+
+## Added 2026-10-28 (migrated from loose `plans/` files)
+
+- `2026-08-06/2026-08-06-invite-platform-manager-backend.md` — Invite Platform Manager (Backend) Implementation Plan
+- `2026-08-07/2026-08-07-legal-entity-logo-upload.md` — Legal Entity Logo Upload Implementation Plan
+- `2026-08-07/2026-08-07-platform-user-detail-response-shape-fix.md` — PlatformUserDetailResponse Shape Fix Implementation Plan
+- `2026-08-08/2026-08-08-admin-subscription-plans-list.md` — Admin Subscription Plans List Endpoint Implementation Plan
+- `2026-08-09/2026-08-09-admin-client-logs-endpoint.md` — Admin Client Logs Endpoint Implementation Plan
+- `2026-08-09/2026-08-09-admin-subscription-plan-detail-endpoint.md` — Admin Subscription Plan Detail Endpoint Implementation Plan
+- `2026-08-10/2026-08-10-inactivity-screenshot-daily-report.md` — Inactivity Screenshot and Daily Report Implementation Plan
+- `2026-08-13/2026-08-13-checklist-template-backend-foundation.md` — Checklist Template Backend Foundation Implementation Plan
+- `2026-08-17/2026-08-17-employee-offboarding-execution-backend.md` — Employee Offboarding Execution — Backend Implementation Plan
+- `2026-08-17/2026-08-17-meeting-detection-end-to-end.md` — Meeting Detection End-to-End Implementation Plan
+- `2026-08-17/2026-08-17-monitoring-feature-toggles-admin-crud.md` — MonitoringFeatureToggles Admin CRUD Implementation Plan
+- `2026-08-18/2026-08-18-bulk-employee-onboarding-backend.md` — Bulk Employee Onboarding (Backend) Implementation Plan
+- `2026-08-19/2026-08-19-bulk-onboarding-template-xlsx.md` — Bulk Onboarding Template & XLSX Upload Implementation Plan
+- `2026-08-19/2026-08-19-coverage-responsible-person.md` — Management Coverage Responsible Person Implementation Plan
+- `2026-08-19/2026-08-19-reporting-manager-resolution.md` — Reporting Manager Resolution Implementation Plan
+- `2026-08-25/2026-08-25-attendance-list-pagination.md` — Attendance List Pagination Implementation Plan
+- `2026-08-25/2026-08-25-work-area-hardening-part1-final.md` — Work Area Change Request Backend Part 1 — Final Hardening Implementation Plan
+- `2026-08-31/2026-08-31-calendar-invites-rsvp-conflicts-backend.md` — Calendar Invites, RSVP, and Conflict Detection — Backend Implementation Plan
+- `2026-08-31/2026-08-31-calendar-recurrence-engine.md` — Calendar Recurrence Engine Implementation Plan
+- `2026-09-01/2026-09-01-calendar-timezone-backend.md` — Calendar Timezone Correctness — Backend Implementation Plan
+- `2026-09-04/2026-09-04-calendar-small-fixes.md` — Calendar Small Fixes Implementation Plan
+- `2026-09-04/2026-09-04-face-match-verification.md` — Face Match Verification Implementation Plan
+- `2026-09-04/2026-09-04-landing-page-workspace-shortcut.md` — Landing Page "Go to Workspace" Shortcut Implementation Plan
+- `2026-09-08/2026-09-08-calendar-external-sync.md` — Calendar External Sync (Google/Outlook) Implementation Plan
+- `2026-09-14/2026-09-14-task-attachments-rich-description.md` — Task Attachments, Text Highlighting & Inline Description Images Implementation Plan
+- `2026-09-18/2026-09-18-sprint-lifecycle-redesign.md` — Sprint Lifecycle Redesign Implementation Plan
+- `2026-09-18/2026-09-18-task-status-groups.md` — ClickUp-style Task Status Groups Implementation Plan
+- `2026-09-19/2026-09-19-tray-installer-release-management.md` — Tray Installer Release Management Implementation Plan
+- `2026-09-22/2026-09-22-task-comments.md` — Task Comments Implementation Plan
+- `2026-09-23/2026-09-23-teams-meeting-integration.md` — Microsoft Teams Meeting Integration (Phase 1) Implementation Plan
+- `2026-09-23/2026-09-23-wm-independent-sprints.md` — Independent Sprints Implementation Plan
+- `2026-09-24/2026-09-24-zoom-meeting-integration.md` — Zoom Meeting Integration (Phase 2) Implementation Plan
+- `2026-09-25/2026-09-25-work-pattern-productivity-model.md` — Work Pattern / Productivity Metric Model Implementation Plan
+- `2026-09-30/2026-09-30-employee-detail-work-graph-backend.md` — Employee Work Graph — Backend Implementation Plan (Plan 1, backend half)
+- `2026-09-30/2026-09-30-employee-overview-activity-discipline-backend.md` — Employee Overview — Activity & Discipline Comparison (Plan 3B, backend)
+- `2026-09-30/2026-09-30-employee-overview-approvals-backend.md` — Employee Overview — Approval Activity (Plan 3C, backend)
+- `2026-09-30/2026-09-30-employee-overview-attendance-timeoff-backend.md` — Employee Overview — Attendance, Discipline & Time-Off (Plan 2, backend half)
+- `2026-09-30/2026-09-30-employee-overview-checklists-history-upcoming-backend.md` — Employee Overview — Checklists, Employment History & Upcoming Items (Plan 4A, backend)
+- `2026-09-30/2026-09-30-employee-overview-recent-activity-backend.md` — Employee Overview — Recent Activity (Plan 4B, backend)
+- `2026-09-30/2026-09-30-employee-overview-work-delivery-backend.md` — Employee Overview — Work & Delivery (Plan 3A, backend)
+- `2026-10-01/2026-10-01-needs-attention-drilldown-backend.md` — Needs Attention Drill-down — Backend Implementation Plan
+- `2026-10-20/2026-10-20-customizable-dashboard.md` — Customizable Grid Dashboard (My Work + My Team) Implementation Plan
+
+## Moved out of `finished/` root on 2026-10-28
+
+FILE_CREATION_RULES rule 1 allows nothing loose in `finished/`. Point-in-time reports went to `docs/reports/<area>/`, the convention in `docs/README.md`; dated plans went to their date folder. Names mentioned above without a path now live here:
+
+| File | New location |
+|---|---|
+| `2026-10-05-wm-approval-revert.md` | `docs/superpowers/plans/finished/2026-10-05/2026-10-05-wm-approval-revert.md` |
+| `authentication.md` | `docs/superpowers/plans/finished/2026-08-07/authentication.md` |
+| `CHECKLIST_TEMPLATE_BACKEND_FOUNDATION_REPORT.md` | `docs/reports/onboarding/CHECKLIST_TEMPLATE_BACKEND_FOUNDATION_REPORT.md` |
+| `CHECKLIST_TEMPLATE_CI_COMPILE_FIX_REPORT.md` | `docs/reports/onboarding/CHECKLIST_TEMPLATE_CI_COMPILE_FIX_REPORT.md` |
+| `CHECKLIST_TEMPLATE_CI_INTEGRATION_FIX_REPORT.md` | `docs/reports/onboarding/CHECKLIST_TEMPLATE_CI_INTEGRATION_FIX_REPORT.md` |
+| `CI_FOCUSED_INTEGRATION_TEST_ROUTING_REPORT.md` | `docs/reports/build-and-ci/CI_FOCUSED_INTEGRATION_TEST_ROUTING_REPORT.md` |
+| `EMPLOYEE_MANAGEMENT_IMPLEMENTATION_REPORT.md` | `docs/reports/employee/EMPLOYEE_MANAGEMENT_IMPLEMENTATION_REPORT.md` |
+| `EMPLOYEE_ONBOARDING_ACCESS_GRANT_LIST_ENDPOINT_REPORT.md` | `docs/reports/onboarding/EMPLOYEE_ONBOARDING_ACCESS_GRANT_LIST_ENDPOINT_REPORT.md` |
+| `EMPLOYEE_ONBOARDING_APPROVE_SEND_INVITE_REPORT.md` | `docs/reports/onboarding/EMPLOYEE_ONBOARDING_APPROVE_SEND_INVITE_REPORT.md` |
+| `EMPLOYEE_ONBOARDING_BACKEND_CORRECTION_REPORT.md` | `docs/reports/onboarding/EMPLOYEE_ONBOARDING_BACKEND_CORRECTION_REPORT.md` |
+| `EMPLOYEE_ONBOARDING_DEV_SEAT_POLICY_FIX_REPORT.md` | `docs/reports/onboarding/EMPLOYEE_ONBOARDING_DEV_SEAT_POLICY_FIX_REPORT.md` |
+| `EMPLOYEE_ONBOARDING_FINALIZATION_AND_POSITION_ACCESS_REPORT.md` | `docs/reports/onboarding/EMPLOYEE_ONBOARDING_FINALIZATION_AND_POSITION_ACCESS_REPORT.md` |
+| `EMPLOYEE_ONBOARDING_FINALIZATION_IMPLEMENTATION_REPORT.md` | `docs/reports/onboarding/EMPLOYEE_ONBOARDING_FINALIZATION_IMPLEMENTATION_REPORT.md` |
+| `EMPLOYEE_ONBOARDING_FOUNDATION_BLOCKERS_AND_CONTRACTS_REPORT.md` | `docs/reports/onboarding/EMPLOYEE_ONBOARDING_FOUNDATION_BLOCKERS_AND_CONTRACTS_REPORT.md` |
+| `EMPLOYEE_ONBOARDING_INVITATION_TOKEN_CONTRACT_REPORT.md` | `docs/reports/onboarding/EMPLOYEE_ONBOARDING_INVITATION_TOKEN_CONTRACT_REPORT.md` |
+| `EMPLOYEE_ONBOARDING_PHASE1_PERSISTENCE_CONTRACTS_REPORT.md` | `docs/reports/onboarding/EMPLOYEE_ONBOARDING_PHASE1_PERSISTENCE_CONTRACTS_REPORT.md` |
+| `EMPLOYEE_ONBOARDING_WORK_MODE_LOOKUP_REPORT.md` | `docs/reports/onboarding/EMPLOYEE_ONBOARDING_WORK_MODE_LOOKUP_REPORT.md` |
+| `LEGAL_ENTITY_CREATE_ACCESS_REPORT.md` | `docs/reports/legal-entity/LEGAL_ENTITY_CREATE_ACCESS_REPORT.md` |
+| `LEGAL_ENTITY_LOGO_R2_502_DIAGNOSTIC_REPORT.md` | `docs/reports/legal-entity/LEGAL_ENTITY_LOGO_R2_502_DIAGNOSTIC_REPORT.md` |
+| `LEGAL_ENTITY_WORK_TIME_BACKEND_REPORT.md` | `docs/reports/legal-entity/LEGAL_ENTITY_WORK_TIME_BACKEND_REPORT.md` |
+| `NOTIFICATION_PERMISSION_DEDUPLICATION_REPORT.md` | `docs/reports/notifications/NOTIFICATION_PERMISSION_DEDUPLICATION_REPORT.md` |
+| `POSITION_CAPACITY_CODE_BACKEND_CORRECTION_REPORT.md` | `docs/reports/org-structure/POSITION_CAPACITY_CODE_BACKEND_CORRECTION_REPORT.md` |
+| `POSITION_MANAGEMENT_COVERAGE_LEVEL_EXCLUSIVITY_REPORT.md` | `docs/reports/org-structure/POSITION_MANAGEMENT_COVERAGE_LEVEL_EXCLUSIVITY_REPORT.md` |
+| `POSITION_MANAGEMENT_COVERAGE_UPDATE_LEVEL_REPORT.md` | `docs/reports/org-structure/POSITION_MANAGEMENT_COVERAGE_UPDATE_LEVEL_REPORT.md` |
+| `POSITION_OCCUPANT_PREVIEW_BACKEND_REPORT.md` | `docs/reports/org-structure/POSITION_OCCUPANT_PREVIEW_BACKEND_REPORT.md` |
+| `POSITION_TEMPLATE_PACKS_ARCHITECTURE_TEST_FIX_REPORT.md` | `docs/reports/org-structure/POSITION_TEMPLATE_PACKS_ARCHITECTURE_TEST_FIX_REPORT.md` |
+| `POSITION_TEMPLATE_PACKS_BACKEND_REPORT.md` | `docs/reports/org-structure/POSITION_TEMPLATE_PACKS_BACKEND_REPORT.md` |
+| `POSTMAN_COLLECTION_REPAIR_REPORT.md` | `docs/reports/build-and-ci/POSTMAN_COLLECTION_REPAIR_REPORT.md` |
+| `STORAGE_QUOTA_LOCAL_LOGO_UPLOAD_FIX_REPORT.md` | `docs/reports/legal-entity/STORAGE_QUOTA_LOCAL_LOGO_UPLOAD_FIX_REPORT.md` |
+| `WORK_MODE_LOOKUP_GRANT_FIX_REPORT.md` | `docs/reports/onboarding/WORK_MODE_LOOKUP_GRANT_FIX_REPORT.md` |
+
+## 2026-10-28/
+
+- `2026-09-02-objective-asset-attachments-backend.md` — Objective Asset Attachments (Backend). built 2026-10-28 (upload, delete, download endpoints + assets on Get Objective).

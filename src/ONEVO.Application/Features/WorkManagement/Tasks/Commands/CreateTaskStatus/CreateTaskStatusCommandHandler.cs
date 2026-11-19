@@ -4,11 +4,11 @@ using ONEVO.Application.Common.RepositoryInterfaces;
 using ONEVO.Application.Common.ServiceInterfaces;
 using ONEVO.Application.Features.WorkManagement.Common.Services;
 using ONEVO.Application.Features.WorkManagement.Objectives.RepositoryInterfaces;
-using ONEVO.Application.Features.WorkManagement.Objectives.Services;
 using ONEVO.Application.Features.WorkManagement.Projects.RepositoryInterfaces;
 using ONEVO.Application.Features.WorkManagement.Tasks.DTOs.Responses;
 using ONEVO.Application.Features.WorkManagement.Tasks.RepositoryInterfaces;
 using ONEVO.Domain.Features.WorkManagement.Tasks.Entities;
+using ONEVO.Domain.Features.WorkManagement.Projects.Entities;
 using TaskStatusEntity = ONEVO.Domain.Features.WorkManagement.Tasks.Entities.TaskStatus;
 
 namespace ONEVO.Application.Features.WorkManagement.Tasks.Commands.CreateTaskStatus;
@@ -21,12 +21,10 @@ public class CreateTaskStatusCommandHandler : IRequestHandler<CreateTaskStatusCo
     private readonly IProjectRepository _projects;
     private readonly ITaskStatusRepository _statuses;
     private readonly IUnitOfWork _unitOfWork;
-    private readonly IMilestoneMembershipCoordinator _membership;
 
     public CreateTaskStatusCommandHandler(
         ICurrentUser currentUser, ICallerIdentityResolver identity, IObjectiveRepository objectives,
-        IProjectRepository projects, ITaskStatusRepository statuses, IUnitOfWork unitOfWork,
-        IMilestoneMembershipCoordinator membership)
+        IProjectRepository projects, ITaskStatusRepository statuses, IUnitOfWork unitOfWork)
     {
         _currentUser = currentUser;
         _identity = identity;
@@ -34,7 +32,6 @@ public class CreateTaskStatusCommandHandler : IRequestHandler<CreateTaskStatusCo
         _projects = projects;
         _statuses = statuses;
         _unitOfWork = unitOfWork;
-        _membership = membership;
     }
 
     public async Task<Result<TaskStatusResponse>> Handle(CreateTaskStatusCommand request, CancellationToken ct)
@@ -50,13 +47,15 @@ public class CreateTaskStatusCommandHandler : IRequestHandler<CreateTaskStatusCo
         var project = await _projects.GetByIdForTenantAsync(tenantId, request.ProjectId, ct);
         if (project is null || !project.IsActive)
             return Result<TaskStatusResponse>.NotFound("Project not found.");
+        if (project.SystemPurpose == ProjectSystemPurposes.Office)
+            return Result<TaskStatusResponse>.Conflict("The Office project workflow is system-managed.");
 
         var defaultObjective = await _objectives.GetDefaultByProjectIdAsync(tenantId, project.Id, ct);
         if (defaultObjective is null)
             return Result<TaskStatusResponse>.NotFound("Project has no default milestone.");
 
-        if (!await _membership.IsEffectiveManagerAsync(tenantId, defaultObjective.Id, callerEmployeeId.Value, ct))
-            return Result<TaskStatusResponse>.Forbidden("Only an owner or member of this project can create task statuses.");
+        if (defaultObjective.OwnerId != callerEmployeeId.Value)
+            return Result<TaskStatusResponse>.Forbidden("Only the project's top module owner can change task statuses directly. Others can send a change request.");
 
         if (request.Category == TaskStatusCategories.Done)
         {

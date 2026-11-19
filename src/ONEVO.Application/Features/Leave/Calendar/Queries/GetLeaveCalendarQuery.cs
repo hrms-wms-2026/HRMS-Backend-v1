@@ -1,10 +1,8 @@
 using MediatR;
 using Microsoft.Extensions.Options;
 using ONEVO.Application.Common.Models;
-using ONEVO.Application.Common.RepositoryInterfaces;
 using ONEVO.Application.Common.ServiceInterfaces;
 using ONEVO.Application.Features.CoreHr.Employee.Models;
-using ONEVO.Application.Features.CoreHr.Employee.ServiceInterfaces;
 using ONEVO.Application.Features.Leave.Calendar.DTOs.Responses;
 using ONEVO.Application.Features.Leave.Calendar.Helpers;
 using ONEVO.Application.Features.Leave.Calendar.Mappers;
@@ -25,8 +23,7 @@ public sealed class GetLeaveCalendarQueryHandler
     : IRequestHandler<GetLeaveCalendarQuery, Result<LeaveCalendarMonthResponse>>
 {
     private readonly ICurrentUser _currentUser;
-    private readonly IEmployeeRepository _employees;
-    private readonly IEmployeeVisibilityScopeResolver _visibilityScopes;
+    private readonly ILeaveVisibilityScopeProvider _leaveScopes;
     private readonly ILeaveCalendarRepository _repository;
     private readonly ILeaveCalendarHolidayProvider _holidays;
     private readonly LeaveCalendarRequestProjector _projector;
@@ -34,16 +31,14 @@ public sealed class GetLeaveCalendarQueryHandler
 
     public GetLeaveCalendarQueryHandler(
         ICurrentUser currentUser,
-        IEmployeeRepository employees,
-        IEmployeeVisibilityScopeResolver visibilityScopes,
+        ILeaveVisibilityScopeProvider leaveScopes,
         ILeaveCalendarRepository repository,
         ILeaveCalendarHolidayProvider holidays,
         LeaveCalendarRequestProjector projector,
         IOptions<LeaveCalendarOptions> options)
     {
         _currentUser = currentUser;
-        _employees = employees;
-        _visibilityScopes = visibilityScopes;
+        _leaveScopes = leaveScopes;
         _repository = repository;
         _holidays = holidays;
         _projector = projector;
@@ -99,29 +94,14 @@ public sealed class GetLeaveCalendarQueryHandler
 
     private async Task<Result<EmployeeVisibilityScope>> ResolveScopeAsync(CancellationToken ct)
     {
-        if (_currentUser.HasPermission("leave:manage") || _currentUser.HasPermission("leave:read"))
-            return Result<EmployeeVisibilityScope>.Success(EmployeeVisibilityScope.Unrestricted());
-
-        if (_currentUser.HasPermission("leave:read-team"))
+        var resolution = await _leaveScopes.ResolveForCurrentUserAsync(ct);
+        return resolution.Failure switch
         {
-            return Result<EmployeeVisibilityScope>.Success(
-                await _visibilityScopes.ResolveAsync(_currentUser.TenantId, _currentUser.UserId, ct));
-        }
-
-        if (_currentUser.HasPermission("leave:read-own"))
-        {
-            var employee = await _employees.GetByUserIdAsync(_currentUser.TenantId, _currentUser.UserId, ct);
-            if (employee is null)
-                return Result<EmployeeVisibilityScope>.NotFound(LeaveCalendarMessages.NoEmployee);
-
-            return Result<EmployeeVisibilityScope>.Success(new EmployeeVisibilityScope(
-                false,
-                employee.Id,
-                new HashSet<Guid>(),
-                new HashSet<Guid>(),
-                new HashSet<Guid>()));
-        }
-
-        return Result<EmployeeVisibilityScope>.Forbidden(LeaveCalendarMessages.LeaveScopeRequired);
+            LeaveVisibilityScopeFailure.NoEmployee =>
+                Result<EmployeeVisibilityScope>.NotFound(LeaveCalendarMessages.NoEmployee),
+            LeaveVisibilityScopeFailure.NoLeaveReadPermission =>
+                Result<EmployeeVisibilityScope>.Forbidden(LeaveCalendarMessages.LeaveScopeRequired),
+            _ => Result<EmployeeVisibilityScope>.Success(resolution.Scope!),
+        };
     }
 }

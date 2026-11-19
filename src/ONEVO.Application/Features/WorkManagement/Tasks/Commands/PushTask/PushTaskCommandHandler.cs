@@ -91,7 +91,8 @@ public class PushTaskCommandHandler : IRequestHandler<PushTaskCommand, Result<Wo
                 task.Id, task.ObjectiveId, task.ShortId, task.Title, task.Description,
                 task.CategoryId, task.StatusId, task.Priority, task.StoryPoints,
                 task.DueDate, task.EstimatedHours, task.CompletedHours, task.ProgressPercent, task.SprintId,
-                assigneeIds, CreatedAt: task.CreatedAt));
+                assigneeIds, CreatedAt: task.CreatedAt,
+                TaskKind: task.TaskKind, VisibilityScope: task.VisibilityScope));
         }, ct);
     }
 }

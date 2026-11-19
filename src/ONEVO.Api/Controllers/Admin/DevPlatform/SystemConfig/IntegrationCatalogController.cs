@@ -83,7 +83,7 @@ public sealed class IntegrationCatalogController : ControllerBase
             request.DisplayName,
             request.Description,
             request.ConnectionScope,
-            request.OnevoAppProvider,
+            request.CrownusAppProvider,
             request.LogoUrl,
             request.IsActive.Value,
             actorId.Value);
@@ -111,7 +111,7 @@ public sealed class IntegrationCatalogController : ControllerBase
             request.DisplayName,
             request.Description,
             request.ConnectionScope,
-            request.OnevoAppProvider,
+            request.CrownusAppProvider,
             request.LogoUrl,
             request.IsActive);
 

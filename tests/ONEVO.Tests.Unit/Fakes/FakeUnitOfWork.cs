@@ -35,4 +35,8 @@ public sealed class FakeUnitOfWork : IUnitOfWork
             IsInTransaction = false;
         }
     }
+
+    public int ClearTrackingCallCount { get; private set; }
+
+    public void ClearTracking() => ClearTrackingCallCount++;
 }

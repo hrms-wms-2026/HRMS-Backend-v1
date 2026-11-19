@@ -3,6 +3,7 @@ using ONEVO.Application.Common.Models;
 using ONEVO.Application.Common.ServiceInterfaces;
 using ONEVO.Application.Features.CoreHr.Employee.Commands.UpdateEmployeeJobDetails;
 using ONEVO.Application.Features.CoreHr.Employee.RepositoryInterfaces;
+using ONEVO.Application.Features.CoreHr.Employee.ServiceInterfaces;
 using ONEVO.Application.Features.CoreHr.Offboarding.ServiceInterfaces;
 using ONEVO.Application.Features.CoreHr.OnboardingDrafts.RepositoryInterfaces;
 using ONEVO.Application.Features.TimeAttendance.RepositoryInterfaces;
@@ -19,13 +20,15 @@ public class UpdateEmployeeJobDetailsCommandHandlerTests
     private readonly Mock<IEmploymentTypeRepository> _employmentTypes = new();
     private readonly Mock<IWorkModeRepository> _workModes = new();
     private readonly Mock<ICurrentUser> _currentUser = new();
+    private readonly Mock<IEmployeeManageScopeGuard> _manageScopeGuard = new();
 
     private UpdateEmployeeJobDetailsCommandHandler CreateHandler() => new(
         _employeeRepository.Object,
         _offboardingLockGuard.Object,
         _employmentTypes.Object,
         _workModes.Object,
-        _currentUser.Object);
+        _currentUser.Object,
+        _manageScopeGuard.Object);
 
     private static EmployeeEntity BuildEmployee(Guid tenantId, Guid legalEntityId) => new()
     {
@@ -57,6 +60,22 @@ public class UpdateEmployeeJobDetailsCommandHandlerTests
         _employmentTypes
             .Setup(r => r.GetIdByCodeAsync("part_time", It.IsAny<CancellationToken>()))
             .ReturnsAsync(2);
+    }
+
+    [Fact]
+    public async Task Handle_EmployeeOutsideCallerScope_ReturnsForbidden_AndDoesNotSave()
+    {
+        var tenantId = Guid.NewGuid();
+        var employee = BuildEmployee(tenantId, Guid.NewGuid());
+        SetUpHappyPath(tenantId, employee);
+        _manageScopeGuard.Setup(g => g.EnsureCanManage(tenantId, employee.Id, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(Result.Forbidden("You do not have access to manage this employee."));
+
+        var result = await CreateHandler().Handle(
+            new UpdateEmployeeJobDetailsCommand(employee.Id, "NEW-001", "part_time", null), CancellationToken.None);
+
+        Assert.Equal(403, result.StatusCode);
+        _employeeRepository.Verify(r => r.SaveChangesAsync(It.IsAny<CancellationToken>()), Times.Never);
     }
 
     [Fact]

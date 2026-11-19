@@ -24,4 +24,4 @@ Approves a pending Delete/Edit/Transfer request. Applies the underlying action (
 
 Controller: `src/ONEVO.Api/Controllers/Tenant/WorkManagement/ObjectivesController.cs` (`ApproveChangeRequest`)
 Handler: `src/ONEVO.Application/Features/WorkManagement/ObjectiveChangeRequests/Commands/ApproveObjectiveChangeRequest/ApproveObjectiveChangeRequestCommandHandler.cs`
-Plan: `docs/superpowers/plans/2026-08-04-work-management-milestone-hierarchy.md`
+Plan: `docs/superpowers/plans/finished/2026-08-04/2026-08-04-work-management-milestone-hierarchy.md`

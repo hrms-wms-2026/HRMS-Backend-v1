@@ -1,8 +1,7 @@
 using Moq;
-using ONEVO.Application.Common.Models;
 using ONEVO.Application.Common.ServiceInterfaces;
 using ONEVO.Application.Features.Auth.Permission.ServiceInterfaces;
-using ONEVO.Application.Features.Storage.File.ServiceInterfaces;
+using ONEVO.Application.Features.WorkManagement.Approvals.RepositoryInterfaces;
 using ONEVO.Application.Features.WorkManagement.Common.Services;
 using ONEVO.Application.Features.WorkManagement.ProjectMembers.RepositoryInterfaces;
 using ONEVO.Application.Features.WorkManagement.Projects.RepositoryInterfaces;
@@ -54,8 +53,9 @@ public sealed class GetProjectTasksQueryHandlerTests
         IReadOnlyList<TaskAssignment>? assignments = null,
         bool authenticated = true,
         IReadOnlyDictionary<Guid, EmployeeIdentityDto>? identities = null,
-        string? signedAvatarUrl = "https://files.example.test/signed-avatar",
-        IReadOnlyList<ONEVO.Domain.Features.WorkManagement.Tasks.Entities.TaskStatus>? statuses = null)
+        IReadOnlyList<ONEVO.Domain.Features.WorkManagement.Tasks.Entities.TaskStatus>? statuses = null,
+        ONEVO.Domain.Features.WorkManagement.Objectives.Entities.Objective[]? modules = null,
+        IReadOnlySet<Guid>? pendingTaskIds = null)
     {
         var currentUser = new Mock<ICurrentUser>();
         currentUser.SetupGet(x => x.IsAuthenticated).Returns(authenticated);
@@ -68,10 +68,6 @@ public sealed class GetProjectTasksQueryHandlerTests
         identity.Setup(x => x.ResolveIdentitiesByEmployeeIdAsync(TenantId, It.IsAny<IReadOnlyList<Guid>>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(identities ?? new Dictionary<Guid, EmployeeIdentityDto>());
 
-        var fileStorage = new Mock<IFileStorageService>();
-        fileStorage.Setup(x => x.GetSignedUrlAsync(TenantId, It.IsAny<Guid>(), It.IsAny<TimeSpan>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(signedAvatarUrl is null ? Result<string>.Failure("not found", 404) : Result<string>.Success(signedAvatarUrl));
-
         var projects = new Mock<IProjectRepository>();
         projects.Setup(x => x.GetByIdForTenantAsync(TenantId, ProjectId, It.IsAny<CancellationToken>()))
             .ReturnsAsync(project);
@@ -83,7 +79,7 @@ public sealed class GetProjectTasksQueryHandlerTests
 
         var permissions = new Mock<IPermissionResolver>();
         permissions.Setup(x => x.ResolveAsync(UserId, TenantId, null, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(hasReadPermission ? new List<string> { "projects:read" } : new List<string>());
+            .ReturnsAsync(hasReadPermission ? new List<string> { "*" } : new List<string>());
 
         var taskRepository = new Mock<IWorkTaskRepository>();
         taskRepository.Setup(x => x.GetByProjectAsync(TenantId, ProjectId, It.IsAny<CancellationToken>()))
@@ -105,10 +101,17 @@ public sealed class GetProjectTasksQueryHandlerTests
         statusRepository.Setup(x => x.GetProjectTemplateAsync(TenantId, ProjectId, It.IsAny<CancellationToken>()))
             .ReturnsAsync(statuses ?? Array.Empty<ONEVO.Domain.Features.WorkManagement.Tasks.Entities.TaskStatus>());
 
+        var approvalRequests = new Mock<IWorkApprovalRequestRepository>();
+        approvalRequests.Setup(x => x.GetPendingTargetIdsAsync(
+                TenantId, It.IsAny<string>(), It.IsAny<IReadOnlyCollection<Guid>>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(pendingTaskIds ?? new HashSet<Guid>());
+
         return new GetProjectTasksQueryHandler(
-            currentUser.Object, identity.Object, fileStorage.Object, projects.Object, members.Object,
+            currentUser.Object, identity.Object, projects.Object, members.Object,
             permissions.Object, taskRepository.Object, assignmentRepository.Object, sessionRepository.Object,
-            CalendarEventRepositoryMocks.Empty().Object, statusRepository.Object);
+            CalendarEventRepositoryMocks.Empty().Object, statusRepository.Object,
+            WorkHierarchyServiceMocks.WithModules(modules ?? Array.Empty<ONEVO.Domain.Features.WorkManagement.Objectives.Entities.Objective>()).Object,
+            approvalRequests.Object);
     }
 
     [Fact]
@@ -126,6 +129,20 @@ public sealed class GetProjectTasksQueryHandlerTests
     }
 
     [Fact]
+    public async Task Handle_FlagsTasksWithAPendingApprovalRequest()
+    {
+        var pending = Task(ObjectiveA, "Edited, awaiting approval");
+        var clear = Task(ObjectiveA, "No open request");
+        var handler = BuildHandler(ActiveProject(), Array.Empty<Guid>(), hasReadPermission: true,
+            new[] { pending, clear }, pendingTaskIds: new HashSet<Guid> { pending.Id });
+
+        var result = await handler.Handle(new GetProjectTasksQuery(ProjectId), CancellationToken.None);
+
+        Assert.True(result.Value!.Single(t => t.Id == pending.Id).HasPendingApproval);
+        Assert.False(result.Value!.Single(t => t.Id == clear.Id).HasPendingApproval);
+    }
+
+    [Fact]
     public async Task Handle_NonPrivilegedMember_ReturnsOnlyAccessibleObjectives()
     {
         var tasks = new[] { Task(ObjectiveA, "Visible"), Task(ObjectiveB, "Hidden") };
@@ -136,6 +153,45 @@ public sealed class GetProjectTasksQueryHandlerTests
         Assert.True(result.IsSuccess);
         var task = Assert.Single(result.Value!);
         Assert.Equal(ObjectiveA, task.ObjectiveId);
+    }
+
+    [Fact]
+    public async Task Handle_MemberOfParentModule_SeesTasksInChildModules()
+    {
+        // Regression: the tenant owner is only a member of the root module, yet every task lives in
+        // child modules - membership on a parent must cascade down, or the board is empty.
+        var root = Guid.NewGuid();
+        var modules = new[]
+        {
+            WorkHierarchyServiceMocks.Module(root, null),
+            WorkHierarchyServiceMocks.Module(ObjectiveA, root),
+            WorkHierarchyServiceMocks.Module(ObjectiveB, ObjectiveA),
+        };
+        var tasks = new[] { Task(ObjectiveA, "Child"), Task(ObjectiveB, "Grandchild") };
+        var handler = BuildHandler(ActiveProject(), new[] { root }, hasReadPermission: false, tasks, modules: modules);
+
+        var result = await handler.Handle(new GetProjectTasksQuery(ProjectId), CancellationToken.None);
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal(2, result.Value!.Count);
+    }
+
+    [Fact]
+    public async Task Handle_MemberOfChildModule_DoesNotSeeParentOrSiblingTasks()
+    {
+        var root = Guid.NewGuid();
+        var modules = new[]
+        {
+            WorkHierarchyServiceMocks.Module(root, null),
+            WorkHierarchyServiceMocks.Module(ObjectiveA, root),
+            WorkHierarchyServiceMocks.Module(ObjectiveB, root),
+        };
+        var tasks = new[] { Task(root, "Root"), Task(ObjectiveA, "Mine"), Task(ObjectiveB, "Sibling") };
+        var handler = BuildHandler(ActiveProject(), new[] { ObjectiveA }, hasReadPermission: false, tasks, modules: modules);
+
+        var result = await handler.Handle(new GetProjectTasksQuery(ProjectId), CancellationToken.None);
+
+        Assert.Equal(ObjectiveA, Assert.Single(result.Value!).ObjectiveId);
     }
 
     [Fact]
@@ -174,7 +230,7 @@ public sealed class GetProjectTasksQueryHandlerTests
     }
 
     [Fact]
-    public async Task Handle_PopulatesAssigneeIdentitiesWithResolvedNameAndSignedAvatarUrl()
+    public async Task Handle_PopulatesAssigneeIdentitiesWithResolvedNameAndAvatarFileId()
     {
         var task = Task(ObjectiveA, "Assigned");
         var assigneeId = Guid.NewGuid();
@@ -194,14 +250,15 @@ public sealed class GetProjectTasksQueryHandlerTests
         };
         var handler = BuildHandler(
             ActiveProject(), Array.Empty<Guid>(), hasReadPermission: true, new[] { task }, new[] { assignment },
-            identities: identities, signedAvatarUrl: "https://files.example.test/nevi-avatar");
+            identities: identities);
 
         var result = await handler.Handle(new GetProjectTasksQuery(ProjectId), CancellationToken.None);
 
         var resolved = Assert.Single(Assert.Single(result.Value!).Assignees!);
         Assert.Equal(assigneeId, resolved.EmployeeId);
         Assert.Equal("Nevi Peiris", resolved.Name);
-        Assert.Equal("https://files.example.test/nevi-avatar", resolved.AvatarUrl);
+        Assert.Equal(avatarFileId, resolved.AvatarFileId);
+        Assert.Null(resolved.AvatarUrl);
     }
 
     [Fact]
@@ -230,6 +287,7 @@ public sealed class GetProjectTasksQueryHandlerTests
 
         var resolved = Assert.Single(Assert.Single(result.Value!).Assignees!);
         Assert.Equal("Sam Perera", resolved.Name);
+        Assert.Null(resolved.AvatarFileId);
         Assert.Null(resolved.AvatarUrl);
     }
 

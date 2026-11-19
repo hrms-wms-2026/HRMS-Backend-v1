@@ -1,9 +1,7 @@
 namespace ONEVO.Application.Features.OrgStructure.DTOs.Responses;
 
-// avatarUrl is always null today: no safe tenant-authenticated file-serving endpoint exists yet
-// for file_records (confirmed - no such controller anywhere in this codebase). Returning
-// avatarFileId lets the frontend show initials/placeholders now and swap in real images once
-// that endpoint exists, without another contract change.
+// The frontend resolves AvatarFileId through the tenant-authenticated /files/{id} endpoint.
+// AvatarUrl remains only as a compatibility field for older clients and is currently null.
 public record PositionOccupantPreviewResponse(
     Guid EmployeeId,
     string DisplayName,

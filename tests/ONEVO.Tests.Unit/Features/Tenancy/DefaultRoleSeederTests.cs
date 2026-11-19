@@ -59,7 +59,7 @@ public sealed class DefaultRoleSeederTests
             new Permission { Id = Guid.NewGuid(), Code = "legal_entity:delete", Module = "org_structure" },
             new Permission { Id = Guid.NewGuid(), Code = "roles:read", Module = "roles" },
             new Permission { Id = Guid.NewGuid(), Code = "roles:manage", Module = "roles" },
-            new Permission { Id = Guid.NewGuid(), Code = "settings:read", Module = "configuration" },
+            new Permission { Id = Guid.NewGuid(), Code = "billing:read", Module = "configuration" },
             new Permission { Id = Guid.NewGuid(), Code = "users:read", Module = "auth" },
             new Permission { Id = Guid.NewGuid(), Code = "notifications:manage", Module = "notifications" },
             new Permission { Id = Guid.NewGuid(), Code = "employees:read", Module = "core_hr" },
@@ -186,7 +186,7 @@ public sealed class DefaultRoleSeederTests
     public async Task SeedDefaultRolesAsync_GrantsBaselinePlatformPermissionsToOwner_RegardlessOfSubscribedModules()
     {
         // The baseline-bootstrap mechanism this task introduces: roles:read/roles:manage,
-        // settings:read (configuration), users:read (auth), and notifications:manage must
+        // billing:read (configuration), users:read (auth), and notifications:manage must
         // reach every tenant's Owner role even when none of "roles"/"configuration"/"auth"/
         // "notifications" appear in the tenant's subscribed product-module list, because
         // those are platform capabilities, not subscribed Phase 1 product package modules.
@@ -201,6 +201,6 @@ public sealed class DefaultRoleSeederTests
             .Where(p => owner.RolePermissions.Select(rp => rp.PermissionId).Contains(p.Id))
             .Select(p => p.Code)
             .ToListAsync();
-        grantedCodes.Should().Contain(["roles:read", "roles:manage", "settings:read", "users:read", "notifications:manage"]);
+        grantedCodes.Should().Contain(["roles:read", "roles:manage", "billing:read", "users:read", "notifications:manage"]);
     }
 }

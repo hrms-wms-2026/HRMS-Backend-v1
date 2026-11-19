@@ -1,6 +1,9 @@
+using System.Text;
+using Microsoft.Data.SqlClient;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
+using ONEVO.Infrastructure.Services.Monitoring.TrayActivation;
 
 namespace ONEVO.Infrastructure.Configuration;
 
@@ -58,11 +61,57 @@ public class ConfigurationStartupValidator : IHostedService
         }
     }
 
+    public const string TrayJwtSecretKey = "TrayApp:Jwt:Secret";
+
+    /// <summary>HS256 (the legacy tray token algorithm) needs a key of at least 256 bits.</summary>
+    public const int MinimumTrayJwtSecretBytes = 32;
+
+    /// <summary>
+    /// The legacy HS256 tray secret, checked for presence and key size. Since SEC-15 it is read only
+    /// while <c>TrayApp:Jwt:AcceptLegacyHs256Until</c> is set, to validate tokens issued before the
+    /// switch to ES256. Messages never contain the value.
+    /// </summary>
+    public static string RequireTrayJwtSecret(IConfiguration configuration)
+    {
+        var secret = configuration[TrayJwtSecretKey];
+        if (string.IsNullOrWhiteSpace(secret))
+        {
+            throw new InvalidOperationException(
+                "TrayApp:Jwt:Secret is required. Set the TrayApp__Jwt__Secret environment variable.");
+        }
+
+        if (Encoding.UTF8.GetByteCount(secret) < MinimumTrayJwtSecretBytes)
+        {
+            throw new InvalidOperationException(
+                $"TrayApp:Jwt:Secret must be at least {MinimumTrayJwtSecretBytes} bytes for HS256 token signing.");
+        }
+
+        return secret;
+    }
+
+    /// <summary>
+    /// SEC-15 startup check (replaces the SEC-01 HS256 secret check). Loads the tray device-token
+    /// signing keys once before the host is built, so a missing, unparseable or ambiguous key set
+    /// stops startup instead of surfacing on the first tray request. Outside Development/Test a key
+    /// set is required; locally, with none configured, a throwaway key is used (see
+    /// <see cref="TrayJwtKeyLoader"/>). Messages never contain key material.
+    /// </summary>
+    public static void ValidateTrayJwtSigningKeys(
+        IConfiguration configuration,
+        string environmentName)
+    {
+        TrayJwtKeyLoader.Load(configuration, environmentName);
+    }
+
+    /// <summary>A tray legacy secret may not be a development value outside Development/Test.</summary>
+    internal static bool IsDevelopmentTraySecret(string secret) =>
+        secret.StartsWith("dev-only", StringComparison.OrdinalIgnoreCase) || IsMissingOrPlaceholder(secret);
+
     public Task StartAsync(CancellationToken cancellationToken)
     {
         var checks = new (string Key, string Purpose, bool RequiredInProd)[]
         {
-            ("ConnectionStrings:DefaultConnection", "PostgreSQL connection string", true),
+            ("ConnectionStrings:DefaultConnection", "SQL Server connection string", true),
             ("Jwt:Secret", "MFA challenge/device JWT signing key", false),
             ("Jwt:TenantIssuer", "MFA challenge/device JWT issuer", false),
             ("Jwt:TenantAudience", "MFA challenge/device JWT audience", false),
@@ -121,39 +170,29 @@ public class ConfigurationStartupValidator : IHostedService
         if (string.IsNullOrWhiteSpace(connectionString))
             return;
 
-        var username = ExtractUsername(connectionString);
-        if (username is null)
-            return;
-
-        if (username.Contains("postgres", StringComparison.OrdinalIgnoreCase) ||
-            username.Contains("superuser", StringComparison.OrdinalIgnoreCase))
+        if (UsesAdminLogin(connectionString))
         {
             _logger.LogWarning(
-                "[CONFIG] ConnectionStrings:DefaultConnection username '{Username}' looks like a " +
-                "superuser role. The runtime app connection must use a restricted, non-superuser, " +
-                "non-BYPASSRLS role so PostgreSQL Row-Level Security is actually enforced. Use " +
-                "ConnectionStrings:MigrationConnection for schema migrations instead.",
-                username);
+                "[CONFIG] ConnectionStrings:DefaultConnection uses the sa login. The runtime app " +
+                "connection must use the restricted crownus_app login, because sa can drop the " +
+                "security policies. Use ConnectionStrings:MigrationConnection for schema migrations.");
         }
     }
 
-    private static string? ExtractUsername(string connectionString)
+    public static bool UsesAdminLogin(string connectionString)
     {
-        foreach (var part in connectionString.Split(';', StringSplitOptions.RemoveEmptyEntries))
+        try
         {
-            var separatorIndex = part.IndexOf('=');
-            if (separatorIndex < 0)
-                continue;
-
-            var key = part[..separatorIndex].Trim();
-            if (key.Equals("Username", StringComparison.OrdinalIgnoreCase))
-                return part[(separatorIndex + 1)..].Trim();
+            return string.Equals(new SqlConnectionStringBuilder(connectionString).UserID, "sa", StringComparison.OrdinalIgnoreCase);
         }
-
-        return null;
+        catch (ArgumentException)
+        {
+            // Not a SQL Server connection string. Connecting reports that; a warning must not.
+            return false;
+        }
     }
 
-    private static bool IsMissingOrPlaceholder(string? value)
+    internal static bool IsMissingOrPlaceholder(string? value)
     {
         if (string.IsNullOrWhiteSpace(value)) return true;
         if (value.Equals("SET_VIA_ENV", StringComparison.OrdinalIgnoreCase)) return true;
@@ -164,7 +203,7 @@ public class ConfigurationStartupValidator : IHostedService
         return false;
     }
 
-    private static bool IsLocalValidationEnvironment(string environmentName)
+    internal static bool IsLocalValidationEnvironment(string environmentName)
     {
         return environmentName.Equals("Development", StringComparison.OrdinalIgnoreCase)
             || environmentName.Equals("Test", StringComparison.OrdinalIgnoreCase)

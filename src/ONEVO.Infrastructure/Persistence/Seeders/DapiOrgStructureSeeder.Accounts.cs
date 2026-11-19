@@ -84,18 +84,22 @@ public sealed partial class DapiOrgStructureSeeder
                 employee.Phone = hire.Phone;
                 employee.DateOfBirth = hire.DateOfBirth;
                 employee.Gender = hire.Gender;
-                employee.DepartmentId = departmentId;
                 employee.LegalEntityId = DapiLegalEntityId;
                 employee.UpdatedAt = now;
+            }
+
+            var positionId = positionIdByCode[hire.PositionCode];
+            var usesSeededPlacement = await SeedPositionAssignmentAsync(
+                db, $"newhire:{hire.Key}", employeeId, positionId, hire.HireDate, ct);
+            if (usesSeededPlacement)
+            {
+                employee.DepartmentId = departmentId;
             }
 
             await SeedEmployeeAddressAsync(db, hire.Key, employeeId, hire.AddressLine, hire.City, now, ct);
             await SeedEmergencyContactAsync(
                 db, hire.Key, employeeId, hire.EmergencyContactName,
                 hire.EmergencyContactRelationship, hire.EmergencyContactPhone, ct);
-
-            var positionId = positionIdByCode[hire.PositionCode];
-            await SeedPositionAssignmentAsync(db, $"newhire:{hire.Key}", employeeId, positionId, hire.HireDate, ct);
 
             await AssignRoleAsync(db, userId, roleIdByName[hire.RoleName], ct);
             await AssignRoleAsync(db, userId, roleIdByName[DapiOrgStructureData.RoleEmployee], ct);
@@ -115,7 +119,6 @@ public sealed partial class DapiOrgStructureSeeder
             return;
         }
 
-        owner.DepartmentId = departmentIdByCode[DapiOrgStructureData.ExecDept];
         owner.Phone ??= "+94771234001";
         owner.DateOfBirth ??= new DateOnly(1980, 6, 15);
         owner.Gender ??= "Male";
@@ -126,9 +129,13 @@ public sealed partial class DapiOrgStructureSeeder
         await SeedEmergencyContactAsync(
             db, "owner", owner.Id, "Anusha Dapi", "Spouse", "+94771234090", ct);
 
-        await SeedPositionAssignmentAsync(
+        var usesSeededPlacement = await SeedPositionAssignmentAsync(
             db, "owner", owner.Id, positionIdByCode[DapiOrgStructureData.CeoPosition],
             new DateOnly(2023, 1, 1), ct);
+        if (usesSeededPlacement)
+        {
+            owner.DepartmentId = departmentIdByCode[DapiOrgStructureData.ExecDept];
+        }
         // Owner keeps the existing "Tenant Owner" role (full access) seeded by
         // DevSmokeTestTenantSeeder - no additional role assignment needed here.
     }
@@ -183,11 +190,13 @@ public sealed partial class DapiOrgStructureSeeder
             return;
         }
 
-        employee.DepartmentId = departmentId;
-        employee.UpdatedAt = now;
-
-        await SeedPositionAssignmentAsync(
+        var usesSeededPlacement = await SeedPositionAssignmentAsync(
             db, $"existing:{personKey}", employeeId, positionId, employee.HireDate, ct);
+        if (usesSeededPlacement)
+        {
+            employee.DepartmentId = departmentId;
+            employee.UpdatedAt = now;
+        }
     }
 
     private static async Task SeedEmployeeAddressAsync(
@@ -200,8 +209,9 @@ public sealed partial class DapiOrgStructureSeeder
         CancellationToken ct)
     {
         var id = DeterministicGuid($"dapi-org:address:{personKey}");
-        var existing = await db.EmployeeAddresses.FirstOrDefaultAsync(a => a.Id == id, ct);
-        if (existing is not null)
+        // IgnoreQueryFilters: editing personal info soft-deletes the seeded row (ReplaceAddresses),
+        // and re-inserting the same deterministic id would hit pk_employee_addresses.
+        if (await db.EmployeeAddresses.IgnoreQueryFilters().AnyAsync(a => a.TenantId == DapiTenantId && a.Id == id, ct))
         {
             return;
         }
@@ -236,8 +246,8 @@ public sealed partial class DapiOrgStructureSeeder
         CancellationToken ct)
     {
         var id = DeterministicGuid($"dapi-org:emergency-contact:{personKey}");
-        var existing = await db.EmployeeEmergencyContacts.FirstOrDefaultAsync(c => c.Id == id, ct);
-        if (existing is not null)
+        // IgnoreQueryFilters: a soft-deleted seeded contact still owns this deterministic id.
+        if (await db.EmployeeEmergencyContacts.IgnoreQueryFilters().AnyAsync(c => c.TenantId == DapiTenantId && c.Id == id, ct))
         {
             return;
         }

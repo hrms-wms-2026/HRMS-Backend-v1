@@ -7,6 +7,8 @@ using ONEVO.Application.Features.WorkManagement.Objectives.RepositoryInterfaces;
 using ONEVO.Application.Features.WorkManagement.ProjectMembers.RepositoryInterfaces;
 using ONEVO.Domain.Features.WorkManagement.Objectives.Entities;
 
+using ONEVO.Application.Features.WorkManagement.Hierarchy;
+
 namespace ONEVO.Application.Features.WorkManagement.Objectives.Queries.GetMyProjectMilestones;
 
 public class GetMyProjectMilestonesQueryHandler : IRequestHandler<GetMyProjectMilestonesQuery, Result<IReadOnlyList<MyProjectMilestoneResponse>>>
@@ -43,40 +45,20 @@ public class GetMyProjectMilestonesQueryHandler : IRequestHandler<GetMyProjectMi
         var memberships = await _members.ListForEmployeeInProjectAsync(tenantId, request.ProjectId, callerEmployeeId.Value, ct);
         var allObjectives = await _objectives.GetAllByProjectIdAsync(tenantId, request.ProjectId, ct);
 
-        var objectivesById = allObjectives.ToDictionary(o => o.Id);
         var membershipsByObjectiveId = memberships.ToDictionary(m => m.ObjectiveId);
         var activeMembershipObjectiveIds = memberships.Where(m => m.IsActive).Select(m => m.ObjectiveId).ToHashSet();
 
         // Rights cascade down from any ancestor's owner or active member (design:
         // 2026-08-21-work-management-cascading-objective-ownership-design.md), mirroring
-        // IMilestoneMembershipCoordinator.IsEffectiveManagerAsync. Walked in-memory here (rather
-        // than calling that DB-hitting helper per objective) since allObjectives already holds the
-        // whole project's tree.
+        // IMilestoneMembershipCoordinator.IsEffectiveManagerAsync, over the in-memory ProjectModuleTree since allObjectives already
+        // holds the whole project.
+        var tree = new ProjectModuleTree(allObjectives);
         bool IsEffectiveManager(Objective objective)
-        {
-            Objective? cursor = objective;
-            while (cursor is not null)
-            {
-                if (cursor.OwnerId == callerEmployeeId.Value || activeMembershipObjectiveIds.Contains(cursor.Id))
-                    return true;
-                cursor = cursor.ParentObjectiveId is { } parentId ? objectivesById.GetValueOrDefault(parentId) : null;
-            }
-            return false;
-        }
+            => tree.AncestorChain(objective.Id).Any(o => o.OwnerId == callerEmployeeId.Value || activeMembershipObjectiveIds.Contains(o.Id));
 
         // Mirrors IMilestoneMembershipCoordinator.IsEffectiveOwnerAsync: owner-only, no plain-member
         // fallback - for gates (task edit save-vs-request) that must stay stricter than IsEffectiveManager.
-        bool IsEffectiveOwner(Objective objective)
-        {
-            Objective? cursor = objective;
-            while (cursor is not null)
-            {
-                if (cursor.OwnerId == callerEmployeeId.Value)
-                    return true;
-                cursor = cursor.ParentObjectiveId is { } parentId ? objectivesById.GetValueOrDefault(parentId) : null;
-            }
-            return false;
-        }
+        bool IsEffectiveOwner(Objective objective) => tree.IsAtOrAbove(callerEmployeeId.Value, objective.Id);
 
         // Every objective the caller can act on: has a direct project_members row (any status - the
         // frontend filters by membershipIsActive as needed) OR is reachable via the ownership cascade.

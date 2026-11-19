@@ -1,3 +1,4 @@
+using ONEVO.Application.Features.WorkManagement.ProjectMembers.RepositoryInterfaces;
 using Moq;
 using ONEVO.Application.Common.Models;
 using ONEVO.Application.Common.RepositoryInterfaces;
@@ -24,7 +25,7 @@ public class SetSprintTasksCommandHandlerTests
     private Sprint _sprint = null!;
     private Mock<ISprintRepository> _sprints = null!;
     private Mock<ISprintTaskAssignmentService> _assignment = null!;
-    private Mock<ISprintAccessService> _access = null!;
+    private Mock<IProjectMemberRepository> _members = null!;
     private Mock<ISprintActivityLogRepository> _logs = null!;
     private Mock<IUnitOfWork> _unitOfWork = null!;
 
@@ -53,8 +54,8 @@ public class SetSprintTasksCommandHandlerTests
         _assignment.Setup(x => x.PrepareAsync(TenantId, _sprint, It.IsAny<IReadOnlyCollection<Guid>>(), It.IsAny<IReadOnlyCollection<Guid>>(), EmployeeId, It.IsAny<CancellationToken>()))
             .ReturnsAsync(Result<SprintTaskChangeSet>.Success(SprintTaskChangeSet.Empty));
 
-        _access = new Mock<ISprintAccessService>();
-        _access.Setup(x => x.CanManageAsync(TenantId, _sprint, UserId, EmployeeId, It.IsAny<CancellationToken>()))
+        _members = new Mock<IProjectMemberRepository>();
+        _members.Setup(x => x.HasActiveMembershipAsync(TenantId, _sprint.ProjectId, EmployeeId, It.IsAny<CancellationToken>()))
             .ReturnsAsync(true);
 
         _logs = new Mock<ISprintActivityLogRepository>();
@@ -65,7 +66,7 @@ public class SetSprintTasksCommandHandlerTests
         _unitOfWork.Setup(x => x.SaveChangesAsync(It.IsAny<CancellationToken>())).ReturnsAsync(1);
 
         return new SetSprintTasksCommandHandler(
-            currentUser.Object, identity.Object, _sprints.Object, _assignment.Object, _access.Object, _logs.Object, _unitOfWork.Object);
+            currentUser.Object, identity.Object, _sprints.Object, _assignment.Object, _members.Object, _logs.Object, _unitOfWork.Object);
     }
 
     [Fact]

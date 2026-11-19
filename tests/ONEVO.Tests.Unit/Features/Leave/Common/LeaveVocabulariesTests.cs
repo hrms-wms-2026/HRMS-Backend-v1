@@ -6,39 +6,33 @@ namespace ONEVO.Tests.Unit.Features.Leave.Common;
 public class LeaveVocabulariesTests
 {
     [Fact]
-    public void LeaveTypeCategories_HasAllSevenSpecValues()
-    {
-        Assert.Equal("annual", LeaveTypeCategories.Annual);
-        Assert.Equal("sick", LeaveTypeCategories.Sick);
-        Assert.Equal("maternity", LeaveTypeCategories.Maternity);
-        Assert.Equal("paternity", LeaveTypeCategories.Paternity);
-        Assert.Equal("compassionate", LeaveTypeCategories.Compassionate);
-        Assert.Equal("unpaid", LeaveTypeCategories.Unpaid);
-        Assert.Equal("custom", LeaveTypeCategories.Custom);
-    }
-
-    [Fact]
     public void LeaveGenderRestrictions_DefaultIsAll()
     {
         Assert.Equal("all", LeaveGenderRestrictions.All);
     }
 
     [Fact]
-    public void LeaveAccrualMethods_HasSpecValues()
+    public void LeaveApprovalModes_IncludeNone()
     {
-        Assert.Equal("annual", LeaveAccrualMethods.Annual);
-        Assert.Equal("monthly", LeaveAccrualMethods.Monthly);
-        Assert.Equal("daily", LeaveAccrualMethods.Daily);
-        Assert.Contains("annual", LeaveAccrualMethods.All);
-        Assert.Contains("monthly", LeaveAccrualMethods.All);
-        Assert.Contains("daily", LeaveAccrualMethods.All);
+        Assert.Equal("none", LeaveApprovalModes.None);
+        Assert.Equal(["any_one", "all_must_approve", "in_order", "none"], LeaveApprovalModes.All);
     }
 
     [Fact]
-    public void LeavePolicyVocabularies_ExposeAllCollectionsForValidators()
+    public void LeaveAmountPeriods_AreMonthAndYear()
     {
-        Assert.Contains(LeaveApprovalModes.AnyOne, LeaveApprovalModes.All);
-        Assert.Contains(LeaveAccrualStarts.Immediately, LeaveAccrualStarts.All);
-        Assert.Contains(LeaveProrationMethods.CalendarDays, LeaveProrationMethods.All);
+        Assert.Equal(["month", "year"], LeaveAmountPeriods.All);
+    }
+
+    [Fact]
+    public void LeaveEligibility_HasThreeOptions()
+    {
+        Assert.Equal(["immediately", "after_probation", "after_months"], LeaveEligibility.All);
+    }
+
+    [Fact]
+    public void LeavePolicyTargetKinds_AreTheFourLevels()
+    {
+        Assert.Equal(["legal_entity", "department", "position", "employee"], LeavePolicyTargetKinds.All);
     }
 }

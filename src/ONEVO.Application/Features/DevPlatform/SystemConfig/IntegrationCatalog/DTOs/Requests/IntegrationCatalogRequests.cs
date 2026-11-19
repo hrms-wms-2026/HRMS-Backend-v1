@@ -6,7 +6,7 @@ public sealed class CreateIntegrationCatalogRequest
     public string DisplayName { get; init; } = string.Empty;
     public string? Description { get; init; }
     public string ConnectionScope { get; init; } = string.Empty;
-    public string OnevoAppProvider { get; init; } = string.Empty;
+    public string CrownusAppProvider { get; init; } = string.Empty;
     public string? LogoUrl { get; init; }
     public bool? IsActive { get; init; }
 }
@@ -16,7 +16,7 @@ public sealed class UpdateIntegrationCatalogRequest
     public string DisplayName { get; init; } = string.Empty;
     public string? Description { get; init; }
     public string ConnectionScope { get; init; } = string.Empty;
-    public string OnevoAppProvider { get; init; } = string.Empty;
+    public string CrownusAppProvider { get; init; } = string.Empty;
     public string? LogoUrl { get; init; }
     public bool IsActive { get; init; }
 }

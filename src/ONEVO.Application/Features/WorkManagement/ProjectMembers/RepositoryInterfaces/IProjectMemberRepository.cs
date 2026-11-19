@@ -1,3 +1,4 @@
+using ONEVO.Application.Features.WorkManagement.ProjectMembers.Models;
 using ONEVO.Domain.Features.WorkManagement.ProjectMembers.Entities;
 
 namespace ONEVO.Application.Features.WorkManagement.ProjectMembers.RepositoryInterfaces;
@@ -15,7 +16,16 @@ public interface IProjectMemberRepository
 
     Task<bool> HasActiveMembershipForAnyObjectiveAsync(Guid tenantId, Guid projectId, Guid employeeId, IReadOnlyList<Guid> objectiveIds, CancellationToken ct = default);
 
+    /// <summary>Returns objectives with a direct active membership plus all active descendants,
+    /// matching Work Management's inherited objective-access rule.</summary>
     Task<IReadOnlyList<Guid>> GetActiveObjectiveIdsForEmployeeInProjectAsync(Guid tenantId, Guid projectId, Guid employeeId, CancellationToken ct = default);
+
+    /// <summary>Active projects <paramref name="employeeId"/> belongs to (active or removed), limited to
+    /// projects <paramref name="viewerEmployeeId"/> is also an active member of - Work Management
+    /// visibility is relationship-based, so another employee's projects are only revealed where the
+    /// viewer already shares the relationship. Viewer == employee returns all of their own projects.</summary>
+    Task<IReadOnlyList<EmployeeProjectMembershipSummary>> ListSharedProjectMembershipsAsync(
+        Guid tenantId, Guid employeeId, Guid viewerEmployeeId, CancellationToken ct = default);
 
     Task<IReadOnlyList<ProjectMember>> ListInactiveMembershipsForEmployeeAsync(Guid tenantId, Guid employeeId, CancellationToken ct = default);
 
@@ -24,13 +34,28 @@ public interface IProjectMemberRepository
     /// <summary>Every active project_members row scoped to this exact objective.</summary>
     Task<IReadOnlyList<ProjectMember>> ListActiveForObjectiveAsync(Guid tenantId, Guid objectiveId, CancellationToken ct = default);
 
+    /// <summary>Every active project_members row in the project (all Modules).</summary>
+    Task<IReadOnlyList<ProjectMember>> ListActiveForProjectAsync(Guid tenantId, Guid projectId, CancellationToken ct = default);
+
+    /// <summary>Every active project_members row for this employee across all projects/objectives.</summary>
+    Task<IReadOnlyList<ProjectMember>> ListActiveForEmployeeAsync(Guid tenantId, Guid employeeId, CancellationToken ct = default);
+
     void Update(ProjectMember member);
 
     /// <summary>Batched, per-project, deduplicated-by-employee list of active member employee ids, capped at takePerProject, earliest joiners first.</summary>
     Task<IReadOnlyDictionary<Guid, IReadOnlyList<Guid>>> ListDistinctActiveMemberEmployeeIdsAsync(
         Guid tenantId, IReadOnlyCollection<Guid> projectIds, int takePerProject, CancellationToken ct = default);
 
+    /// <summary>Batched, per-objective, deduplicated list of active member employee ids (earliest joiners first).</summary>
+    Task<IReadOnlyDictionary<Guid, IReadOnlyList<Guid>>> ListActiveMemberEmployeeIdsByObjectivesAsync(
+        Guid tenantId, IReadOnlyCollection<Guid> objectiveIds, CancellationToken ct = default);
+
     /// <summary>Batched, per-project count of distinct active member employees.</summary>
     Task<IReadOnlyDictionary<Guid, int>> CountDistinctActiveMembersAsync(
         Guid tenantId, IReadOnlyCollection<Guid> projectIds, CancellationToken ct = default);
+
+    /// <summary>Objective ids the employee holds an ACTIVE membership row on, across the given
+    /// projects, in one query - the no-leak intersection input for Work I Lead (My Team spec
+    /// §8.3.2 step 7).</summary>
+    Task<IReadOnlyList<Guid>> ListActiveMembershipObjectiveIdsAsync(Guid tenantId, Guid employeeId, IReadOnlyCollection<Guid> projectIds, CancellationToken ct = default);
 }

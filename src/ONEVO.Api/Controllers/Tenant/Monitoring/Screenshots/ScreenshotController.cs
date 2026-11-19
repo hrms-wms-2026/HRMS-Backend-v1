@@ -31,7 +31,7 @@ public class ScreenshotController : ControllerBase
     /// <response code="404">Agent device not found or does not belong to this tenant.</response>
     /// <response code="409">Agent device is not currently active.</response>
     [HttpPost("request")]
-    [RequirePermission("agent:command")]
+    [RequirePermission("monitoring:screenshots:request")]
     [ProducesResponseType(StatusCodes.Status201Created)]
     [ProducesResponseType(StatusCodes.Status403Forbidden)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]

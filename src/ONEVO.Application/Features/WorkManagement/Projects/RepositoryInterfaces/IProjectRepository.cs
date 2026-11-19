@@ -10,6 +10,8 @@ public interface IProjectRepository
 
     Task<Project?> GetByIdForTenantAsync(Guid tenantId, Guid id, CancellationToken ct = default);
 
+    Task<Project?> GetBySystemPurposeAsync(Guid tenantId, string systemPurpose, CancellationToken ct = default);
+
     /// <summary>
     /// Same lookup as <see cref="GetByIdForTenantAsync"/>, but returns the entity tracked by the
     /// DbContext's change tracker instead of AsNoTracking. Use this only on write paths that
@@ -21,6 +23,9 @@ public interface IProjectRepository
     /// GetByIdForTenantAsync for performance.
     /// </summary>
     Task<Project?> GetTrackedByIdForTenantAsync(Guid tenantId, Guid id, CancellationToken ct = default);
+
+    /// <summary>Active (IsActive) projects among the given ids, not-soft-deleted, tenant-scoped.</summary>
+    Task<IReadOnlyList<Project>> GetActiveByIdsForTenantAsync(Guid tenantId, IReadOnlyCollection<Guid> ids, CancellationToken ct = default);
 
     void Update(Project project);
 
@@ -41,4 +46,17 @@ public interface IProjectRepository
     /// task creates cannot collide.
     /// </summary>
     Task<long> IncrementAndGetNextTaskNumberAsync(Guid tenantId, Guid projectId, CancellationToken ct = default);
+
+    /// <summary>The tenant's system Office project (where Calendar meetings without a project live), or null.</summary>
+    Task<Project?> GetOfficeProjectAsync(Guid tenantId, CancellationToken ct = default);
+
+    /// <summary>Atomically increments projects.next_meeting_number and returns the value for the next meeting
+    /// occurrence's ShortId ({Identifier}-M{n}).</summary>
+    Task<long> IncrementAndGetNextMeetingNumberAsync(Guid tenantId, Guid projectId, CancellationToken ct = default);
+
+    Task<IReadOnlyList<Project>> ListByIdsAsync(Guid tenantId, IReadOnlyCollection<Guid> projectIds, CancellationToken ct = default);
+
+    /// <summary>Tenant-unscoped (admin mode) - active, not-achieved projects of every tenant, for the
+    /// hourly ProjectMonitorJob sweep.</summary>
+    Task<IReadOnlyList<Project>> ListActiveAcrossTenantsAsync(CancellationToken ct = default);
 }

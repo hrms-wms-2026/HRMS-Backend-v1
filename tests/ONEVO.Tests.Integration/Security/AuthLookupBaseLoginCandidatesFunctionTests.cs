@@ -1,6 +1,5 @@
 using FluentAssertions;
 using Microsoft.EntityFrameworkCore;
-using Npgsql;
 using ONEVO.Domain.Features.InfrastructureModule.Entities;
 using ONEVO.Infrastructure.ExternalServices.Messaging;
 using ONEVO.Infrastructure.Identity.CurrentUser;
@@ -19,8 +18,8 @@ namespace ONEVO.Tests.Integration.Security;
 /// </summary>
 public sealed class AuthLookupBaseLoginCandidatesFunctionTests : IAsyncLifetime
 {
-    private const string RestrictedRoleName = "base_login_fn_test_role";
-    private const string RestrictedRolePassword = "base-login-fn-test-role-password";
+    private const string RestrictedRoleName = "crownus_app";
+    private const string RestrictedRolePassword = PrivilegedRoleTestBootstrap.AppRolePassword;
 
 
     private readonly SystemDateTimeProvider _clock = new();
@@ -32,7 +31,7 @@ public sealed class AuthLookupBaseLoginCandidatesFunctionTests : IAsyncLifetime
 
     public async Task InitializeAsync()
     {
-        _connectionString = await SharedPostgresTemplate.CreateDatabaseAsync();
+        _connectionString = await SharedSqlServerTemplate.CreateDatabaseAsync();
 
         await using var db = CreateContext();
 
@@ -90,35 +89,9 @@ public sealed class AuthLookupBaseLoginCandidatesFunctionTests : IAsyncLifetime
 
     private async Task CreateRestrictedRoleAsync()
     {
-        await using var connection = new NpgsqlConnection(_connectionString);
-        await connection.OpenAsync();
-
-        await using (var createRole = connection.CreateCommand())
+        var restrictedBuilder = new SqlConnectionStringBuilder(_connectionString)
         {
-            createRole.CommandText = $@"
-                DO $$
-                BEGIN
-                    IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = '{RestrictedRoleName}') THEN
-                        CREATE ROLE {RestrictedRoleName}
-                            LOGIN PASSWORD '{RestrictedRolePassword}' NOSUPERUSER NOBYPASSRLS;
-                    END IF;
-                END
-                $$;
-            ";
-            await createRole.ExecuteNonQueryAsync();
-        }
-
-        await using (var grantExecute = connection.CreateCommand())
-        {
-            grantExecute.CommandText =
-                $"GRANT USAGE ON SCHEMA auth_internal TO {RestrictedRoleName}; " +
-                $"GRANT EXECUTE ON FUNCTION auth_internal.auth_lookup_base_login_candidates(varchar) TO {RestrictedRoleName};";
-            await grantExecute.ExecuteNonQueryAsync();
-        }
-
-        var restrictedBuilder = new NpgsqlConnectionStringBuilder(_connectionString)
-        {
-            Username = RestrictedRoleName,
+            UserID = RestrictedRoleName,
             Password = RestrictedRolePassword
         };
         _restrictedConnectionString = restrictedBuilder.ConnectionString;
@@ -129,12 +102,13 @@ public sealed class AuthLookupBaseLoginCandidatesFunctionTests : IAsyncLifetime
     [Fact]
     public async Task RestrictedRole_CanCallFunctionAndSeesBothTenantsCandidates()
     {
-        await using var connection = new NpgsqlConnection(_restrictedConnectionString);
+        await using var connection = TestDb.CreateConnection(_restrictedConnectionString);
         await connection.OpenAsync();
 
         await using var command = connection.CreateCommand();
-        command.CommandText = "SELECT tenant_id FROM auth_internal.auth_lookup_base_login_candidates(@email)";
-        command.Parameters.AddWithValue("email", "base-login-fn-shared@test.onevo.dev");
+        command.CommandText = "auth_internal.auth_lookup_base_login_candidates";
+        command.CommandType = System.Data.CommandType.StoredProcedure;
+        command.Parameters.AddWithValue("@normalized_email", "base-login-fn-shared@test.onevo.dev");
 
         var rows = new List<Guid>();
         await using var reader = await command.ExecuteReaderAsync();
@@ -144,56 +118,56 @@ public sealed class AuthLookupBaseLoginCandidatesFunctionTests : IAsyncLifetime
         }
 
         rows.Should().BeEquivalentTo(new[] { _tenantAId, _tenantBId },
-            "SECURITY DEFINER must return matching active users across tenants despite the caller's own RLS context");
+            "EXECUTE AS must return matching active users across tenants despite the caller's own RLS context");
     }
 
     [Fact]
-    public async Task RestrictedRole_CannotSelectUsersTableDirectlyAcrossTenants()
+    public async Task RestrictedRole_CannotReadUsersDirectlyAcrossTenants()
     {
-        await using var connection = new NpgsqlConnection(_restrictedConnectionString);
+        await using var connection = TestDb.CreateConnection(_restrictedConnectionString);
         await connection.OpenAsync();
 
-        var act = async () =>
-        {
-            await using var command = connection.CreateCommand();
-            command.CommandText = "SELECT id FROM users LIMIT 1";
-            await command.ExecuteReaderAsync();
-        };
+        await using var command = connection.CreateCommand();
+        command.CommandText = "SELECT COUNT_BIG(*) FROM users";
 
-        await act.Should().ThrowAsync<PostgresException>(
-            "the restricted role has no direct table grant on users; only EXECUTE on the function");
+        (await command.ExecuteScalarAsync()).Should().Be(0L,
+            "without a tenant context RLS hides every user; only the lookup procedure crosses tenants");
     }
 
     [Fact]
-    public async Task RestrictedRole_CannotSelectEmailColumn_OnlyNormalizedEmail()
+    public async Task LookupOwner_CannotReadColumnsOutsideItsGrant()
     {
-        await using var connection = new NpgsqlConnection(_restrictedConnectionString);
+        await using var connection = TestDb.CreateConnection(_connectionString);
         await connection.OpenAsync();
-
-        var act = async () =>
+        await using (var impersonate = connection.CreateCommand())
         {
-            await using var command = connection.CreateCommand();
-            command.CommandText = "SELECT normalized_email FROM users LIMIT 1";
-            await command.ExecuteReaderAsync();
-        };
+            impersonate.CommandText = "EXECUTE AS USER = 'crownus_auth_base_login_fn_owner'";
+            await impersonate.ExecuteNonQueryAsync();
+        }
 
-        await act.Should().ThrowAsync<PostgresException>(
-            "the restricted role has no direct column grant on users; only EXECUTE on the function");
+        await using var command = connection.CreateCommand();
+        command.CommandText = "SELECT TOP (1) email FROM dbo.users";
+        var act = async () => await command.ExecuteScalarAsync();
+
+        (await act.Should().ThrowAsync<SqlException>()).Which.Number.Should().Be(230,
+            "the owner may read only the columns the lookup returns");
     }
 
     [Fact]
     public async Task PublicRole_CannotExecuteFunction()
     {
-        await using var adminConnection = new NpgsqlConnection(_connectionString);
+        await using var adminConnection = TestDb.CreateConnection(_connectionString);
         await adminConnection.OpenAsync();
 
         await using var checkGrant = adminConnection.CreateCommand();
         checkGrant.CommandText = """
-            SELECT has_function_privilege('public', 'auth_internal.auth_lookup_base_login_candidates(varchar)', 'EXECUTE');
+            SELECT COUNT_BIG(*) FROM sys.database_permissions
+            WHERE major_id = OBJECT_ID('auth_internal.auth_lookup_base_login_candidates')
+              AND grantee_principal_id = DATABASE_PRINCIPAL_ID('public')
+              AND state IN ('G', 'W');
             """;
-        var publicCanExecute = (bool)(await checkGrant.ExecuteScalarAsync())!;
 
-        publicCanExecute.Should().BeFalse("PUBLIC execute must be revoked");
+        (await checkGrant.ExecuteScalarAsync()).Should().Be(0L, "PUBLIC must have no execute grant");
     }
 
     private ApplicationDbContext CreateContext()
@@ -202,9 +176,9 @@ public sealed class AuthLookupBaseLoginCandidatesFunctionTests : IAsyncLifetime
         tenantContext.SetSystemMode();
 
         var options = new DbContextOptionsBuilder<ApplicationDbContext>()
-            .UseNpgsql(_connectionString)
+            .UseTestSqlServer(_connectionString)
             .UseSnakeCaseNamingConvention()
-            .AddInterceptors(new TenantRlsInterceptor(tenantContext))
+            .AddTestRls(new TenantRlsInterceptor(tenantContext))
             .Options;
 
         return new ApplicationDbContext(

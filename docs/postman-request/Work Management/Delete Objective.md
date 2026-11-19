@@ -27,4 +27,4 @@ Soft-deletes a milestone (no cascade to descendants — design §4). Applies imm
 
 Controller: `src/ONEVO.Api/Controllers/Tenant/WorkManagement/ObjectivesController.cs` (`Delete`)
 Handler: `src/ONEVO.Application/Features/WorkManagement/Objectives/Commands/DeleteObjective/DeleteObjectiveCommandHandler.cs`
-Plan: `docs/superpowers/plans/2026-08-04-work-management-milestone-hierarchy.md`
+Plan: `docs/superpowers/plans/finished/2026-08-04/2026-08-04-work-management-milestone-hierarchy.md`

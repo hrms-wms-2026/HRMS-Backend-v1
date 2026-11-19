@@ -16,15 +16,16 @@ namespace ONEVO.Api.Controllers.Tenant.CoreHr;
 public class EmployeeChecklistTasksController(IMediator mediator) : ControllerBase
 {
     [HttpGet]
-    [RequirePermission("employees:read")]
+    [RequireVisibleEmployee("employeeId")]
     public async Task<IActionResult> List(Guid employeeId, CancellationToken ct = default)
     {
         var result = await mediator.Send(new ListEmployeeChecklistTasksQuery(employeeId), ct);
         return result.IsSuccess ? Ok(result.Value) : Problem(result.Error, statusCode: result.StatusCode ?? 400);
     }
 
+    /// <summary>Reassigns a checklist task (assignee, due date, required). Needs no permission code:
+    /// the handler only lets a caller who manages this employee (management coverage) change it.</summary>
     [HttpPatch("{taskId:guid}")]
-    [RequirePermission("employees:write")]
     public async Task<IActionResult> Update(Guid employeeId, Guid taskId, [FromBody] UpdateEmployeeChecklistTaskRequest request, CancellationToken ct = default)
     {
         var result = await mediator.Send(new UpdateEmployeeChecklistTaskCommand(employeeId, taskId, request.AssignedToId, request.DueDate, request.IsRequired), ct);

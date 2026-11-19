@@ -32,8 +32,8 @@ public sealed class BaseDomainLoginTestFactory : WebApplicationFactory<Program>
             {
                 ["ConnectionStrings:DefaultConnection"] = _connectionString,
                 ["Jwt:Secret"] = "test_secret_at_least_32_chars_long_!!",
-                ["Jwt:TenantIssuer"] = "onevo-api",
-                ["Jwt:TenantAudience"] = "onevo-api",
+                ["Jwt:TenantIssuer"] = "crownus-api",
+                ["Jwt:TenantAudience"] = "crownus-api",
                 // Host-based tenant resolution rejects unknown hosts with 400; the test client
                 // calls https://localhost for base-domain requests and https://{slug}.localhost
                 // for direct tenant-host requests, mirroring E2ETestFactory/TenantProvisioningE2ETests.
@@ -61,7 +61,7 @@ public sealed class BaseDomainLoginTestFactory : WebApplicationFactory<Program>
 
             services.AddDbContext<ApplicationDbContext>((sp, options) =>
             {
-                options.UseNpgsql(_connectionString)
+                options.UseTestSqlServer(_connectionString)
                        .UseSnakeCaseNamingConvention();
             });
 

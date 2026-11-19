@@ -9,12 +9,13 @@ using ONEVO.Infrastructure.Identity.Sessions;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using ONEVO.Application.Common.ServiceInterfaces;
+using ONEVO.Application.Common.Tenancy;
 
 namespace ONEVO.Api.Controllers.Tenant.Auth;
 
 /// <summary>
 /// Owns every cookie/sign-in side effect shared across the tenant Auth.* controllers, so no
-/// controller reimplements onevo_session/onevo_csrf/onevo_mfa/onevo_legal_* cookie behavior.
+/// controller reimplements crownus_session/crownus_csrf/crownus_mfa/onevo_legal_* cookie behavior.
 /// </summary>
 internal static class TenantAuthResponseWriter
 {
@@ -42,7 +43,7 @@ internal static class TenantAuthResponseWriter
         }
 
         // Every gate cleared on the base host: hand off to the tenant host instead of signing in
-        // here. No onevo_session/onevo_csrf are ever set on the base host.
+        // here. No crownus_session/crownus_csrf are ever set on the base host.
         if (dto.RequiresTenantSessionExchange)
             return controller.StatusCode(202, dto.ToTenantSessionExchangeResponse().ToViewModel());
 
@@ -53,11 +54,11 @@ internal static class TenantAuthResponseWriter
     public static async Task SignInAsync(
         this ControllerBase controller, LoginResponseDto dto, IWebHostEnvironment env)
     {
-        // A browser calling login/session-exchange while it still holds a valid onevo_session
+        // A browser calling login/session-exchange while it still holds a valid crownus_session
         // cookie (e.g. re-login without logging out first) must not be left with that old
-        // session's cookie dangling: SignInAsync only issues a fresh onevo_csrf cookie below, so
-        // an un-cleared old onevo_session cookie would keep resolving to a session whose stored
-        // csrf_token_hash can never match the new onevo_csrf value, permanently failing CSRF
+        // session's cookie dangling: SignInAsync only issues a fresh crownus_csrf cookie below, so
+        // an un-cleared old crownus_session cookie would keep resolving to a session whose stored
+        // csrf_token_hash can never match the new crownus_csrf value, permanently failing CSRF
         // checks (including logout) for that browser. Signing out first guarantees a clean pair.
         if (controller.User.Identity?.IsAuthenticated == true)
             await controller.HttpContext.SignOutAsync("TenantScheme");
@@ -77,7 +78,7 @@ internal static class TenantAuthResponseWriter
 
         await controller.HttpContext.SignInAsync("TenantScheme", principal, props);
 
-        controller.Response.Cookies.Append("onevo_csrf", dto.CsrfToken, new CookieOptions
+        controller.Response.Cookies.Append("crownus_csrf", dto.CsrfToken, new CookieOptions
         {
             HttpOnly = false,
             Secure = !env.IsDevelopment(),
@@ -90,19 +91,19 @@ internal static class TenantAuthResponseWriter
         var tenantContext = controller.HttpContext.RequestServices.GetRequiredService<ITenantContext>();
         var rootHost = configuration["Tenancy:RootDomain"];
         if (!string.IsNullOrEmpty(rootHost) && !string.IsNullOrEmpty(tenantContext.Slug))
-            controller.SetLastTenantHintCookie(tenantContext.Slug, rootHost, env);
+            controller.SetLastTenantHintCookie(tenantContext.Slug, rootHost, env, TenancyModeReader.Read(configuration));
     }
 
     public static void ClearInvalidTenantSessionCookies(this ControllerBase controller, IWebHostEnvironment env)
     {
-        var hasSessionCookie = controller.Request.Cookies.ContainsKey("onevo_session");
+        var hasSessionCookie = controller.Request.Cookies.ContainsKey("crownus_session");
         var isAuthenticated = controller.User.Identity?.IsAuthenticated == true;
 
         if (!hasSessionCookie || isAuthenticated)
             return;
 
-        controller.DeleteTenantCookie("onevo_session", httpOnly: true, env);
-        controller.DeleteTenantCookie("onevo_csrf", httpOnly: false, env);
+        controller.DeleteTenantCookie("crownus_session", httpOnly: true, env);
+        controller.DeleteTenantCookie("crownus_csrf", httpOnly: false, env);
     }
 
     public static void SetMfaChallengeCookie(
@@ -111,7 +112,7 @@ internal static class TenantAuthResponseWriter
         if (string.IsNullOrWhiteSpace(mfaChallenge))
             throw new InvalidOperationException("MFA challenge material was not created.");
 
-        controller.Response.Cookies.Append("onevo_mfa", mfaChallenge, new CookieOptions
+        controller.Response.Cookies.Append("crownus_mfa", mfaChallenge, new CookieOptions
         {
             HttpOnly = true,
             Secure = !env.IsDevelopment(),
@@ -129,7 +130,7 @@ internal static class TenantAuthResponseWriter
 
         var expires = DateTimeOffset.UtcNow.AddMinutes(10);
 
-        controller.Response.Cookies.Append("onevo_legal_pending", legalChallenge, new CookieOptions
+        controller.Response.Cookies.Append("crownus_legal_pending", legalChallenge, new CookieOptions
         {
             HttpOnly = true,
             Secure = !env.IsDevelopment(),
@@ -138,11 +139,11 @@ internal static class TenantAuthResponseWriter
             Expires = expires
         });
 
-        // Readable double-submit CSRF value for the accept mutation. Mirrors onevo_csrf: never
+        // Readable double-submit CSRF value for the accept mutation. Mirrors crownus_csrf: never
         // HttpOnly, since same-origin JS must read it to attach to the follow-up request body.
         // Path must be "/" (not the narrow accept-endpoint path) so the SPA can read this cookie
         // via document.cookie from whatever route it's actually running on (e.g. /auth/legal-consent).
-        controller.Response.Cookies.Append("onevo_legal_csrf", legalCsrfToken, new CookieOptions
+        controller.Response.Cookies.Append("crownus_legal_csrf", legalCsrfToken, new CookieOptions
         {
             HttpOnly = false,
             Secure = !env.IsDevelopment(),

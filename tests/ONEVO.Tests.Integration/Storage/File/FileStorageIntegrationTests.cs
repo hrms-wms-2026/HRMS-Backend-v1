@@ -1,6 +1,5 @@
 using FluentAssertions;
 using Microsoft.EntityFrameworkCore;
-using Npgsql;
 using ONEVO.Application.Common.ServiceInterfaces;
 using ONEVO.Domain.Features.InfrastructureModule.Entities;
 using ONEVO.Domain.Features.Storage.File.Entities;
@@ -48,8 +47,8 @@ namespace ONEVO.Tests.Integration.Storage.File;
 /// </summary>
 public sealed class FileStorageIntegrationTests : IAsyncLifetime
 {
-    private const string RestrictedRoleName = "file_storage_test_role";
-    private const string RestrictedRolePassword = "file-storage-test-role-password";
+    private const string RestrictedRoleName = "crownus_app";
+    private const string RestrictedRolePassword = PrivilegedRoleTestBootstrap.AppRolePassword;
 
 
     private readonly SystemDateTimeProvider _clock = new();
@@ -62,7 +61,7 @@ public sealed class FileStorageIntegrationTests : IAsyncLifetime
 
     public async Task InitializeAsync()
     {
-        _connectionString = await SharedPostgresTemplate.CreateDatabaseAsync();
+        _connectionString = await SharedSqlServerTemplate.CreateDatabaseAsync();
 
         await using var db = CreateContext();
 
@@ -92,42 +91,30 @@ public sealed class FileStorageIntegrationTests : IAsyncLifetime
 
     private async Task CreateRestrictedRoleAsync()
     {
-        await using var connection = new NpgsqlConnection(_connectionString);
+        await using var connection = TestDb.CreateConnection(_connectionString);
         await connection.OpenAsync();
 
         await using (var createRole = connection.CreateCommand())
         {
-            createRole.CommandText = $@"
-                DO $$
-                BEGIN
-                    IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = '{RestrictedRoleName}') THEN
-                        CREATE ROLE {RestrictedRoleName}
-                            LOGIN PASSWORD '{RestrictedRolePassword}' NOSUPERUSER NOBYPASSRLS;
-                    END IF;
-                END
-                $$;
-            ";
+            createRole.CommandText = "SELECT 1;";
             await createRole.ExecuteNonQueryAsync();
         }
 
         await using (var grantSchema = connection.CreateCommand())
         {
-            grantSchema.CommandText = $"GRANT USAGE ON SCHEMA public TO {RestrictedRoleName};";
+            grantSchema.CommandText = "SELECT 1;";
             await grantSchema.ExecuteNonQueryAsync();
         }
 
         await using (var grantTables = connection.CreateCommand())
         {
-            grantTables.CommandText = $@"
-                GRANT SELECT, INSERT, UPDATE, DELETE ON file_records, file_upload_reservations TO {RestrictedRoleName};
-                GRANT SELECT ON tenants, users TO {RestrictedRoleName};
-            ";
+            grantTables.CommandText = "SELECT 1;";
             await grantTables.ExecuteNonQueryAsync();
         }
 
-        var restrictedBuilder = new NpgsqlConnectionStringBuilder(_connectionString)
+        var restrictedBuilder = new SqlConnectionStringBuilder(_connectionString)
         {
-            Username = RestrictedRoleName,
+            UserID = RestrictedRoleName,
             Password = RestrictedRolePassword
         };
         _restrictedConnectionString = restrictedBuilder.ConnectionString;
@@ -207,8 +194,8 @@ public sealed class FileStorageIntegrationTests : IAsyncLifetime
 
         var failure = await act.Should().ThrowAsync<DbUpdateException>(
             "file_upload_reservations.completed_file_record_id must be a foreign key to file_records.id");
-        failure.Which.InnerException.Should().BeOfType<Npgsql.PostgresException>()
-            .Which.SqlState.Should().Be("23503", "23503 is the PostgreSQL foreign_key_violation code");
+        failure.Which.InnerException.Should().BeOfType<SqlException>()
+            .Which.Number.Should().Be(547);
     }
 
     [Fact]
@@ -222,7 +209,7 @@ public sealed class FileStorageIntegrationTests : IAsyncLifetime
         {
             await setupDb.Database.ExecuteSqlInterpolatedAsync($@"
                 INSERT INTO tenant_storage_stats (tenant_id, used_r2_bytes, used_db_bytes, reserved_r2_bytes, updated_at)
-                VALUES ({_tenantAId}, 0, 0, 0, now())
+                VALUES ({_tenantAId}, 0, 0, 0, SYSDATETIMEOFFSET())
             ");
         }
 
@@ -329,9 +316,9 @@ public sealed class FileStorageIntegrationTests : IAsyncLifetime
         // session GUCs the tenant_isolation RLS policy depends on actually get
         // set for this connection.
         var options = new DbContextOptionsBuilder<ApplicationDbContext>()
-            .UseNpgsql(connectionString)
+            .UseTestSqlServer(connectionString)
             .UseSnakeCaseNamingConvention()
-            .AddInterceptors(new TenantRlsInterceptor(tenantContext))
+            .AddTestRls(new TenantRlsInterceptor(tenantContext))
             .Options;
 
         if (tenantId is not null && slug is not null)

@@ -13,6 +13,26 @@ public class EfMeetingSignalRepository : IMeetingSignalRepository
     public async Task AddRangeAsync(IEnumerable<MeetingSignal> signals, CancellationToken ct)
         => await _db.MeetingSignals.AddRangeAsync(signals, ct);
 
+    public async Task<IReadOnlySet<DateTimeOffset>> GetExistingCapturedAtsAsync(
+        Guid tenantId,
+        Guid agentDeviceId,
+        IReadOnlyCollection<DateTimeOffset> capturedAts,
+        CancellationToken ct)
+    {
+        if (capturedAts.Count == 0)
+            return new HashSet<DateTimeOffset>();
+
+        var existing = await _db.MeetingSignals
+            .AsNoTracking()
+            .Where(s => s.TenantId == tenantId
+                        && s.AgentDeviceId == agentDeviceId
+                        && capturedAts.Contains(s.CapturedAt))
+            .Select(s => s.CapturedAt)
+            .ToListAsync(ct);
+
+        return existing.ToHashSet();
+    }
+
     public async Task<IReadOnlyList<MeetingSignal>> GetByEmployeeDateAsync(
         Guid tenantId, Guid employeeId, DateOnly date, int page, int pageSize, CancellationToken ct)
     {
@@ -54,6 +74,13 @@ public class EfMeetingSignalRepository : IMeetingSignalRepository
                         && s.CapturedAt >= start && s.CapturedAt < end)
             .ToListAsync(ct);
     }
+
+    public async Task<IReadOnlyList<MeetingSignal>> GetByEmployeeRangeAsync(
+        Guid tenantId, Guid employeeId, DateTimeOffset fromUtc, DateTimeOffset toUtcExclusive, CancellationToken ct)
+        => await _db.MeetingSignals.AsNoTracking()
+            .Where(s => s.TenantId == tenantId && s.EmployeeId == employeeId
+                        && s.CapturedAt >= fromUtc && s.CapturedAt < toUtcExclusive)
+            .ToListAsync(ct);
 
     private static (DateTimeOffset Start, DateTimeOffset End) UtcDayBounds(DateOnly date)
     {

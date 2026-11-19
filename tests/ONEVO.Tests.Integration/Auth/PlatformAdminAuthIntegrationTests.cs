@@ -1,5 +1,6 @@
 using System.Net;
 using System.Net.Http.Json;
+using System.Text.Json;
 using FluentAssertions;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.EntityFrameworkCore;
@@ -32,7 +33,7 @@ public class PlatformAdminAuthIntegrationTests : IAsyncLifetime
 
     public async Task InitializeAsync()
     {
-        var connectionString = await SharedPostgresTemplate.CreateDatabaseAsync();
+        var connectionString = await SharedSqlServerTemplate.CreateDatabaseAsync();
         _environmentScope = new IntegrationTestEnvironmentScope(connectionString);
         _factory = new AdminTestFactory(connectionString);
         _client = _factory.CreateClient(new WebApplicationFactoryClientOptions
@@ -52,7 +53,15 @@ public class PlatformAdminAuthIntegrationTests : IAsyncLifetime
     private ApplicationDbContext GetDb(IServiceScope scope) =>
         scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
 
+    /// <summary>Full sign-in including mandatory MFA enrollment (F-02), as the admin console does it.</summary>
     private async Task<(string SessionCookie, string CsrfToken)> LoginAsync()
+    {
+        var session = await PlatformAdminTestSignIn.SignInAsync(_client, AdminEmail, AdminPassword);
+        return (session.SessionCookie, session.CsrfToken);
+    }
+
+    /// <summary>Password step only: for a not-yet-enrolled admin this is an enrollment-only session.</summary>
+    private async Task<(string SessionCookie, string CsrfToken, HttpResponseMessage Response)> PasswordOnlyLoginAsync()
     {
         var response = await _client.PostAsJsonAsync(
             "/admin/v1/auth/login", new { email = AdminEmail, password = AdminPassword });
@@ -61,7 +70,7 @@ public class PlatformAdminAuthIntegrationTests : IAsyncLifetime
         var cookies = response.Headers.GetValues("Set-Cookie").ToList();
         var session = cookies.First(c => c.StartsWith("admin_session=")).Split(';')[0];
         var csrf = cookies.First(c => c.StartsWith("admin_csrf=")).Split(';')[0].Split('=', 2)[1];
-        return (session, csrf);
+        return (session, csrf, response);
     }
 
     private HttpRequestMessage BuildRequest(HttpMethod method, string path, string sessionCookie, string? csrf = null)
@@ -112,6 +121,162 @@ public class PlatformAdminAuthIntegrationTests : IAsyncLifetime
             .SingleAsync(e => e.EventType == "login_succeeded");
         successEvent.UserId.Should().Be(user.Id);
         (successEvent.MetadataJson ?? "").Should().NotContain(AdminPassword);
+    }
+
+    // ---- F-02: mandatory MFA for platform admins -------------------------------------------
+
+    [Fact]
+    public async Task NotEnrolledAdmin_PasswordLogin_ReportsEnrollmentRequired_OnLoginAndMe()
+    {
+        var (sessionCookie, _, response) = await PasswordOnlyLoginAsync();
+
+        var loginBody = await response.Content.ReadFromJsonAsync<JsonElement>();
+        loginBody.GetProperty("mfa_enrollment_required").GetBoolean().Should().BeTrue();
+        loginBody.GetProperty("mfa_required").GetBoolean().Should().BeFalse();
+
+        var me = await _client.SendAsync(BuildRequest(HttpMethod.Get, "/admin/v1/auth/me", sessionCookie));
+        me.StatusCode.Should().Be(HttpStatusCode.OK);
+        var meBody = await me.Content.ReadFromJsonAsync<JsonElement>();
+        meBody.GetProperty("mfa_enrollment_required").GetBoolean().Should().BeTrue();
+    }
+
+    [Theory]
+    [InlineData("GET", "/admin/v1/tenants")]
+    [InlineData("GET", "/admin/v1/platform-access/users")]
+    [InlineData("GET", "/admin/v1/platform-access/auth-events")]
+    [InlineData("POST", "/admin/v1/tenants")]
+    public async Task NotEnrolledAdmin_IsForbiddenFromAdminRoutes_WithEnrollmentReason(string method, string path)
+    {
+        var (sessionCookie, csrf, _) = await PasswordOnlyLoginAsync();
+
+        var response = await _client.SendAsync(BuildRequest(new HttpMethod(method), path, sessionCookie, csrf));
+
+        response.StatusCode.Should().Be(HttpStatusCode.Forbidden);
+        var body = await response.Content.ReadAsStringAsync();
+        body.Should().Contain("mfa_enrollment_required");
+    }
+
+    [Fact]
+    public async Task NotEnrolledAdmin_CanReachOnlyEnrollmentMeAndLogout()
+    {
+        var (sessionCookie, csrf, _) = await PasswordOnlyLoginAsync();
+
+        var enable = await _client.SendAsync(BuildRequest(HttpMethod.Post, "/admin/v1/auth/mfa/enable", sessionCookie, csrf));
+        enable.StatusCode.Should().Be(HttpStatusCode.OK);
+
+        var me = await _client.SendAsync(BuildRequest(HttpMethod.Get, "/admin/v1/auth/me", sessionCookie));
+        me.StatusCode.Should().Be(HttpStatusCode.OK);
+
+        var logout = await _client.SendAsync(BuildRequest(HttpMethod.Post, "/admin/v1/auth/logout", sessionCookie, csrf));
+        logout.StatusCode.Should().Be(HttpStatusCode.NoContent);
+
+        var afterLogout = await _client.SendAsync(BuildRequest(HttpMethod.Get, "/admin/v1/auth/me", sessionCookie));
+        afterLogout.StatusCode.Should().Be(HttpStatusCode.Unauthorized);
+    }
+
+    [Fact]
+    public async Task ConfirmSetup_LiftsTheGate_OnTheSameSession_WithoutSigningInAgain()
+    {
+        var (sessionCookie, csrf, _) = await PasswordOnlyLoginAsync();
+        var session = new AdminTestSession(sessionCookie, csrf);
+
+        var blocked = await _client.SendAsync(BuildRequest(HttpMethod.Get, "/admin/v1/tenants", sessionCookie));
+        blocked.StatusCode.Should().Be(HttpStatusCode.Forbidden);
+
+        await PlatformAdminTestSignIn.CompleteEnrollmentAsync(_client, session, AdminEmail);
+
+        var allowed = await _client.SendAsync(BuildRequest(HttpMethod.Get, "/admin/v1/tenants", sessionCookie));
+        allowed.StatusCode.Should().Be(HttpStatusCode.OK);
+
+        var me = await _client.SendAsync(BuildRequest(HttpMethod.Get, "/admin/v1/auth/me", sessionCookie));
+        var meBody = await me.Content.ReadFromJsonAsync<JsonElement>();
+        meBody.GetProperty("mfa_enrollment_required").GetBoolean().Should().BeFalse();
+
+        using var scope = _factory.Services.CreateScope();
+        var user = await GetDb(scope).PlatformUsers.SingleAsync(u => u.Email == AdminEmail);
+        user.MfaStatus.Should().Be(PlatformUser.MfaEnrolled);
+    }
+
+    [Fact]
+    public async Task EnrolledAdmin_PasswordLogin_StillReturnsChallenge_NotASession()
+    {
+        await LoginAsync(); // enrolls the admin
+
+        var response = await _client.PostAsJsonAsync(
+            "/admin/v1/auth/login", new { email = AdminEmail, password = AdminPassword });
+
+        response.StatusCode.Should().Be(HttpStatusCode.Accepted);
+        response.Headers.GetValues("Set-Cookie").Should().NotContain(c => c.StartsWith("admin_session="));
+        var body = await response.Content.ReadFromJsonAsync<JsonElement>();
+        body.GetProperty("mfa_required").GetBoolean().Should().BeTrue();
+        body.GetProperty("mfa_enrollment_required").GetBoolean().Should().BeFalse();
+    }
+
+    [Fact]
+    public async Task ResetMfa_ByAnotherAdmin_ClearsEnrollment_RevokesTargetSessions_AndAudits()
+    {
+        var (adminCookie, adminCsrf) = await LoginAsync();
+
+        // A second, enrolled admin who lost their authenticator, with a live session.
+        var targetId = Guid.NewGuid();
+        var targetSessionId = Guid.NewGuid();
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = GetDb(scope);
+            db.PlatformUsers.Add(new PlatformUser
+            {
+                Id = targetId,
+                Email = "lost-device@onevo.dev",
+                FullName = "Lost Device",
+                Status = PlatformUser.StatusActive,
+                InviteStatus = PlatformUser.InviteAccepted,
+                MfaStatus = PlatformUser.MfaEnrolled,
+                MfaSecret = "encrypted-secret-placeholder"
+            });
+            db.PlatformUserSessions.Add(new PlatformUserSession
+            {
+                Id = targetSessionId,
+                AccountId = targetId,
+                TokenHash = new string('a', 64),
+                CreatedAt = DateTimeOffset.UtcNow,
+                LastActivityAt = DateTimeOffset.UtcNow,
+                ExpiresAt = DateTimeOffset.UtcNow.AddDays(1),
+                CsrfTokenHash = "x"
+            });
+            await db.SaveChangesAsync();
+        }
+
+        var reset = await _client.SendAsync(BuildRequest(
+            HttpMethod.Post, "/admin/v1/platform-access/users/" + targetId + "/mfa/reset", adminCookie, adminCsrf));
+        reset.StatusCode.Should().Be(HttpStatusCode.NoContent);
+
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = GetDb(scope);
+            var target = await db.PlatformUsers.SingleAsync(u => u.Id == targetId);
+            target.MfaStatus.Should().Be(PlatformUser.MfaNotEnrolled);
+            target.MfaSecret.Should().BeNull();
+            (await db.PlatformUserSessions.SingleAsync(s => s.Id == targetSessionId)).RevokedAt.Should().NotBeNull();
+            var resetEvent = await db.PlatformAuthEvents.SingleAsync(e => e.EventType == PlatformAuthEvent.MfaReset);
+            resetEvent.UserId.Should().Be(targetId);
+            (resetEvent.MetadataJson ?? "").Should().NotContain("encrypted-secret-placeholder");
+        }
+    }
+
+    [Fact]
+    public async Task ResetMfa_OnOwnAccount_IsRefused()
+    {
+        var (adminCookie, adminCsrf) = await LoginAsync();
+        Guid selfId;
+        using (var scope = _factory.Services.CreateScope())
+            selfId = (await GetDb(scope).PlatformUsers.SingleAsync(u => u.Email == AdminEmail)).Id;
+
+        var reset = await _client.SendAsync(BuildRequest(
+            HttpMethod.Post, "/admin/v1/platform-access/users/" + selfId + "/mfa/reset", adminCookie, adminCsrf));
+
+        reset.StatusCode.Should().Be(HttpStatusCode.Forbidden);
+        using var check = _factory.Services.CreateScope();
+        (await GetDb(check).PlatformUsers.SingleAsync(u => u.Id == selfId)).MfaStatus.Should().Be(PlatformUser.MfaEnrolled);
     }
 
     [Fact]

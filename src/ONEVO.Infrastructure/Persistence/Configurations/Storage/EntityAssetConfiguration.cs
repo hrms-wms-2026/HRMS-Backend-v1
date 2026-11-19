@@ -2,6 +2,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata.Builders;
 using ONEVO.Domain.Features.Storage.EntityAssets.Entities;
 using ONEVO.Domain.Features.Storage.File.Entities;
+using ONEVO.Infrastructure.Persistence.SqlServer;
 
 namespace ONEVO.Infrastructure.Persistence.Configurations.Storage;
 
@@ -13,7 +14,7 @@ public class EntityAssetConfiguration : IEntityTypeConfiguration<EntityAsset>
         builder.HasKey(a => a.Id);
         builder.Property(a => a.OwnerType).HasMaxLength(50).IsRequired();
         builder.Property(a => a.AssetPurpose).HasMaxLength(50).IsRequired();
-        builder.Property(a => a.MetadataJson).HasColumnType("jsonb");
+        builder.Property(a => a.MetadataJson).IsJsonColumn();
         builder.Property(a => a.CreatedByType).HasMaxLength(30).IsRequired();
 
         builder.HasIndex(a => new { a.OwnerType, a.OwnerId });

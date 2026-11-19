@@ -7,32 +7,44 @@ using ONEVO.Application.Features.CoreHr.Employee.Models;
 using ONEVO.Application.Features.CoreHr.Employee.RepositoryInterfaces;
 using ONEVO.Application.Features.CoreHr.EmployeeAuthority.Models;
 using ONEVO.Application.Features.CoreHr.EmployeeAuthority.ServiceInterfaces;
+using ONEVO.Application.Features.Monitoring.TrayActivation.ServiceInterfaces;
 using ONEVO.Application.Features.Storage.File.Helpers;
 
 namespace ONEVO.Application.Features.CoreHr.Employee.Queries.ListEmployees;
 
 public class ListEmployeesQueryHandler : IRequestHandler<ListEmployeesQuery, Result<EmployeeListPageResponse>>
 {
-    private const string RequiredPermission = "employees:read";
+    // The directory is relationship-based: who you see comes from your management coverage
+    // (plus yourself), not from a permission code.
+    private const string RequiredPermission = EmployeeAuthorityVisibilityRequest.RelationshipOnly;
     private const string AttendanceReadPermission = "attendance:read";
+
+    private static readonly HashSet<string> SortKeys = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "name", "employeeNumber", "position", "department", "employmentType", "manager"
+    };
+
     private readonly IEmployeeRepository _employeeRepository;
     private readonly IEmployeeAuthorityResolver _authorityResolver;
     private readonly Common.RepositoryInterfaces.IEntityAssetRepository _entityAssets;
     private readonly ICurrentUser _currentUser;
     private readonly IDateTimeProvider _dateTime;
+    private readonly IEmployeeOnlineStatusReader? _onlineStatus;
 
     public ListEmployeesQueryHandler(
         IEmployeeRepository employeeRepository,
         IEmployeeAuthorityResolver authorityResolver,
         Common.RepositoryInterfaces.IEntityAssetRepository entityAssets,
         ICurrentUser currentUser,
-        IDateTimeProvider dateTime)
+        IDateTimeProvider dateTime,
+        IEmployeeOnlineStatusReader? onlineStatus = null)
     {
         _employeeRepository = employeeRepository;
         _authorityResolver = authorityResolver;
         _entityAssets = entityAssets;
         _currentUser = currentUser;
         _dateTime = dateTime;
+        _onlineStatus = onlineStatus;
     }
 
     public async Task<Result<EmployeeListPageResponse>> Handle(ListEmployeesQuery request, CancellationToken ct)
@@ -82,11 +94,18 @@ public class ListEmployeesQueryHandler : IRequestHandler<ListEmployeesQuery, Res
             // than fail open (Unrestricted() would fall through to "every tenant employee").
             var noFallbackScope = new EmployeeVisibilityScope(
                 false, null, new HashSet<Guid>(), new HashSet<Guid>(), new HashSet<Guid>());
+            var sortBy = request.SortBy is not null && SortKeys.TryGetValue(request.SortBy, out var canonicalSort) ? canonicalSort : null;
             var filter = new EmployeeListFilter(
                 request.Search,
                 request.DepartmentId,
                 legalEntityId,
-                visibility.EmployeeIds.ToHashSet());
+                visibility.EmployeeIds.ToHashSet(),
+                request.PositionId,
+                request.EmploymentTypeCodes is { Count: > 0 } codes ? codes : null,
+                request.ReportingManagerId,
+                sortBy,
+                request.SortDescending,
+                request.ActiveOnly);
 
             (items, totalCount) = includeAttendanceWarnings
                 ? await _employeeRepository.ListVisibleAsync(
@@ -140,6 +159,13 @@ public class ListEmployeesQueryHandler : IRequestHandler<ListEmployeesQuery, Res
         items = items.Select(i => avatarFileIdByEmployeeId.TryGetValue(i.Id, out var fileId)
             ? i with { AvatarFileId = fileId }
             : i with { AvatarFileId = null }).ToList();
+
+        if (_onlineStatus is not null && items.Count > 0)
+        {
+            var online = await _onlineStatus.GetOnlineEmployeeIdsAsync(
+                _currentUser.TenantId, items.Select(i => i.Id).ToList(), ct);
+            items = items.Select(i => i with { IsOnline = online.Contains(i.Id) }).ToList();
+        }
 
         return Result<EmployeeListPageResponse>.Success(
             new EmployeeListPageResponse(items, totalCount, page, pageSize));

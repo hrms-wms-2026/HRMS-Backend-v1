@@ -43,25 +43,4 @@ public class LeaveApprovalsControllerPermissionTests
         response.Should().BeOfType<OkObjectResult>();
         mediator.Verify(x => x.Send(It.Is<ApproveLeaveRequestCommand>(c => c.RequestId == requestId && c.Comment == "ok"), It.IsAny<CancellationToken>()), Times.Once);
     }
-
-    [Fact]
-    public async Task RespondInfo_SendsRespondCommandWithEmptyFilesWhenOmitted()
-    {
-        var requestId = Guid.NewGuid();
-        var mediator = new Mock<IMediator>();
-        mediator.Setup(x => x.Send(It.IsAny<RespondLeaveInformationCommand>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(Result<LeaveApprovalDecisionResponse>.Success(
-                new LeaveApprovalDecisionResponse(requestId, "pending", "pending", 0m, 0m, 12m, [])));
-        var controller = new LeaveApprovalsController(mediator.Object);
-
-        var response = await controller.RespondInfo(
-            requestId,
-            new RespondLeaveInformationRequest("Attached", null),
-            CancellationToken.None);
-
-        response.Should().BeOfType<OkObjectResult>();
-        mediator.Verify(
-            x => x.Send(It.Is<RespondLeaveInformationCommand>(c => c.RequestId == requestId && c.FileRecordIds.Count == 0), It.IsAny<CancellationToken>()),
-            Times.Once);
-    }
 }

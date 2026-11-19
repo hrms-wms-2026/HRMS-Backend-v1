@@ -8,17 +8,11 @@ public record UpdateLeaveTypeCommand(
     Guid LeaveTypeId,
     string Name,
     string? Description,
-    string Category,
+    string Color,
     bool IsPaid,
-    bool RequiresApproval,
-    bool RequiresDocument,
-    int? DocumentRequiredAfterDays,
-    string[] AcceptedDocumentTypes,
-    int? MaxConsecutiveDays,
-    decimal DefaultDaysPerYear,
-    bool CarryForwardAllowed,
-    decimal? MaxCarryForwardDays,
-    int? CarryForwardExpiryMonths,
-    bool ProRataForNewJoiners,
     string ApplicableGender,
-    int MinimumNoticeDays) : IRequest<Result<LeaveTypeResponse>>;
+    bool RequiresDocument,
+    decimal? DocumentRequiredAfterHours,
+    string[] AcceptedDocumentTypes,
+    // Icon: null keeps the current icon; empty clears it.
+    string? Icon = null) : IRequest<Result<LeaveTypeResponse>>;

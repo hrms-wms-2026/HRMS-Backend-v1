@@ -27,6 +27,7 @@ public sealed class ResetPasswordCommandHandlerTests
         public Mock<IPermissionVersionService> PermVersionService { get; } = new();
         public Mock<IDateTimeProvider> Clock { get; } = new();
         public Mock<ITenantContext> TenantContext { get; } = new();
+        public Mock<ISessionRepository> Sessions { get; } = new();
 
         public HandlerFixture()
         {
@@ -56,7 +57,8 @@ public sealed class ResetPasswordCommandHandlerTests
             PasswordHasher.Object,
             PermVersionService.Object,
             Clock.Object,
-            TenantContext.Object);
+            TenantContext.Object,
+            Sessions.Object);
 
         public void SetupConsumedToken(Guid tenantId, Guid? userId) =>
             PasswordResetTokens
@@ -246,6 +248,40 @@ public sealed class ResetPasswordCommandHandlerTests
         result.IsSuccess.Should().BeTrue();
         fixture.PermVersionService.Verify(
             p => p.IncrementVersionAsync(user.Id, It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Fact]
+    public async Task Handle_ValidToken_RevokesAllBrowserSessions()
+    {
+        var fixture = new HandlerFixture();
+        var tenantId = Guid.NewGuid();
+        var user = BuildActiveUser(tenantId);
+        fixture.TenantContext.Setup(t => t.TenantId).Returns(tenantId);
+        fixture.SetupConsumedToken(tenantId, user.Id);
+        fixture.Users.Setup(u => u.GetByIdAsync(user.Id, It.IsAny<CancellationToken>())).ReturnsAsync(user);
+
+        var result = await fixture.Build().Handle(
+            new ResetPasswordCommand("raw-token", "NewPassword1"), CancellationToken.None);
+
+        result.IsSuccess.Should().BeTrue();
+        fixture.Sessions.Verify(
+            s => s.RevokeAllActiveByUserIdAsync(user.Id, It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Fact]
+    public async Task Handle_InvalidToken_DoesNotRevokeSessions()
+    {
+        var fixture = new HandlerFixture();
+        var tenantId = Guid.NewGuid();
+        fixture.TenantContext.Setup(t => t.TenantId).Returns(tenantId);
+        fixture.SetupConsumedToken(tenantId, null);
+
+        var result = await fixture.Build().Handle(
+            new ResetPasswordCommand("raw-token", "NewPassword1"), CancellationToken.None);
+
+        result.IsSuccess.Should().BeFalse();
+        fixture.Sessions.Verify(
+            s => s.RevokeAllActiveByUserIdAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>()), Times.Never);
     }
 
     [Fact]

@@ -9,7 +9,7 @@ namespace ONEVO.Infrastructure.Persistence.Configurations.DevPlatform.SystemConf
 /// <summary>
 /// EF configuration for integration_catalog.
 /// Phase 1 canonical table - columns match phase1-table-inventory.md exactly.
-/// onevo_app_provider is a FK to the UNIQUE platform_oauth_apps.provider column (not its id).
+/// crownus_app_provider is a FK to the UNIQUE platform_oauth_apps.provider column (not its id).
 /// </summary>
 public class IntegrationCatalogEntryConfiguration : IEntityTypeConfiguration<IntegrationCatalogEntry>
 {
@@ -32,8 +32,8 @@ public class IntegrationCatalogEntryConfiguration : IEntityTypeConfiguration<Int
             .HasMaxLength(20)
             .IsRequired();
 
-        builder.Property(e => e.OnevoAppProvider)
-            .HasMaxLength(30)
+        builder.Property(e => e.CrownusAppProvider)
+            .HasMaxLength(50)
             .IsRequired();
 
         builder.Property(e => e.LogoUrl)
@@ -51,7 +51,7 @@ public class IntegrationCatalogEntryConfiguration : IEntityTypeConfiguration<Int
         // FK -> platform_oauth_apps(provider), the app's UNIQUE alternate key (not its id).
         builder.HasOne<PlatformOAuthApp>()
             .WithMany()
-            .HasForeignKey(e => e.OnevoAppProvider)
+            .HasForeignKey(e => e.CrownusAppProvider)
             .HasPrincipalKey(a => a.Provider)
             .OnDelete(DeleteBehavior.Restrict);
 

@@ -16,8 +16,38 @@ public class EfWorkTaskRepository : IWorkTaskRepository
     public async Task<WorkTask?> GetByIdForTenantAsync(Guid tenantId, Guid id, CancellationToken ct = default)
         => await _db.WorkTasks.AsNoTracking().FirstOrDefaultAsync(t => t.TenantId == tenantId && t.Id == id, ct);
 
+    public async Task<IReadOnlyList<WorkTask>> GetByIdsForTenantAsync(Guid tenantId, IReadOnlyCollection<Guid> ids, CancellationToken ct = default)
+    {
+        if (ids.Count == 0)
+            return Array.Empty<WorkTask>();
+        return await _db.WorkTasks.AsNoTracking()
+            .Where(t => t.TenantId == tenantId && ids.Contains(t.Id))
+            .ToListAsync(ct);
+    }
+
     public async Task<WorkTask?> GetTrackedByIdForTenantAsync(Guid tenantId, Guid id, CancellationToken ct = default)
         => await _db.WorkTasks.FirstOrDefaultAsync(t => t.TenantId == tenantId && t.Id == id, ct);
+
+    // Bypasses only the tenant/soft-delete filter (tenant re-applied by hand): meetings stay hidden (Phase 2 spec 2.2).
+    public async Task<WorkTask?> GetTrackedByIdForTenantIncludingDeletedAsync(Guid tenantId, Guid id, CancellationToken ct = default)
+        => await _db.WorkTasks.IgnoreQueryFilters([WorkTaskQueryFilters.TenantScope]).FirstOrDefaultAsync(t => t.TenantId == tenantId && t.Id == id, ct);
+
+    public Task<bool> IsAssignedToEmployeeAsync(Guid taskId, Guid employeeId, CancellationToken ct = default)
+        => _db.TaskAssignments.AsNoTracking()
+            .AnyAsync(assignment => assignment.TaskId == taskId && assignment.EmployeeId == employeeId, ct);
+
+    public async Task<IReadOnlyDictionary<Guid, IReadOnlyList<Guid>>> GetAssignedEmployeeIdsByTaskIdsAsync(
+        IReadOnlyCollection<Guid> taskIds, CancellationToken ct = default)
+    {
+        if (taskIds.Count == 0)
+            return new Dictionary<Guid, IReadOnlyList<Guid>>();
+        var rows = await _db.TaskAssignments.AsNoTracking()
+            .Where(assignment => taskIds.Contains(assignment.TaskId))
+            .Select(assignment => new { assignment.TaskId, assignment.EmployeeId })
+            .ToListAsync(ct);
+        return rows.GroupBy(row => row.TaskId)
+            .ToDictionary(group => group.Key, group => (IReadOnlyList<Guid>)group.Select(row => row.EmployeeId).ToList());
+    }
 
     public async Task<IReadOnlyList<WorkTask>> GetByObjectiveIdAsync(Guid tenantId, Guid objectiveId, CancellationToken ct = default)
         => await _db.WorkTasks.AsNoTracking()
@@ -99,12 +129,187 @@ public class EfWorkTaskRepository : IWorkTaskRepository
         ).ToListAsync(ct);
     }
 
+    public async Task<OpenAssignedTasksPage> ListOpenAssignedToEmployeeAsync(Guid tenantId, Guid employeeId, int take, CancellationToken ct = default)
+    {
+        var query =
+            from t in _db.WorkTasks.AsNoTracking()
+            join s in _db.TaskStatuses.AsNoTracking() on t.StatusId equals s.Id
+            where t.TenantId == tenantId
+                  && (s.Category == TaskStatusCategories.NotStarted || s.Category == TaskStatusCategories.Active)
+                  && _db.TaskAssignments.Any(a => a.TaskId == t.Id && a.EmployeeId == employeeId)
+            select new { Task = t, s.Category, StatusName = s.Name };
+
+        var total = await query.CountAsync(ct);
+        var items = await query
+            .OrderBy(x => x.Category)
+            .ThenBy(x => x.Task.ShortId)
+            .Take(take)
+            .Select(x => new OpenAssignedTaskRow(x.Task.Id, x.Task.ShortId, x.Task.Title, x.Task.ProjectId, x.Task.ObjectiveId, x.Category,
+                x.Task.DueDate, x.StatusName, x.Task.Priority))
+            .ToListAsync(ct);
+
+        return new OpenAssignedTasksPage(items, total);
+    }
+
+    public async Task<IReadOnlyDictionary<Guid, WorkTaskCounts>> CountByObjectivesAsync(
+        Guid tenantId, IReadOnlyCollection<Guid> objectiveIds, DateOnly today, CancellationToken ct = default)
+    {
+        if (objectiveIds.Count == 0)
+            return new Dictionary<Guid, WorkTaskCounts>();
+        var rows = await (
+            from t in _db.WorkTasks.AsNoTracking()
+            join s in _db.TaskStatuses.AsNoTracking() on t.StatusId equals s.Id
+            where t.TenantId == tenantId && t.ParentTaskId == null && objectiveIds.Contains(t.ObjectiveId)
+            group new { s.Category, t.DueDate } by t.ObjectiveId into g
+            select new
+            {
+                g.Key,
+                Total = g.Count(),
+                NotStarted = g.Count(x => x.Category == TaskStatusCategories.NotStarted),
+                Active = g.Count(x => x.Category == TaskStatusCategories.Active),
+                Done = g.Count(x => x.Category == TaskStatusCategories.Done),
+                Overdue = g.Count(x => x.Category != TaskStatusCategories.Done && x.DueDate != null && x.DueDate < today)
+            }).ToListAsync(ct);
+        return rows.ToDictionary(r => r.Key, r => new WorkTaskCounts(r.Total, r.NotStarted, r.Active, r.Done, r.Overdue));
+    }
+
+    public async Task<IReadOnlyDictionary<Guid, WorkTaskCounts>> CountByProjectsAsync(
+        Guid tenantId, IReadOnlyCollection<Guid> projectIds, DateOnly today, CancellationToken ct = default)
+    {
+        if (projectIds.Count == 0)
+            return new Dictionary<Guid, WorkTaskCounts>();
+        var rows = await (
+            from t in _db.WorkTasks.AsNoTracking()
+            join s in _db.TaskStatuses.AsNoTracking() on t.StatusId equals s.Id
+            where t.TenantId == tenantId && t.ParentTaskId == null && projectIds.Contains(t.ProjectId)
+            group new { s.Category, t.DueDate } by t.ProjectId into g
+            select new
+            {
+                g.Key,
+                Total = g.Count(),
+                NotStarted = g.Count(x => x.Category == TaskStatusCategories.NotStarted),
+                Active = g.Count(x => x.Category == TaskStatusCategories.Active),
+                Done = g.Count(x => x.Category == TaskStatusCategories.Done),
+                Overdue = g.Count(x => x.Category != TaskStatusCategories.Done && x.DueDate != null && x.DueDate < today)
+            }).ToListAsync(ct);
+        return rows.ToDictionary(r => r.Key, r => new WorkTaskCounts(r.Total, r.NotStarted, r.Active, r.Done, r.Overdue));
+    }
+
+    public async Task<IReadOnlyList<EmployeeTaskPeriodRow>> ListForEmployeePeriodAsync(
+        Guid tenantId, Guid employeeId, DateOnly from, DateOnly to, CancellationToken ct = default)
+    {
+        var fromUtc = new DateTimeOffset(from.ToDateTime(TimeOnly.MinValue, DateTimeKind.Utc));
+        var toUtcExclusive = new DateTimeOffset(to.AddDays(1).ToDateTime(TimeOnly.MinValue, DateTimeKind.Utc));
+        // `from` is a query keyword inside the query expression below, so capture the bounds under other names.
+        var fromDate = from;
+        var toDate = to;
+
+        return await (
+            from t in _db.WorkTasks.AsNoTracking()
+            join s in _db.TaskStatuses.AsNoTracking() on t.StatusId equals s.Id
+            join p in _db.Projects.AsNoTracking() on t.ProjectId equals p.Id
+            // Left join: the module name is display-only and must never change which tasks are counted.
+            join o in _db.Objectives.AsNoTracking() on t.ObjectiveId equals o.Id into objectives
+            from o in objectives.DefaultIfEmpty()
+            where t.TenantId == tenantId
+                  && _db.TaskAssignments.Any(a => a.TaskId == t.Id && a.EmployeeId == employeeId)
+                  && ((t.DueDate != null && t.DueDate >= fromDate && t.DueDate <= toDate)
+                      || (t.CompletedAt != null && t.CompletedAt >= fromUtc && t.CompletedAt < toUtcExclusive)
+                      || _db.TaskAssignments.Any(a => a.TaskId == t.Id && a.EmployeeId == employeeId
+                                                      && a.AssignedAt >= fromUtc && a.AssignedAt < toUtcExclusive)
+                      // Carried over: due before the period and not finished before it began. "Open" is
+                      // judged by status/progress, not CompletedAt == null - tasks closed by status can lack
+                      // a CompletedAt and must not resurface in every later period.
+                      || (t.DueDate != null && t.DueDate < fromDate
+                          && ((!s.MarksTaskComplete && t.ProgressPercent < 100)
+                              || (t.CompletedAt != null && t.CompletedAt >= fromUtc))))
+            select new EmployeeTaskPeriodRow(
+                t.DueDate, t.CompletedAt, t.ProgressPercent, s.MarksTaskComplete, t.StoryPoints,
+                t.Id, t.Title, t.ProjectId, p.Name,
+                t.DueDate != null && t.DueDate < fromDate,
+                t.ShortId, t.Priority, s.Name, s.Color, t.ObjectiveId, o != null ? o.Title : "")
+        ).ToListAsync(ct);
+    }
+
+    public async Task<IReadOnlyList<EmployeeTaskPeriodRow>> ListOpenForEmployeeAsync(
+        Guid tenantId, Guid employeeId, CancellationToken ct = default)
+    {
+        return await (
+            from t in _db.WorkTasks.AsNoTracking()
+            join s in _db.TaskStatuses.AsNoTracking() on t.StatusId equals s.Id
+            join p in _db.Projects.AsNoTracking() on t.ProjectId equals p.Id
+            join o in _db.Objectives.AsNoTracking() on t.ObjectiveId equals o.Id into objectives
+            from o in objectives.DefaultIfEmpty()
+            where t.TenantId == tenantId
+                  && _db.TaskAssignments.Any(a => a.TaskId == t.Id && a.EmployeeId == employeeId)
+                  && !s.MarksTaskComplete && t.ProgressPercent < 100
+            select new EmployeeTaskPeriodRow(
+                t.DueDate, t.CompletedAt, t.ProgressPercent, s.MarksTaskComplete, t.StoryPoints,
+                t.Id, t.Title, t.ProjectId, p.Name,
+                false,
+                t.ShortId, t.Priority, s.Name, s.Color, t.ObjectiveId, o != null ? o.Title : "")
+        ).ToListAsync(ct);
+    }
+
+    public async Task<IReadOnlyList<EmployeeWorkTaskRow>> ListOpenDueByAsync(Guid tenantId, Guid employeeId, DateOnly dueOnOrBefore, CancellationToken ct = default)
+    {
+        return await (
+            from t in _db.WorkTasks.AsNoTracking()
+            join s in _db.TaskStatuses.AsNoTracking() on t.StatusId equals s.Id
+            join p in _db.Projects.AsNoTracking() on t.ProjectId equals p.Id
+            where t.TenantId == tenantId
+                  && t.DueDate.HasValue
+                  && t.DueDate <= dueOnOrBefore
+                  && !s.MarksTaskComplete
+                  && t.ProgressPercent < 100
+                  && _db.TaskAssignments.Any(a => a.TaskId == t.Id && a.EmployeeId == employeeId)
+            orderby t.DueDate
+            select new EmployeeWorkTaskRow(
+                t.Id, t.ShortId, t.Title, t.ProjectId, p.Name, s.Name, s.Color, s.MarksTaskComplete,
+                t.Priority, t.StoryPoints, t.DueDate, t.ProgressPercent, t.UpdatedAt ?? t.CreatedAt)
+        ).ToListAsync(ct);
+    }
+
+    public async Task<IReadOnlyList<EmployeeWorkTaskRow>> ListTodayAssignedAsync(
+        Guid tenantId, Guid employeeId, DateOnly today, DateTimeOffset dayStartUtc, DateTimeOffset dayEndUtc, int take, CancellationToken ct = default)
+    {
+        return await (
+            from t in _db.WorkTasks.AsNoTracking()
+            join s in _db.TaskStatuses.AsNoTracking() on t.StatusId equals s.Id
+            join p in _db.Projects.AsNoTracking() on t.ProjectId equals p.Id
+            where t.TenantId == tenantId
+                  && _db.TaskAssignments.Any(a => a.TaskId == t.Id && a.EmployeeId == employeeId)
+                  && (t.DueDate == today
+                      || ((t.UpdatedAt ?? t.CreatedAt) >= dayStartUtc && (t.UpdatedAt ?? t.CreatedAt) < dayEndUtc))
+            orderby (t.UpdatedAt ?? t.CreatedAt) descending
+            select new EmployeeWorkTaskRow(
+                t.Id, t.ShortId, t.Title, t.ProjectId, p.Name, s.Name, s.Color, s.MarksTaskComplete,
+                t.Priority, t.StoryPoints, t.DueDate, t.ProgressPercent, t.UpdatedAt ?? t.CreatedAt)
+        ).Take(take).ToListAsync(ct);
+    }
+
+    public async Task<IReadOnlyList<DateTimeOffset>> ListCompletedAtForEmployeeAsync(Guid tenantId, Guid employeeId, DateTimeOffset fromUtc, DateTimeOffset toUtcExclusive, CancellationToken ct = default)
+    {
+        return await (
+            from t in _db.WorkTasks.AsNoTracking()
+            join s in _db.TaskStatuses.AsNoTracking() on t.StatusId equals s.Id
+            where t.TenantId == tenantId
+                  && t.CompletedAt.HasValue
+                  && t.CompletedAt >= fromUtc
+                  && t.CompletedAt < toUtcExclusive
+                  && (s.MarksTaskComplete || t.ProgressPercent >= 100)
+                  && _db.TaskAssignments.Any(a => a.TaskId == t.Id && a.EmployeeId == employeeId)
+            select t.CompletedAt!.Value
+        ).ToListAsync(ct);
+    }
+
     public async Task<IReadOnlyList<WorkTask>> GetBySprintIdAsync(Guid tenantId, Guid sprintId, CancellationToken ct = default)
         => await _db.WorkTasks.AsNoTracking().Where(t => t.TenantId == tenantId && t.SprintId == sprintId).ToListAsync(ct);
 
     // IgnoreQueryFilters() bypasses the soft-delete half of the composed query filter on
     // purpose: a status must stay undeletable if a soft-deleted task still references it, not
     // just active ones. Tenant scoping is preserved manually via the TenantId equality below.
+    // Meeting tasks are counted on purpose: they reference a status too (FK), so it must stay undeletable.
     public async Task<bool> AnyActiveByStatusIdAsync(Guid tenantId, Guid statusId, CancellationToken ct = default)
         => await _db.WorkTasks.IgnoreQueryFilters()
             .AnyAsync(t => t.TenantId == tenantId && t.StatusId == statusId, ct);
@@ -112,9 +317,83 @@ public class EfWorkTaskRepository : IWorkTaskRepository
     // IgnoreQueryFilters() bypasses the soft-delete half of the composed query filter on
     // purpose: a category must stay undeletable if a soft-deleted task still references it, not
     // just active ones. Tenant scoping is preserved manually via the TenantId equality below.
+    // Meeting tasks are counted on purpose: they reference a category too (FK), so it must stay undeletable.
     public async Task<bool> AnyActiveByCategoryIdAsync(Guid tenantId, Guid categoryId, CancellationToken ct = default)
         => await _db.WorkTasks.IgnoreQueryFilters()
             .AnyAsync(t => t.TenantId == tenantId && t.CategoryId == categoryId, ct);
+
+    public async Task<IReadOnlyList<LedOverdueTaskRow>> ListTopLevelOverdueAsync(Guid tenantId, IReadOnlyCollection<Guid> objectiveIds, DateOnly today, int take, CancellationToken ct = default)
+    {
+        if (objectiveIds.Count == 0 || take <= 0)
+            return Array.Empty<LedOverdueTaskRow>();
+        var ids = objectiveIds.ToList();
+        // Same predicate as TaskProgressClassifier's Overdue bucket: not complete (status column or
+        // 100%), and DueDate strictly before today.
+        var rows = await (
+            from t in _db.WorkTasks.AsNoTracking()
+            join s in _db.TaskStatuses.AsNoTracking() on t.StatusId equals s.Id
+            where t.TenantId == tenantId && t.ParentTaskId == null && ids.Contains(t.ObjectiveId)
+                && !s.MarksTaskComplete && t.ProgressPercent < 100
+                && t.DueDate != null && t.DueDate < today
+            orderby t.DueDate, t.ShortId
+            select new { t.Id, t.ShortId, t.Title, t.ProjectId, t.ObjectiveId, DueDate = t.DueDate!.Value, t.EstimatedHours }
+        ).Take(take).ToListAsync(ct);
+
+        var taskIds = rows.Select(r => r.Id).ToList();
+        var assignees = taskIds.Count == 0
+            ? new Dictionary<Guid, List<Guid>>()
+            : (await _db.TaskAssignments.AsNoTracking().Where(a => taskIds.Contains(a.TaskId))
+                    .Select(a => new { a.TaskId, a.EmployeeId }).ToListAsync(ct))
+                .GroupBy(a => a.TaskId).ToDictionary(g => g.Key, g => g.Select(a => a.EmployeeId).ToList());
+
+        return rows.Select(r => new LedOverdueTaskRow(
+            r.Id, r.ShortId, r.Title, r.ProjectId, r.ObjectiveId, r.DueDate,
+            assignees.TryGetValue(r.Id, out var assigneeIds) ? assigneeIds : new List<Guid>(), r.EstimatedHours)).ToList();
+    }
+
+    public async Task<IReadOnlyList<LedOverdueModuleRow>> ListTopLevelOverdueByModuleAsync(Guid tenantId,
+        IReadOnlyCollection<Guid> objectiveIds, DateOnly today, CancellationToken ct = default)
+    {
+        if (objectiveIds.Count == 0)
+            return Array.Empty<LedOverdueModuleRow>();
+        var ids = objectiveIds.ToList();
+        // The same predicate as ListTopLevelOverdueAsync, summed per module in the database. In progress / not started
+        // match the module hour summary (progress_percent > 0), so the overdue hours carve out of those totals exactly.
+        var rows = await (
+            from t in _db.WorkTasks.AsNoTracking()
+            join s in _db.TaskStatuses.AsNoTracking() on t.StatusId equals s.Id
+            where t.TenantId == tenantId && t.ParentTaskId == null && ids.Contains(t.ObjectiveId)
+                && !s.MarksTaskComplete && t.ProgressPercent < 100
+                && t.DueDate != null && t.DueDate < today
+            group t by new { t.ProjectId, t.ObjectiveId } into g
+            select new
+            {
+                g.Key.ProjectId,
+                g.Key.ObjectiveId,
+                TaskCount = g.Count(),
+                InProgress = g.Sum(t => t.ProgressPercent > 0 ? t.EstimatedHours ?? 0m : 0m),
+                NotStarted = g.Sum(t => t.ProgressPercent > 0 ? 0m : t.EstimatedHours ?? 0m),
+                Unestimated = g.Count(t => t.EstimatedHours == null),
+            }
+        ).ToListAsync(ct);
+        return rows.Select(r => new LedOverdueModuleRow(r.ProjectId, r.ObjectiveId, r.TaskCount, r.InProgress, r.NotStarted, r.Unestimated))
+            .ToList();
+    }
+
+    public async Task<int> CountTopLevelOverdueAsync(Guid tenantId, IReadOnlyCollection<Guid> objectiveIds, DateOnly today, CancellationToken ct = default)
+    {
+        if (objectiveIds.Count == 0)
+            return 0;
+        var ids = objectiveIds.ToList();
+        return await (
+            from t in _db.WorkTasks.AsNoTracking()
+            join s in _db.TaskStatuses.AsNoTracking() on t.StatusId equals s.Id
+            where t.TenantId == tenantId && t.ParentTaskId == null && ids.Contains(t.ObjectiveId)
+                && !s.MarksTaskComplete && t.ProgressPercent < 100
+                && t.DueDate != null && t.DueDate < today
+            select t.Id
+        ).CountAsync(ct);
+    }
 
     public void Update(WorkTask task) => _db.WorkTasks.Update(task);
     public void Remove(WorkTask task) => _db.WorkTasks.Remove(task);

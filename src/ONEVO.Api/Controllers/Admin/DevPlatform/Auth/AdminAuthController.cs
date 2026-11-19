@@ -3,7 +3,9 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Authentication;
+using Microsoft.Extensions.Configuration;
 using System.Security.Claims;
+using ONEVO.Api.Auth;
 using ONEVO.Application.Common.ServiceInterfaces;
 using ONEVO.Infrastructure.Identity.Sessions;
 using ONEVO.Application.Features.Auth.Login.Commands.AdminGoogleLogin;
@@ -26,11 +28,14 @@ public sealed class AdminAuthController : ControllerBase
 {
     private readonly IMediator _mediator;
     private readonly IWebHostEnvironment _env;
+    private readonly string? _adminCookieDomain;
 
-    public AdminAuthController(IMediator mediator, IWebHostEnvironment env)
+    public AdminAuthController(IMediator mediator, IWebHostEnvironment env, IConfiguration configuration)
     {
         _mediator = mediator;
         _env = env;
+        var domain = configuration["AdminCookieDomain"];
+        _adminCookieDomain = string.IsNullOrWhiteSpace(domain) ? null : domain;
     }
 
     /// <summary>
@@ -51,6 +56,8 @@ public sealed class AdminAuthController : ControllerBase
     [AllowAnonymous]
     public async Task<IActionResult> GoogleCallback([FromBody] AdminGoogleCallbackRequest request, CancellationToken ct)
     {
+        ClearStaleAdminSessionCookies();
+
         var ip = HttpContext.Connection.RemoteIpAddress?.ToString();
         var ua = Request.Headers.UserAgent.ToString();
 
@@ -58,8 +65,17 @@ public sealed class AdminAuthController : ControllerBase
         if (!result.IsSuccess)
             return Problem(result.Error, statusCode: result.StatusCode ?? 400);
 
-        await SignInAsync(result.Value!);
-        return Ok(result.Value.ToSessionResponse());
+        var dto = result.Value!;
+
+        // Same MFA gate as password login: an enrolled admin gets a challenge cookie, not a session.
+        if (dto.RequiresMfa)
+        {
+            SetAdminMfaChallengeCookie(dto.MfaSessionToken!);
+            return StatusCode(202, dto.ToSessionResponse());
+        }
+
+        await SignInAsync(dto);
+        return Ok(dto.ToSessionResponse());
     }
 
     /// <summary>
@@ -137,9 +153,13 @@ public sealed class AdminAuthController : ControllerBase
             : Problem(result.Error, statusCode: result.StatusCode ?? 400);
     }
 
+    // F-02: the four actions below use AdminAuthorizationPolicies.MfaEnrollment instead of
+    // AdminPolicy, so an admin who has not enrolled MFA yet can enroll, read their session and
+    // sign out. Every other admin/v1 route stays on AdminPolicy, which requires enrolled MFA.
+
     /// <summary>Begin MFA setup for the calling admin - returns TOTP secret + QR code URI.</summary>
     [HttpPost("mfa/enable")]
-    [Authorize(Policy = "AdminPolicy")]
+    [Authorize(Policy = AdminAuthorizationPolicies.MfaEnrollment)]
     public async Task<IActionResult> EnableMfa(CancellationToken ct)
     {
         var result = await _mediator.Send(new EnableAdminMfaCommand(), ct);
@@ -150,7 +170,7 @@ public sealed class AdminAuthController : ControllerBase
 
     /// <summary>Confirms a freshly generated TOTP secret and turns MFA on for this admin.</summary>
     [HttpPost("mfa/confirm-setup")]
-    [Authorize(Policy = "AdminPolicy")]
+    [Authorize(Policy = AdminAuthorizationPolicies.MfaEnrollment)]
     public async Task<IActionResult> ConfirmMfaSetup([FromBody] ConfirmAdminMfaSetupRequest request, CancellationToken ct)
     {
         var result = await _mediator.Send(new ConfirmAdminMfaSetupCommand(request.Code), ct);
@@ -161,7 +181,7 @@ public sealed class AdminAuthController : ControllerBase
 
     /// <summary>Return safe metadata for the current admin session (used to restore state on page refresh).</summary>
     [HttpGet("me")]
-    [Authorize(Policy = "AdminPolicy")]
+    [Authorize(Policy = AdminAuthorizationPolicies.MfaEnrollment)]
     public async Task<IActionResult> Me(CancellationToken ct)
     {
         var result = await _mediator.Send(new GetAdminSessionContextQuery(), ct);
@@ -189,11 +209,11 @@ public sealed class AdminAuthController : ControllerBase
 
     /// <summary>Logout - revokes the server-side admin session.</summary>
     [HttpPost("logout")]
-    [Authorize(Policy = "AdminPolicy")]
+    [Authorize(Policy = AdminAuthorizationPolicies.MfaEnrollment)]
     public async Task<IActionResult> Logout(CancellationToken ct)
     {
         await HttpContext.SignOutAsync("AdminScheme");
-        Response.Cookies.Delete("admin_csrf");
+        Response.Cookies.Delete("admin_csrf", new CookieOptions { Domain = _adminCookieDomain });
         return NoContent();
     }
 
@@ -213,12 +233,14 @@ public sealed class AdminAuthController : ControllerBase
             HttpOnly = true,
             Secure = !_env.IsDevelopment(),
             SameSite = SameSiteMode.Strict,
+            Domain = _adminCookieDomain,
         });
         Response.Cookies.Delete("admin_csrf", new CookieOptions
         {
             HttpOnly = false,
             Secure = !_env.IsDevelopment(),
             SameSite = SameSiteMode.Strict,
+            Domain = _adminCookieDomain,
         });
     }
 
@@ -258,6 +280,7 @@ public sealed class AdminAuthController : ControllerBase
             HttpOnly = false,
             Secure = !_env.IsDevelopment(),
             SameSite = SameSiteMode.Strict,
+            Domain = _adminCookieDomain,
             Expires = dto.ExpiresAt
         });
     }

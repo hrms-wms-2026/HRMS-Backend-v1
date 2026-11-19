@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using ONEVO.Application.Features.OrgStructure.RepositoryInterfaces;
 using ONEVO.Domain.Features.OrgStructure.Entities;
+using ONEVO.Infrastructure.Persistence.SqlServer;
 
 // Namespace deliberately stops at the feature segment: a ".Department" segment would
 // collide with the Department entity type and force using-aliases everywhere (same
@@ -118,14 +119,14 @@ public class EfDepartmentRepository : IDepartmentRepository
         return sortBy switch
         {
             DepartmentSortBy.Code => ascending
-                ? query.OrderBy(department => department.Code).ThenBy(department => department.Id)
-                : query.OrderByDescending(department => department.Code).ThenBy(department => department.Id),
+                ? query.OrderByNullsLast(department => department.Code).ThenBy(department => department.Id)
+                : query.OrderByDescendingNullsFirst(department => department.Code).ThenBy(department => department.Id),
             DepartmentSortBy.CreatedAt => ascending
                 ? query.OrderBy(department => department.CreatedAt).ThenBy(department => department.Id)
                 : query.OrderByDescending(department => department.CreatedAt).ThenBy(department => department.Id),
             DepartmentSortBy.UpdatedAt => ascending
-                ? query.OrderBy(department => department.UpdatedAt).ThenBy(department => department.Id)
-                : query.OrderByDescending(department => department.UpdatedAt).ThenBy(department => department.Id),
+                ? query.OrderByNullsLast(department => department.UpdatedAt).ThenBy(department => department.Id)
+                : query.OrderByDescendingNullsFirst(department => department.UpdatedAt).ThenBy(department => department.Id),
             _ => ascending
                 ? query.OrderBy(department => department.Name).ThenBy(department => department.Id)
                 : query.OrderByDescending(department => department.Name).ThenBy(department => department.Id),
@@ -141,6 +142,17 @@ public class EfDepartmentRepository : IDepartmentRepository
 
         var result = await query.FirstOrDefaultAsync(ct);
         return result;
+    }
+
+    public async Task<IReadOnlyDictionary<Guid, Department>> GetByIdsAsync(
+        Guid tenantId, IReadOnlyCollection<Guid> departmentIds, CancellationToken ct = default)
+    {
+        if (departmentIds.Count == 0)
+            return new Dictionary<Guid, Department>();
+        var rows = await _db.Departments.AsNoTracking()
+            .Where(department => department.TenantId == tenantId && departmentIds.Contains(department.Id))
+            .ToListAsync(ct);
+        return rows.ToDictionary(department => department.Id);
     }
 
     public async Task<Department?> GetByIdForLegalEntityAsync(
@@ -228,7 +240,7 @@ public class EfDepartmentRepository : IDepartmentRepository
         CancellationToken ct = default)
     {
         var descendantIds = _db.Database.SqlQuery<Guid>($@"
-            WITH RECURSIVE descendants AS (
+            WITH descendants AS (
                 SELECT id FROM departments
                 WHERE tenant_id = {tenantId} AND legal_entity_id = {legalEntityId}
                     AND parent_department_id = {departmentId}
@@ -237,30 +249,39 @@ public class EfDepartmentRepository : IDepartmentRepository
                 INNER JOIN descendants ON d.parent_department_id = descendants.id
                 WHERE d.tenant_id = {tenantId} AND d.legal_entity_id = {legalEntityId}
             )
-            SELECT id AS ""Value"" FROM descendants
+            SELECT id AS [Value] FROM descendants
         ");
 
-        var isDescendant = await descendantIds.AnyAsync(id => id == possibleDescendantId, ct);
-        return isDescendant;
+        // Not composed: SQL Server cannot wrap a WITH query in a subquery.
+        var ids = await descendantIds.ToListAsync(ct);
+        return ids.Contains(possibleDescendantId);
     }
 
     public async Task<IReadOnlyList<Guid>> GetDescendantDepartmentIdsAsync(
-        Guid tenantId, Guid legalEntityId, Guid departmentId, CancellationToken ct = default)
+        Guid tenantId, Guid legalEntityId, IReadOnlyCollection<Guid> departmentIds, CancellationToken ct = default)
     {
+        if (departmentIds.Count == 0)
+            return Array.Empty<Guid>();
+
+        var roots = departmentIds.Distinct().ToArray();
+        var rootsJson = System.Text.Json.JsonSerializer.Serialize(roots);
         var descendantIds = _db.Database.SqlQuery<Guid>($@"
-            WITH RECURSIVE descendants AS (
+            WITH descendants AS (
                 SELECT id FROM departments
                 WHERE tenant_id = {tenantId} AND legal_entity_id = {legalEntityId}
-                    AND parent_department_id = {departmentId} AND is_active = true
+                    AND parent_department_id IN (SELECT CAST([value] AS uniqueidentifier) FROM OPENJSON({rootsJson}))
+                    AND is_active = 1
                 UNION ALL
                 SELECT d.id FROM departments d
                 INNER JOIN descendants ON d.parent_department_id = descendants.id
-                WHERE d.tenant_id = {tenantId} AND d.legal_entity_id = {legalEntityId} AND d.is_active = true
+                WHERE d.tenant_id = {tenantId} AND d.legal_entity_id = {legalEntityId} AND d.is_active = 1
             )
-            SELECT id AS ""Value"" FROM descendants
+            SELECT id AS [Value] FROM descendants
         ");
 
-        return await descendantIds.ToListAsync(ct);
+        var ids = await descendantIds.ToListAsync(ct);
+        var rootSet = roots.ToHashSet();
+        return ids.Where(id => !rootSet.Contains(id)).Distinct().ToList();
     }
 
     public async Task<int> CountActiveChildrenAsync(

@@ -48,7 +48,7 @@ public sealed class MonitoringPolicyOverrideIntegrationTestsFixture : IAsyncLife
 
     public async Task InitializeAsync()
     {
-        _connectionString = await SharedPostgresTemplate.CreateDatabaseAsync();
+        _connectionString = await SharedSqlServerTemplate.CreateDatabaseAsync();
         _environmentScope = new IntegrationTestEnvironmentScope(_connectionString);
 
         _factory = new E2ETestFactory(_connectionString, new CapturingEmailService());
@@ -149,9 +149,9 @@ public sealed class MonitoringPolicyOverrideIntegrationTestsFixture : IAsyncLife
             tenantId, slug, TenantStatus.Active, null));
 
         var options = new DbContextOptionsBuilder<ApplicationDbContext>()
-            .UseNpgsql(_connectionString)
+            .UseTestSqlServer(_connectionString)
             .UseSnakeCaseNamingConvention()
-            .AddInterceptors(new TenantRlsInterceptor(tenantContext))
+            .AddTestRls(new TenantRlsInterceptor(tenantContext))
             .Options;
 
         return new ApplicationDbContext(
@@ -464,12 +464,12 @@ public sealed class MonitoringPolicyOverrideIntegrationTestsFixture : IAsyncLife
         var exchangeResponse = await CompleteTenantSessionExchangeAsync(legalResponse);
         exchangeResponse.StatusCode.Should().Be(HttpStatusCode.OK, await exchangeResponse.Content.ReadAsStringAsync());
 
-        var sessionValue = ExtractCookieValue(exchangeResponse, "onevo_session");
-        var csrfCookieValue = ExtractCookieValue(exchangeResponse, "onevo_csrf");
+        var sessionValue = ExtractCookieValue(exchangeResponse, "crownus_session");
+        var csrfCookieValue = ExtractCookieValue(exchangeResponse, "crownus_csrf");
         var csrfHeader = Uri.UnescapeDataString(csrfCookieValue);
 
         return new SessionInfo(
-            $"onevo_session={sessionValue}; onevo_csrf={csrfCookieValue}",
+            $"crownus_session={sessionValue}; crownus_csrf={csrfCookieValue}",
             csrfHeader,
             $"{tenantSlug}.localhost",
             Guid.Empty);
@@ -477,15 +477,15 @@ public sealed class MonitoringPolicyOverrideIntegrationTestsFixture : IAsyncLife
 
     private async Task<HttpResponseMessage> CompleteLegalAcceptanceAsync(HttpResponseMessage priorResponse)
     {
-        var legalPending = ExtractCookieValue(priorResponse, "onevo_legal_pending");
-        var legalCsrf = ExtractCookieValue(priorResponse, "onevo_legal_csrf");
+        var legalPending = ExtractCookieValue(priorResponse, "crownus_legal_pending");
+        var legalCsrf = ExtractCookieValue(priorResponse, "crownus_legal_csrf");
         var priorBody = await priorResponse.Content.ReadAsStringAsync();
         using var priorDocument = JsonDocument.Parse(priorBody);
         var continueUrl = new Uri(priorDocument.RootElement.GetProperty("continue_url").GetString()!, UriKind.Absolute);
 
         using var request = new HttpRequestMessage(HttpMethod.Post, continueUrl.PathAndQuery);
         request.Headers.Host = continueUrl.Host;
-        request.Headers.Add("Cookie", $"onevo_legal_pending={legalPending}; onevo_legal_csrf={legalCsrf}");
+        request.Headers.Add("Cookie", $"crownus_legal_pending={legalPending}; crownus_legal_csrf={legalCsrf}");
         request.Headers.Add("X-CSRF-Token", legalCsrf);
         request.Content = JsonContent.Create(new
         {
@@ -662,7 +662,7 @@ public sealed class MonitoringPolicyOverrideIntegrationTests : IClassFixture<Mon
         }
 
         var minutes = await resolver.GetIdleThresholdMinutesAsync(tenantId, employeeId);
-        minutes.Should().Be(2, "the resolver's hardcoded safe default (MonitoringToggleResolution.DefaultIdleThresholdMinutes)");
+        minutes.Should().Be(15, "the resolver's hardcoded safe default (MonitoringToggleResolution.DefaultIdleThresholdMinutes)");
     }
 
     // ---------------------------------------------------------------------

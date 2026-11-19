@@ -57,10 +57,10 @@ public sealed class DepartmentsIntegrationTestsFixture : IAsyncLifetime
 
     public async Task InitializeAsync()
     {
-        var connectionString = Environment.GetEnvironmentVariable("ONEVO_TEST_DB");
+        var connectionString = Environment.GetEnvironmentVariable("CROWNUS_TEST_DB");
         if (string.IsNullOrWhiteSpace(connectionString))
         {
-            connectionString = await SharedPostgresTemplate.CreateDatabaseAsync();
+            connectionString = await SharedSqlServerTemplate.CreateDatabaseAsync();
         }
         else
         {
@@ -77,11 +77,11 @@ public sealed class DepartmentsIntegrationTestsFixture : IAsyncLifetime
 
         await WaitForSeedersAsync();
 
-        var loginResponse = await SendAsync(HttpMethod.Post, AdminHost, "/admin/v1/auth/login",
-            new { email = "test_admin@onevo.dev", password = "test_password_123" });
-        var adminCookies = ParseSetCookies(loginResponse);
-        _adminCsrfToken = adminCookies["admin_csrf"];
-        _adminCookie = $"admin_session={adminCookies["admin_session"]}";
+        // F-02: sign-in completes mandatory MFA enrollment; no gate bypass.
+        var adminSession = await PlatformAdminTestSignIn.SignInAsync(
+            _client, "test_admin@onevo.dev", "test_password_123", AdminHost);
+        _adminCsrfToken = adminSession.CsrfToken;
+        _adminCookie = adminSession.SessionCookie;
 
         TenantAOwner = await ProvisionAndLoginOwnerAsync("dept-a", "Dept A Co", "owner-a@dept.test");
         TenantBOwner = await ProvisionAndLoginOwnerAsync("dept-b", "Dept B Co", "owner-b@dept.test");
@@ -186,8 +186,8 @@ public sealed class DepartmentsIntegrationTestsFixture : IAsyncLifetime
         exchangeResponse.StatusCode.Should().Be(HttpStatusCode.OK, exchangeJson.ToString());
         var cookies = ParseSetCookies(exchangeResponse);
 
-        var sessionCookie = $"onevo_session={cookies["onevo_session"]}; onevo_csrf={cookies["onevo_csrf"]}";
-        var csrfHeader = Uri.UnescapeDataString(cookies["onevo_csrf"]);
+        var sessionCookie = $"crownus_session={cookies["crownus_session"]}; crownus_csrf={cookies["crownus_csrf"]}";
+        var csrfHeader = Uri.UnescapeDataString(cookies["crownus_csrf"]);
         return new TenantSession(host, sessionCookie, csrfHeader);
     }
 
@@ -678,16 +678,37 @@ public sealed class DepartmentsIntegrationTests : IClassFixture<DepartmentsInteg
     }
 
     [Fact]
-    public async Task Create_WithHeadPositionId_Returns409_AssignmentDeferredToUpdate()
+    public async Task Create_WithUnknownHeadPositionId_Returns404()
     {
-        // Part 3: a new department has no positions belonging to it yet, so head-position
-        // assignment on create is rejected outright (not silently ignored) - see
-        // DEPARTMENT_HEAD_POSITION_ASSIGNMENT_REPORT.md. Assign it afterwards through update.
+        // A head chosen at create time is an existing position that moves into the new
+        // department; an id that doesn't resolve in this legal entity is not found.
         var response = await _fixture.SendAsync(HttpMethod.Post, _fixture.TenantAOwner.Host,
             $"/api/v1/org/legal-entities/{_fixture.TenantALegalEntityId}/departments",
-            new { name = "Head Position Deferred Dept", headPositionId = Guid.NewGuid() },
+            new { name = "Head Position Unknown Dept", headPositionId = Guid.NewGuid() },
             cookie: _fixture.TenantAOwner.SessionCookie, csrfToken: _fixture.TenantAOwner.CsrfHeader);
-        response.StatusCode.Should().Be(HttpStatusCode.Conflict);
+        response.StatusCode.Should().Be(HttpStatusCode.NotFound);
+    }
+
+    [Fact]
+    public async Task Create_WithExistingHeadPosition_MovesItIntoNewDepartment_AndSetsHead()
+    {
+        var source = await _fixture.CreateDepartmentAsync(_fixture.TenantAOwner, _fixture.TenantALegalEntityId, "Head Source Dept");
+        var position = await _fixture.CreatePositionAsync(
+            _fixture.TenantAId, _fixture.TenantALegalEntityId, source.GetProperty("id").GetGuid(), isActive: true);
+
+        var response = await _fixture.SendAsync(HttpMethod.Post, _fixture.TenantAOwner.Host,
+            $"/api/v1/org/legal-entities/{_fixture.TenantALegalEntityId}/departments",
+            new { name = "Head On Create Dept", headPositionId = position.Id },
+            cookie: _fixture.TenantAOwner.SessionCookie, csrfToken: _fixture.TenantAOwner.CsrfHeader);
+        response.StatusCode.Should().Be(HttpStatusCode.Created);
+
+        var json = await ReadJsonAsync(response);
+        var newDepartmentId = json.GetProperty("id").GetGuid();
+        json.GetProperty("headPositionId").GetGuid().Should().Be(position.Id);
+
+        var moved = await _fixture.GetJsonAsync(_fixture.TenantAOwner,
+            $"/api/v1/org/legal-entities/{_fixture.TenantALegalEntityId}/positions/{position.Id}");
+        moved.GetProperty("departmentId").GetGuid().Should().Be(newDepartmentId);
     }
 
     // -- Part 3: department head position assignment (update-only) ----------

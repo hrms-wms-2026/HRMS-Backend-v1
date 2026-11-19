@@ -19,4 +19,8 @@ public record LeaveBalanceResponse(
     decimal PendingHours,
     decimal RemainingHours,
     bool IsNegative,
-    DateOnly? CarryForwardExpiresOn);
+    DateOnly? CarryForwardExpiresOn,
+    string? PolicyName,
+    decimal? AmountHours,
+    string? AmountPeriod,
+    DateOnly ResetsOn);

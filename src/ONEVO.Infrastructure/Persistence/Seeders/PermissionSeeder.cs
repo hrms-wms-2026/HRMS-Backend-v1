@@ -9,6 +9,28 @@ namespace ONEVO.Infrastructure.Persistence.Seeders;
 
 public class PermissionSeeder : IHostedService
 {
+    private static readonly HashSet<string> RetiredPermissionCodes = new(StringComparer.Ordinal)
+    {
+        "agent:command", "agent:manage", "agent:register", "agent:view-health",
+        "projects:access", "projects:read",
+        "tasks:read", "tasks:read-own", "tasks:write", "tasks:approve", "tasks:delete",
+        "time:read", "time:write", "time:approve",
+        "okr:read", "okr:write", "wiki:read", "wiki:write",
+        "sprints:read", "sprints:manage",
+        "workspaces:read", "workspaces:create", "workspaces:manage",
+        "resources:read", "resources:manage", "roadmaps:read", "roadmaps:write",
+        // Never enforced by any endpoint or screen. settings:billing duplicated billing:manage,
+        // settings:branding is covered by legal_entity:update, settings:read by legal_entity:read.
+        "settings:read", "settings:admin", "settings:billing", "settings:branding",
+        "settings:integrations", "settings:alerts", "settings:system",
+        // Employee visibility is relationship-based (management coverage), not a permission:
+        // a manager sees the people their position covers without any code.
+        "employees:read", "employees:read-team", "attendance:read-team",
+        // Invitation resend/revoke is allowed for the person who added the employee, or for
+        // users:manage (Settings > Users) - see EmployeeInvitationAccess.
+        "invitations:manage"
+    };
+
     private readonly IServiceProvider _services;
     private readonly ILogger<PermissionSeeder> _logger;
 
@@ -43,6 +65,17 @@ public class PermissionSeeder : IHostedService
     {
         var defined = GetAllPermissions();
         var existingRows = await db.Permissions.ToListAsync(ct);
+        var retiredRows = existingRows
+            .Where(p => RetiredPermissionCodes.Contains(p.Code))
+            .ToList();
+        if (retiredRows.Count > 0)
+        {
+            // Role and user-override rows cascade from permissions. Keeping retirement here makes
+            // the seeder converge existing databases instead of only affecting fresh installs.
+            db.Permissions.RemoveRange(retiredRows);
+            existingRows = existingRows.Except(retiredRows).ToList();
+        }
+
         var existing = existingRows
             .Select(p => p.Code)
             .ToHashSet(StringComparer.Ordinal);
@@ -66,7 +99,7 @@ public class PermissionSeeder : IHostedService
             .Where(p => !existing.Contains(p.Code))
             .ToList();
 
-        if (toAdd.Count == 0 && updated == 0)
+        if (toAdd.Count == 0 && updated == 0 && retiredRows.Count == 0)
         {
             _logger.LogInformation("Permissions already seeded â€” skipping.");
             return;
@@ -74,7 +107,9 @@ public class PermissionSeeder : IHostedService
 
         await db.Permissions.AddRangeAsync(toAdd, ct);
         await db.SaveChangesAsync(ct);
-        _logger.LogInformation("Seeded {Count} new permissions and updated {UpdatedCount} existing permissions.", toAdd.Count, updated);
+        _logger.LogInformation(
+            "Seeded {Count} new permissions, updated {UpdatedCount}, and retired {RetiredCount} legacy permissions.",
+            toAdd.Count, updated, retiredRows.Count);
     }
 
     private static List<Permission> GetAllPermissions() =>
@@ -83,18 +118,17 @@ public class PermissionSeeder : IHostedService
         Perm("*", "Super Admin bypass â€” all access.", "system"),
 
         // Employees
-        Perm("employees:read", "View all employees in scope.", "core_hr"),
-        Perm("employees:read-team", "View direct reports only.", "core_hr"),
         Perm("employees:write", "Create, update employees.", "core_hr"),
         Perm("employees:offboard", "Start, cancel, or complete an employee's offboarding.", "core_hr"),
         Perm("employees:read:sensitive", "View sensitive employee data (bank details) on the employee detail screen.", "core_hr"),
-        Perm("invitations:manage", "Resend or revoke employee onboarding invitations.", "core_hr"),
         Perm("employees:delete", "Delete employee records.", "core_hr"),
+        Perm("checklists:manage", "Create, edit, and archive onboarding and offboarding checklist templates.", "core_hr"),
 
         // Organization
         Perm("org:read", "View org structure, departments, hierarchy.", "org_structure"),
         Perm("org:manage", "Create and edit org structure, departments.", "org_structure"),
         Perm("legal_entity:create", "Create a legal entity (company) inside the tenant.", "org_structure"),
+        Perm("legal_entity:read", "View a legal entity's general settings (read-only).", "org_structure"),
         Perm("legal_entity:update", "Edit a legal entity's general settings.", "org_structure"),
         Perm("legal_entity:delete", "Deactivate (soft-delete) a legal entity.", "org_structure"),
 
@@ -120,9 +154,8 @@ public class PermissionSeeder : IHostedService
 
         // Attendance
         Perm("attendance:read", "View attendance records for all employees in scope.", "core_hr"),
-        Perm("attendance:read-team", "View attendance records for direct reports only.", "core_hr"),
-        Perm("attendance:approve", "Approve overtime and attendance corrections.", "core_hr"),
-        Perm("attendance:write", "Correct attendance records for employees in scope.", "core_hr"),
+        Perm("attendance:approve", "Approve requests and alerts for your team and escalated records: attendance corrections, location, work mode and device changes, identity verification alerts.", "core_hr"),
+        Perm("attendance:write", "Configure clock-in policy and work modes.", "core_hr"),
 
         // Payroll
         Perm("payroll:read", "View payroll records and salary data.", "payroll"),
@@ -157,13 +190,6 @@ public class PermissionSeeder : IHostedService
         Perm("notifications:manage", "Manage notification templates and delivery settings.", "notifications"),
 
         // Settings
-        Perm("settings:read", "View any settings section (read-only).", "configuration"),
-        Perm("settings:admin", "Manage core system settings.", "configuration"),
-        Perm("settings:billing", "Manage subscription, plan, and payment methods.", "configuration"),
-        Perm("settings:branding", "Manage company logo, colors, and custom domain.", "configuration"),
-        Perm("settings:integrations", "Connect or disconnect tenant-wide app integrations.", "configuration"),
-        Perm("settings:alerts", "Configure alert thresholds and escalation rules.", "configuration"),
-        Perm("settings:system", "Manage system-level settings â€” audit config, data retention policies.", "configuration"),
         Perm("settings:device", "View biometric device connection status.", "configuration"),
         Perm("settings:device:configure", "Add, remove, and configure biometric device integrations.", "configuration"),
 
@@ -176,6 +202,9 @@ public class PermissionSeeder : IHostedService
         // Billing
         Perm("billing:read", "View billing history and invoices.", "configuration"),
         Perm("billing:manage", "Manage billing and subscription changes.", "configuration"),
+
+        // Support (Crownus support tickets raised by the tenant)
+        Perm("support:manage", "Raise and follow up support tickets with Crownus support.", "configuration"),
 
         // Integrations
         Perm(
@@ -191,6 +220,7 @@ public class PermissionSeeder : IHostedService
 
         // Monitoring
         Perm("monitoring:configure", "Enable/disable monitoring features, set employee overrides.", "activity_monitoring"),
+        Perm("monitoring:screenshots:request", "Request an on-demand screenshot from an active monitored device.", "activity_monitoring"),
 
         // Exceptions
         Perm("exceptions:view", "View exception alerts.", "exceptions"),
@@ -205,12 +235,6 @@ public class PermissionSeeder : IHostedService
         // Workforce Intelligence
         Perm("workforce:view", "View workforce intelligence data and reports.", "workforce"),
         Perm("workforce:manage", "Manage workforce intelligence settings.", "workforce"),
-
-        // Agent Gateway
-        Perm("agent:command", "Send commands to agents.", "desktop_agent_gateway"),
-        Perm("agent:manage", "Manage agent configurations.", "desktop_agent_gateway"),
-        Perm("agent:register", "Register new agents.", "desktop_agent_gateway"),
-        Perm("agent:view-health", "View agent health and status.", "desktop_agent_gateway"),
 
         // Documents
         Perm("documents:read", "View documents.", "documents"),
@@ -233,42 +257,9 @@ public class PermissionSeeder : IHostedService
         Perm("chat:write", "Send chat messages.", "chat"),
         Perm("chat:manage", "Manage channels, moderate messages.", "chat"),
 
-        // Tasks
-        Perm("tasks:read", "View tasks.", "work_management"),
-        Perm("tasks:read-own", "View your own assigned tasks.", "work_management"),
-        Perm("tasks:write", "Create and edit tasks.", "work_management"),
-        Perm("tasks:approve", "Approve task completions.", "work_management"),
-        Perm("tasks:delete", "Delete tasks.", "work_management"),
-
-        // Time Tracking
-        Perm("time:read", "View time logs.", "work_management"),
-        Perm("time:write", "Log and edit time entries.", "work_management"),
-        Perm("time:approve", "Approve time submissions.", "work_management"),
-
-        // Projects
-        Perm("projects:read", "View projects.", "work_management"),
-        Perm("projects:access", "Work Management module access — create/edit/delete your own projects and milestones.", "work_management"),
-
-        // Work Management
-        Perm("okr:read", "View OKRs and goals.", "work_management"),
-        Perm("okr:write", "Create and update OKRs.", "work_management"),
-        Perm("wiki:read", "View wiki pages.", "work_management"),
-        Perm("wiki:write", "Create and edit wiki pages.", "work_management"),
-        Perm("sprints:read", "View sprints.", "work_management"),
-        Perm("sprints:manage", "Create and manage sprints.", "work_management"),
-        Perm("workspaces:read", "View workspaces.", "work_management"),
-        Perm("workspaces:create", "Create new workspaces.", "work_management"),
-        Perm("workspaces:manage", "Manage workspace settings and members.", "work_management"),
-        Perm("resources:read", "View resource allocations.", "work_management"),
-        Perm("resources:manage", "Manage resource planning.", "work_management"),
-        Perm("roadmaps:read", "View roadmaps.", "work_management"),
-        Perm("roadmaps:write", "Create and edit roadmaps.", "work_management"),
-
-        // Work Management — Projects (Foundation slice additions)
-        // (members:read, members:manage, invitations:manage, invitations:respond, versions:write,
-        // labels:manage retired 2026-08-04 - collapsed into projects:access per the milestone-hierarchy
-        // design's "multiple features mapped onto a single permission" decision. They were seeded
-        // ahead of any endpoint using them and are removed before any handler ever checked them.)
+        // Work Management uses module entitlement plus contextual relationships for ordinary
+        // access. Project creation remains an explicitly delegable elevated operation.
+        Perm("projects:create", "Create projects where the caller has local creation authority.", "projects"),
     ];
 
     private static Permission Perm(string code, string description, string module) => new()

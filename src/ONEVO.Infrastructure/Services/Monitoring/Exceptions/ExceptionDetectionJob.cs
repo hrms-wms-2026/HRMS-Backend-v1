@@ -4,19 +4,22 @@ using Microsoft.Extensions.Logging;
 using ONEVO.Application.Common.ServiceInterfaces;
 using ONEVO.Application.Features.DevPlatform.Tenancy.RepositoryInterfaces;
 using ONEVO.Application.Features.Monitoring.ActivityMonitoring.RepositoryInterfaces;
+using ONEVO.Application.Features.Monitoring.Exceptions.Helpers;
 using ONEVO.Application.Features.Monitoring.Exceptions.RepositoryInterfaces;
+using ONEVO.Application.Features.Monitoring.Exceptions.ServiceInterfaces;
+using ONEVO.Application.Features.Monitoring.Exceptions.Services;
 using ONEVO.Application.Features.Monitoring.Reports.RepositoryInterfaces;
 using ONEVO.Domain.Features.Monitoring.Exceptions.Entities;
 using DomainException = ONEVO.Domain.Features.Monitoring.Exceptions.Entities.Exception;
 
 namespace ONEVO.Infrastructure.Services.Monitoring.Exceptions;
 
-/// <summary>Nightly (23:30 UTC, 30 min after ActivityDailySummaryJob) multi-day pattern detection and escalation sweep.</summary>
+/// <summary>Nightly (23:30 UTC, 30 min after ActivityDailySummaryJob) multi-day pattern detection. Stale cases are
+/// escalated by the hourly InboxEscalationSweepJob.</summary>
 public sealed class ExceptionDetectionJob : BackgroundService
 {
     private static readonly TimeSpan CheckInterval = TimeSpan.FromMinutes(15);
     private static readonly TimeOnly TargetUtcTime = new(23, 30);
-    private static readonly TimeSpan EscalationThreshold = TimeSpan.FromDays(3);
 
     private readonly IServiceProvider _services;
     private readonly ILogger<ExceptionDetectionJob> _logger;
@@ -67,6 +70,9 @@ public sealed class ExceptionDetectionJob : BackgroundService
         var tenantSwitcher = scope.ServiceProvider.GetRequiredService<ITenantContextSwitcher>();
         var tenantContext = scope.ServiceProvider.GetRequiredService<IWritableTenantContext>();
         var clock = scope.ServiceProvider.GetRequiredService<IDateTimeProvider>();
+        var alertRouters = scope.ServiceProvider.GetRequiredService<IExceptionAlertRouterFactory>();
+        // Optional so hosts and tests without the monitoring check-in services still run detection (inbox plan D-b).
+        var cameraSkipped = scope.ServiceProvider.GetService<CameraVerificationSkippedDetector>();
 
         // exceptions and activity_daily_summary are under FORCE row-level security. A
         // background scope defaults to system mode, which the tenant_isolation policy
@@ -79,9 +85,8 @@ public sealed class ExceptionDetectionJob : BackgroundService
             targetDate.ToDateTime(TimeOnly.MinValue), ct);
 
         var createdCount = 0;
-        var escalatedCount = 0;
 
-        // Grouped tenant-major so each tenant's creates and escalation sweep run - and save -
+        // Grouped tenant-major so each tenant's creates run - and save -
         // while that tenant's context is active on the connection, before switching to the
         // next tenant. A single batched SaveChangesAsync across tenants would flush every
         // tenant's changes under whichever tenant was switched to last, and every earlier
@@ -96,8 +101,10 @@ public sealed class ExceptionDetectionJob : BackgroundService
             await tenantSwitcher.SwitchToTenantAsync(
                 new TenantRegistryEntry(tenant.Id, tenant.Slug, tenant.Status, PlanCode: null), ct);
 
-            var tenantCreated = 0;
-            var tenantEscalated = 0;
+            // IEmployeeAuthorityResolver reads the tenant from ICurrentUser, which a background
+            // scope doesn't have - the factory pins the router to this tenant instead.
+            var alerts = alertRouters.CreateForTenant(tenantId);
+            var created = new List<DomainException>();
 
             foreach (var (_, employeeId) in tenantGroup)
             {
@@ -105,72 +112,103 @@ public sealed class ExceptionDetectionJob : BackgroundService
 
                 var last3Days = await summaries.GetRangeAsync(tenantId, employeeId, targetDate.AddDays(-2), targetDate, ct);
                 if (ExceptionDetectionRules.IsSustainedLowActivity(last3Days, targetDate)
-                    && !await exceptions.HasOpenOrEscalatedAsync(tenantId, employeeId, ExceptionType.SustainedLowActivity, ct))
+                    && !await exceptions.HasUnresolvedAsync(tenantId, employeeId, ExceptionType.SustainedLowActivity, ct))
                 {
-                    await exceptions.AddAsync(new DomainException
+                    created.Add(new DomainException
                     {
                         Id = Guid.NewGuid(), TenantId = tenantId, EmployeeId = employeeId,
                         Type = ExceptionType.SustainedLowActivity, Status = ExceptionStatus.Open,
                         Title = "Sustained low activity",
                         Description = $"Activity score below {ExceptionDetectionRules.SustainedLowActivityScoreThreshold} for {ExceptionDetectionRules.SustainedLowActivityConsecutiveDays} consecutive days.",
-                        DetectedAt = now
-                    }, ct);
-                    tenantCreated++;
+                        DetectedAt = now,
+                        MetadataJson = new ExceptionMetadata
+                        {
+                            WorkDate = targetDate,
+                            Measures = ExceptionPatternMeasures.SustainedLowActivity(last3Days.Select(d => d.ActivityScore).ToList())
+                        }.ToJson()
+                    });
                 }
 
                 var thisWeek = await reports.GetEmployeeAggregateAsync(tenantId, employeeId, targetDate.AddDays(-6), targetDate, ct);
                 var trailingFourWeeks = await reports.GetEmployeeAggregateAsync(tenantId, employeeId, targetDate.AddDays(-34), targetDate.AddDays(-7), ct);
                 var trailingAvgPerWeek = trailingFourWeeks.DayCount > 0 ? trailingFourWeeks.TotalWorkedMinutes / 4 : 0;
                 if (ExceptionDetectionRules.IsAttendanceIrregularity(thisWeek.TotalWorkedMinutes, trailingAvgPerWeek)
-                    && !await exceptions.HasOpenOrEscalatedAsync(tenantId, employeeId, ExceptionType.AttendanceIrregularity, ct))
+                    && !await exceptions.HasUnresolvedAsync(tenantId, employeeId, ExceptionType.AttendanceIrregularity, ct))
                 {
-                    await exceptions.AddAsync(new DomainException
+                    created.Add(new DomainException
                     {
                         Id = Guid.NewGuid(), TenantId = tenantId, EmployeeId = employeeId,
                         Type = ExceptionType.AttendanceIrregularity, Status = ExceptionStatus.Open,
                         Title = "Attendance irregularity",
                         Description = $"This week's worked time ({thisWeek.TotalWorkedMinutes} min) is well below the trailing 4-week average ({trailingAvgPerWeek} min/week).",
-                        DetectedAt = now
-                    }, ct);
-                    tenantCreated++;
+                        DetectedAt = now,
+                        MetadataJson = new ExceptionMetadata
+                        {
+                            WorkDate = targetDate,
+                            Measures = ExceptionPatternMeasures.AttendanceIrregularity(thisWeek.TotalWorkedMinutes, trailingAvgPerWeek)
+                        }.ToJson()
+                    });
                 }
 
                 var todaySummary = last3Days.FirstOrDefault(s => s.Date == targetDate);
                 var trailing30Days = await reports.GetEmployeeAggregateAsync(tenantId, employeeId, targetDate.AddDays(-30), targetDate.AddDays(-1), ct);
                 if (todaySummary is not null && trailing30Days.DayCount > 0
                     && ExceptionDetectionRules.IsUnusualActivityPattern(todaySummary.ActivityScore, trailing30Days.AverageActivityScore)
-                    && !await exceptions.HasOpenOrEscalatedAsync(tenantId, employeeId, ExceptionType.UnusualActivityPattern, ct))
+                    && !await exceptions.HasUnresolvedAsync(tenantId, employeeId, ExceptionType.UnusualActivityPattern, ct))
                 {
-                    await exceptions.AddAsync(new DomainException
+                    created.Add(new DomainException
                     {
                         Id = Guid.NewGuid(), TenantId = tenantId, EmployeeId = employeeId,
                         Type = ExceptionType.UnusualActivityPattern, Status = ExceptionStatus.Open,
                         Title = "Unusual activity pattern",
                         Description = $"Today's activity score ({todaySummary.ActivityScore}) deviates sharply from the 30-day average ({trailing30Days.AverageActivityScore}).",
-                        DetectedAt = now
-                    }, ct);
-                    tenantCreated++;
+                        DetectedAt = now,
+                        MetadataJson = new ExceptionMetadata
+                        {
+                            WorkDate = targetDate,
+                            Measures = ExceptionPatternMeasures.UnusualActivityPattern(todaySummary.ActivityScore, trailing30Days.AverageActivityScore)
+                        }.ToJson()
+                    });
                 }
             }
 
-            var stale = await exceptions.GetStaleOpenAsync(tenantId, now - EscalationThreshold, ct);
-            foreach (var open in stale)
+            if (cameraSkipped is not null)
+                created.AddRange(await cameraSkipped.DetectAsync(
+                    tenantId, tenantGroup.Select(k => k.EmployeeId).Distinct().ToList(), targetDate, now, ct));
+
+            // Cases and their in-app alerts go into the same SaveChanges, per tenant, while that
+            // tenant's context is still active on the connection.
+            foreach (var exception in created)
             {
-                open.Status = ExceptionStatus.Escalated;
-                open.EscalatedAt = now;
-                exceptions.Update(open);
-                tenantEscalated++;
+                await exceptions.AddAsync(exception, ct);
+                await NotifySafelyAsync(() => alerts.NotifyDetectedAsync(exception, ct), exception, ct);
             }
 
-            if (tenantCreated > 0 || tenantEscalated > 0)
+            // The 3-day stale-case escalation runs in the hourly InboxEscalationSweepJob (inbox escalation standard).
+            if (created.Count > 0)
                 await exceptions.SaveChangesAsync(ct);
 
-            createdCount += tenantCreated;
-            escalatedCount += tenantEscalated;
+            createdCount += created.Count;
         }
 
         _logger.LogInformation(
-            "Exception detection finished. Date={Date} EmployeesScanned={Count} Created={Created} Escalated={Escalated}",
-            targetDate, keys.Count, createdCount, escalatedCount);
+            "Exception detection finished. Date={Date} EmployeesScanned={Count} Created={Created}",
+            targetDate, keys.Count, createdCount);
+    }
+
+    /// <summary>A failure working out who to alert must not stop the case itself being saved, or
+    /// the rest of the tenants being swept - the case still shows up in the reviewers' list.</summary>
+    private async Task NotifySafelyAsync(Func<Task> notify, DomainException exception, CancellationToken ct)
+    {
+        try
+        {
+            await notify();
+        }
+        catch (System.Exception ex) when (!ct.IsCancellationRequested)
+        {
+            _logger.LogWarning(ex,
+                "Could not send the in-app alert for exception {ExceptionId} ({Type}) of employee {EmployeeId}; the case is still saved.",
+                exception.Id, exception.Type, exception.EmployeeId);
+        }
     }
 }

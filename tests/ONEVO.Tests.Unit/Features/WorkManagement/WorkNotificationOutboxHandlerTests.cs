@@ -24,7 +24,8 @@ public class WorkNotificationOutboxHandlerTests
         await handler.HandleAsync(json, CancellationToken.None);
 
         Assert.Equal(OutboxMessageTypes.WorkNotification, handler.Type);
-        notifications.Verify(x => x.SendTemplatedAsync(
+        notifications.Verify(x => x.SendTemplatedEventAsync(
+            It.IsAny<Guid>(),
             tenantId, recipientUserId, "work_project_member_invited",
             It.Is<IReadOnlyDictionary<string, string>>(d =>
                 d["inviterName"] == "Ada" && d["projectName"] == "Website"),
@@ -61,7 +62,8 @@ public class WorkNotificationOutboxHandlerTests
         await handler.HandleAsync(json, CancellationToken.None);
         await handler.HandleAsync(json, CancellationToken.None);
 
-        notifications.Verify(x => x.SendTemplatedAsync(
+        notifications.Verify(x => x.SendTemplatedEventAsync(
+            It.IsAny<Guid>(),
             It.IsAny<Guid>(), It.IsAny<Guid>(), It.IsAny<string>(),
             It.IsAny<IReadOnlyDictionary<string, string>>(),
             It.IsAny<string?>(), It.IsAny<Guid?>(), It.IsAny<CancellationToken>()), Times.Exactly(2));

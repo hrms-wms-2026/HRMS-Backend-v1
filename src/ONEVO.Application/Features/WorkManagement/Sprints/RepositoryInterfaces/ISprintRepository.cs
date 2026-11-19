@@ -7,6 +7,10 @@ public interface ISprintRepository
     Task AddAsync(Sprint sprint, CancellationToken ct = default);
     Task<Sprint?> GetByIdForTenantAsync(Guid tenantId, Guid id, CancellationToken ct = default);
     Task<Sprint?> GetTrackedByIdForTenantAsync(Guid tenantId, Guid id, CancellationToken ct = default);
+
+    /// <summary>Same as <see cref="GetTrackedByIdForTenantAsync"/> but bypasses the soft-delete query
+    /// filter - for reverting a sprint.delete, where the sprint we need to find IS the soft-deleted one.</summary>
+    Task<Sprint?> GetTrackedByIdForTenantIncludingDeletedAsync(Guid tenantId, Guid id, CancellationToken ct = default);
     Task<IReadOnlyList<Sprint>> GetByProjectAsync(Guid tenantId, Guid projectId, CancellationToken ct = default);
 
     /// <summary>Sprints holding at least one task of this Module (spec §3.3 - the Tree tab's leaf expansion).</summary>
@@ -16,8 +20,11 @@ public interface ISprintRepository
     /// (sprints are project-level now, so this replaces the old Sprint.ObjectiveId-based active-sprint check).</summary>
     Task<bool> AnyActiveContainingObjectiveTasksAsync(Guid tenantId, Guid objectiveId, CancellationToken ct = default);
 
-    /// <summary>Tenant-unscoped, for SprintLifecycleJob's periodic sweep across every tenant.</summary>
-    Task<IReadOnlyList<Sprint>> GetByStatusAsync(string status, CancellationToken ct = default);
 
     void Update(Sprint sprint);
+    void Remove(Sprint sprint);
+
+    /// <summary>Saves tracked changes; translates a stale Sprint.Status write (two concurrent
+    /// Start/Complete/Achieve/Edit/Delete requests racing) into <see cref="ONEVO.Application.Common.Exceptions.ConcurrencyConflictException"/>.</summary>
+    Task<int> SaveChangesAsync(CancellationToken ct = default);
 }

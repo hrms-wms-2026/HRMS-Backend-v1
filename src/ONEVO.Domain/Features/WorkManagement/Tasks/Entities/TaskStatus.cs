@@ -26,7 +26,18 @@ public class TaskStatus : BaseEntity
     public Guid? ObjectiveId { get; set; }
     public string Name { get; set; } = string.Empty;
     public int DisplayOrder { get; set; }
+    /// <summary>
+    /// Persisted and round-tripped through the API (create/edit/list/reorder/clone) for backward
+    /// compatibility, but NOT read by any approval/gating logic anywhere in this codebase
+    /// (confirmed via full-history grep as of 2026-10-12 - see WM-01 in
+    /// docs/superpowers/plans/next/2026-10-12-pre-uat-audit-wm-sec-findings.md). Real task-status-
+    /// move governance lives in MoveTaskStatusCommandHandler; the real approval engine is
+    /// WorkApprovalRequest/IWorkApprovalEngine. Do not add new logic that branches on this field
+    /// without first confirming the decision with product and removing this comment.
+    /// </summary>
     public bool RequiresApproval { get; set; }
+
+    /// <summary>See <see cref="RequiresApproval"/> - same dead-field status.</summary>
     public Guid? ApproverId { get; set; }
     public bool MarksTaskComplete { get; set; }
     public string Visibility { get; set; } = TaskStatusVisibilities.Public;

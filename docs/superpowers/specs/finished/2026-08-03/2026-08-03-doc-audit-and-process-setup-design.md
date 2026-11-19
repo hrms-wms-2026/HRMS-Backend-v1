@@ -30,8 +30,8 @@ Only files inside `docs/superpowers/project_ core/` may be edited (the two archi
 | `docs/superpowers/project_ core/SUMMARY.md` | Purpose + file list + dev-context summary of `phase1-table-inventory.md` (252 tables, 3 pillars + shared foundation + dev platform) + known-drift notes |
 | `docs/superpowers/plans/SUMMARY.md` | Index of existing dated plans, one-liner each |
 | `docs/superpowers/workflow/SUMMARY.md` | Index of existing workflow reports, one-liner each, flagging which ones are code-verified sources of truth |
-| `docs/superpowers/specs/2026-08-03-doc-audit-and-process-setup-design.md` | This document |
-| `docs/superpowers/plans/2026-08-03-doc-audit-and-process-setup.md` | The phased implementation plan (written via writing-plans skill next) |
+| `docs/superpowers/specs/finished/2026-08-03/2026-08-03-doc-audit-and-process-setup-design.md` | This document |
+| `docs/superpowers/plans/finished/2026-08-03/2026-08-03-doc-audit-and-process-setup.md` | The phased implementation plan (written via writing-plans skill next) |
 
 ### 3.2 Standing process rules (content of `rules/PROCESS_RULES.md`)
 

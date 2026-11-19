@@ -1,3 +1,4 @@
+using ONEVO.Application.Features.WorkManagement.Leadership.Services;
 using ONEVO.Domain.Features.WorkManagement.Objectives.Entities;
 
 namespace ONEVO.Application.Features.WorkManagement.Objectives.RepositoryInterfaces;
@@ -19,13 +20,17 @@ public interface IObjectiveRepository
 
     Task<Objective?> GetByIdForTenantAsync(Guid tenantId, Guid id, CancellationToken ct = default);
 
+    /// <summary>Batch lookup of several Modules in one query (used by the employee work graph).</summary>
+    Task<IReadOnlyList<Objective>> GetByIdsForTenantAsync(
+        Guid tenantId, IReadOnlyCollection<Guid> ids, CancellationToken ct = default);
+
     /// <summary>
     /// Same lookup as <see cref="GetByIdForTenantAsync"/>, but returns the entity tracked by the
     /// DbContext's change tracker instead of AsNoTracking. Use on write paths that later call
     /// <see cref="Update"/> or mutate the entity directly - tracking it from the start lets EF's
     /// identity map correctly deduplicate against any other tracked query that touches the same
-    /// row later in the same request (see ApproveObjectiveChangeRequestCommandHandler's
-    /// extend_allocation branch for why this matters - GetTrackedActiveDirectChildrenAsync can
+    /// row later in the same request (see ModuleWriteService.ApplyAllocationExtendAsync's
+    /// parent-slack check for why this matters - GetTrackedActiveDirectChildrenAsync can
     /// re-fetch this same row as part of a sibling-sum check).
     /// </summary>
     Task<Objective?> GetTrackedByIdForTenantAsync(Guid tenantId, Guid id, CancellationToken ct = default);
@@ -49,6 +54,22 @@ public interface IObjectiveRepository
     /// <summary>Active objectives owned by this employee with EndDate in [from, to]. For the
     /// my-deadlines endpoint (spec §7) - not used by any other query.</summary>
     Task<IReadOnlyList<Objective>> GetOwnedByEmployeeIdWithinRangeAsync(Guid tenantId, Guid employeeId, DateOnly from, DateOnly to, CancellationToken ct = default);
+
+    /// <summary>My Team capability probe (spec §7.3 leadsWork): does the employee own any active,
+    /// not-achieved module in an active project of this legal entity? One EXISTS.</summary>
+    Task<bool> AnyActiveOwnedAsync(Guid tenantId, Guid ownerEmployeeId, Guid legalEntityId, CancellationToken ct = default);
+
+    /// <summary>Active, not-achieved modules the employee owns directly, with their project ids, in
+    /// active projects of this legal entity - the candidate heads for Work I Lead (spec §8.3.2 step
+    /// 2).</summary>
+    Task<IReadOnlyList<(Guid ObjectiveId, Guid ProjectId)>> ListActiveOwnedIdsAsync(Guid tenantId, Guid ownerEmployeeId, Guid legalEntityId, CancellationToken ct = default);
+
+    /// <summary>Every active objective (achieved included) of the given projects, as tree rows, in
+    /// one query (spec §8.3.2 step 3).</summary>
+    Task<IReadOnlyList<LedObjectiveRow>> ListActiveTreeForProjectsAsync(Guid tenantId, IReadOnlyCollection<Guid> projectIds, CancellationToken ct = default);
+
+    /// <summary>Active objectives owned by this employee, any project, no date window.</summary>
+    Task<IReadOnlyList<Objective>> ListActiveOwnedByEmployeeAsync(Guid tenantId, Guid employeeId, CancellationToken ct = default);
 
     void Update(Objective objective);
 }

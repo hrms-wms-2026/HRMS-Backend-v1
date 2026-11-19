@@ -3,7 +3,11 @@ using Moq;
 using ONEVO.Application.Common.Models;
 using ONEVO.Application.Common.RepositoryInterfaces;
 using ONEVO.Application.Common.ServiceInterfaces;
+using ONEVO.Application.Features.WorkManagement.Approvals.Services;
 using ONEVO.Application.Features.WorkManagement.Common.Services;
+using ONEVO.Application.Features.WorkManagement.Hierarchy;
+using ONEVO.Application.Features.WorkManagement.Notifications.Services;
+using ONEVO.Application.Features.WorkManagement.Tasks.DTOs;
 using ONEVO.Application.Features.WorkManagement.Objectives.RepositoryInterfaces;
 using ONEVO.Application.Features.WorkManagement.Objectives.Services;
 using ONEVO.Application.Features.WorkManagement.Sprints.RepositoryInterfaces;
@@ -25,6 +29,7 @@ public class EditTaskCommandHandlerTests
     private static readonly Guid TaskId = Guid.NewGuid();
     private static readonly Guid ObjectiveId = Guid.NewGuid();
     private static readonly Guid ProjectId = Guid.NewGuid();
+    private static readonly Guid PendingRequestId = Guid.NewGuid();
 
     private (
         EditTaskCommandHandler Handler,
@@ -40,7 +45,7 @@ public class EditTaskCommandHandlerTests
         string title = "Old",
         string priority = WorkTaskPriorities.Medium,
         int progressPercent = 0,
-        bool callerIsEffectiveOwner = true,
+        bool callerIsOwner = true,
         Mock<ONEVO.Application.Features.WorkManagement.CalendarEvents.RepositoryInterfaces.ICalendarEventRepository>? calendarEvents = null,
         Mock<ITaskAssetLinker>? assetLinker = null,
         IReadOnlyList<Sprint>? otherSprints = null)
@@ -106,22 +111,36 @@ public class EditTaskCommandHandlerTests
             .Returns(Task.CompletedTask);
 
         var unitOfWork = new Mock<IUnitOfWork>();
-        unitOfWork.Setup(x => x.ExecuteInTransactionAsync(It.IsAny<Func<CancellationToken, Task<Result<WorkTaskResponse>>>>(), It.IsAny<CancellationToken>()))
-            .Returns((Func<CancellationToken, Task<Result<WorkTaskResponse>>> op, CancellationToken ct) => op(ct));
+        unitOfWork.Setup(x => x.ExecuteInTransactionAsync(It.IsAny<Func<CancellationToken, Task<Result<TaskWriteOutcome>>>>(), It.IsAny<CancellationToken>()))
+            .Returns((Func<CancellationToken, Task<Result<TaskWriteOutcome>>> op, CancellationToken ct) => op(ct));
 
         var membership = new Mock<IMilestoneMembershipCoordinator>();
-        membership.Setup(x => x.IsEffectiveOwnerAsync(TenantId, ObjectiveId, callerEmployeeId, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(callerIsEffectiveOwner);
+        membership.Setup(x => x.IsEffectiveManagerAsync(TenantId, ObjectiveId, callerEmployeeId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(true);
+
+        // The engine (not the handler) decides owner vs member: owners apply now, members file a request.
+        var hierarchy = new Mock<IWorkHierarchyService>();
+        hierarchy.Setup(x => x.LoadTreeAsync(TenantId, ProjectId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new ProjectModuleTree(new[] { objective }));
+        var approvals = new Mock<IWorkApprovalEngine>();
+        approvals.Setup(x => x.SubmitAsync(It.IsAny<WorkAction>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(callerIsOwner
+                ? Result<ApprovalDecision>.Success(ApprovalDecision.Direct)
+                : Result<ApprovalDecision>.Success(ApprovalDecision.Pending(PendingRequestId, Guid.NewGuid())));
 
         var assignments = new Mock<ITaskAssignmentRepository>();
         assignments.Setup(x => x.GetByTaskIdAsync(TaskId, It.IsAny<CancellationToken>()))
             .ReturnsAsync(Array.Empty<TaskAssignment>());
 
+        var writes = new TaskWriteService(
+            objectives.Object, new Mock<ONEVO.Application.Features.WorkManagement.Projects.RepositoryInterfaces.IProjectRepository>().Object,
+            tasks.Object, new Mock<ITaskStatusRepository>().Object, sprints.Object, new Mock<ITaskCategoryRepository>().Object,
+            slack, (calendarEvents ?? CalendarEventRepositoryMocks.Empty()).Object,
+            sprintLogRepository.Object, editLogRepository.Object, percentageLogRepository.Object);
         var handler = new EditTaskCommandHandler(
-            currentUser.Object, tasks.Object, objectives.Object, slack, unitOfWork.Object, sprints.Object,
-            identity.Object, sprintLogRepository.Object, editLogRepository.Object, percentageLogRepository.Object,
-            (calendarEvents ?? CalendarEventRepositoryMocks.Empty()).Object, membership.Object, assignments.Object,
-            (assetLinker ?? new Mock<ITaskAssetLinker>()).Object);
+            currentUser.Object, tasks.Object, objectives.Object, unitOfWork.Object, identity.Object,
+            membership.Object, assignments.Object, (assetLinker ?? new Mock<ITaskAssetLinker>()).Object, writes,
+            hierarchy.Object, approvals.Object, new Mock<IWorkNotificationEngine>().Object);
 
         return (handler, tasks, editLogs, callerEmployeeId, task, percentageLogs, sprintLogs);
     }
@@ -133,7 +152,7 @@ public class EditTaskCommandHandlerTests
         var result = await handler.Handle(new EditTaskCommand(TaskId, "New Title", null, "medium", null, EstimatedHours: 50m, StoryPoints: null, ProgressPercent: null, Reason: null), CancellationToken.None);
 
         Assert.True(result.IsSuccess);
-        Assert.Equal("New Title", result.Value!.Title);
+        Assert.Equal("New Title", result.Value!.Task!.Title);
     }
 
     [Fact]
@@ -164,18 +183,19 @@ public class EditTaskCommandHandlerTests
     }
 
     [Fact]
-    public async Task Handle_CallerNotEffectiveManager_ReturnsForbiddenWithoutUpdatingTask()
+    public async Task Handle_NonOwnerMember_SentForApprovalWithoutUpdatingTask()
     {
         var (handler, _, editLogs, _, task, _, _) = Build(
-            allocatedHours: 100m, existingSumExcludingThisTask: 40m, callerIsEffectiveOwner: false);
+            allocatedHours: 100m, existingSumExcludingThisTask: 40m, callerIsOwner: false);
         var command = new EditTaskCommand(
             task.Id, "Attempted Title", task.Description, task.Priority, task.DueDate,
             task.EstimatedHours, task.StoryPoints, null, null);
 
         var result = await handler.Handle(command, CancellationToken.None);
 
-        Assert.False(result.IsSuccess);
-        Assert.Equal(403, result.StatusCode);
+        Assert.True(result.IsSuccess);
+        Assert.Null(result.Value!.Task);
+        Assert.Equal(PendingRequestId, result.Value.ApprovalRequestId);
         Assert.NotEqual("Attempted Title", task.Title);
         Assert.Empty(editLogs);
     }
@@ -387,6 +407,21 @@ public class EditTaskCommandHandlerTests
         Assert.True(result.IsSuccess);
         assetLinker.Verify(x => x.SyncAttachmentsAsync(TenantId, UserId, TaskId, new[] { fileId }, It.IsAny<CancellationToken>()), Times.Once);
         assetLinker.Verify(x => x.SyncDescriptionImagesAsync(TenantId, UserId, TaskId, "<p>new desc</p>", It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Fact]
+    public async Task Handle_WithoutAttachmentList_LeavesAttachmentsUntouched()
+    {
+        // Bulk priority/due-date edits send no attachment list - that must not wipe the task's files.
+        var assetLinker = new Mock<ITaskAssetLinker>();
+        var (handler, _, _, _, _, _, _) = Build(allocatedHours: 100m, existingSumExcludingThisTask: 40m, assetLinker: assetLinker);
+        var command = new EditTaskCommand(TaskId, "Updated", null, "high", null, null, null, null, null, AttachmentFileIds: null);
+
+        var result = await handler.Handle(command, CancellationToken.None);
+
+        Assert.True(result.IsSuccess);
+        assetLinker.Verify(x => x.SyncAttachmentsAsync(It.IsAny<Guid>(), It.IsAny<Guid>(), It.IsAny<Guid>(),
+            It.IsAny<IReadOnlyList<Guid>>(), It.IsAny<CancellationToken>()), Times.Never);
     }
 
     [Fact]

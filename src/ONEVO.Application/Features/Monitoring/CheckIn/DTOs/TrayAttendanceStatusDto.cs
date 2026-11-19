@@ -9,4 +9,6 @@ public sealed record TrayAttendanceStatusDto(
     [property: JsonPropertyName("break_started_at_utc")] DateTimeOffset? BreakStartedAtUtc,
     [property: JsonPropertyName("can_start_break")] bool CanStartBreak = true,
     [property: JsonPropertyName("break_allowance_minutes")] int? BreakAllowanceMinutes = null,
-    [property: JsonPropertyName("completed_break_minutes")] int CompletedBreakMinutes = 0);
+    [property: JsonPropertyName("completed_break_minutes")] int CompletedBreakMinutes = 0,
+    [property: JsonPropertyName("day_clocked_in_at_utc")] DateTimeOffset? DayClockedInAtUtc = null,
+    [property: JsonPropertyName("day_clocked_out_at_utc")] DateTimeOffset? DayClockedOutAtUtc = null);

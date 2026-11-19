@@ -1,4 +1,5 @@
 using MediatR;
+using ONEVO.Application.Common.Helpers;
 using ONEVO.Application.Common.Models;
 using ONEVO.Application.Common.ServiceInterfaces;
 using ONEVO.Application.Features.Leave.Type.DTOs.Responses;
@@ -47,20 +48,13 @@ public class CreateLeaveTypeCommandHandler : IRequestHandler<CreateLeaveTypeComm
             Name = name,
             Code = code,
             Description = request.Description?.Trim(),
-            Category = request.Category,
+            Color = request.Color.Trim().ToUpperInvariant(),
+            Icon = EntityIconRules.Normalize(request.Icon),
             IsPaid = request.IsPaid,
-            RequiresApproval = request.RequiresApproval,
-            RequiresDocument = request.RequiresDocument,
-            DocumentRequiredAfterDays = request.DocumentRequiredAfterDays,
-            AcceptedDocumentTypes = request.AcceptedDocumentTypes ?? [],
-            MaxConsecutiveDays = request.MaxConsecutiveDays,
-            DefaultDaysPerYear = request.DefaultDaysPerYear,
-            CarryForwardAllowed = request.CarryForwardAllowed,
-            MaxCarryForwardDays = request.MaxCarryForwardDays,
-            CarryForwardExpiryMonths = request.CarryForwardExpiryMonths,
-            ProRataForNewJoiners = request.ProRataForNewJoiners,
             ApplicableGender = request.ApplicableGender,
-            MinimumNoticeDays = request.MinimumNoticeDays,
+            RequiresDocument = request.RequiresDocument,
+            DocumentRequiredAfterHours = request.RequiresDocument ? request.DocumentRequiredAfterHours : null,
+            AcceptedDocumentTypes = request.AcceptedDocumentTypes ?? [],
             IsActive = true,
             CreatedAt = _dateTimeProvider.UtcNow
         };

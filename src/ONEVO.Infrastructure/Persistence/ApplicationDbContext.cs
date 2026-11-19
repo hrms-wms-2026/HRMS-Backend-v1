@@ -10,6 +10,9 @@ using PersonalCalendarEventParticipant = ONEVO.Domain.Features.Calendar.Entities
 using ExternalCalendarConnection = ONEVO.Domain.Features.Calendar.Entities.ExternalCalendarConnection;
 using ExternalCalendarEventLink = ONEVO.Domain.Features.Calendar.Entities.ExternalCalendarEventLink;
 using HolidayCalendarSettings = ONEVO.Domain.Features.Calendar.Entities.HolidayCalendarSettings;
+using CalendarEventMeeting = ONEVO.Domain.Features.Calendar.Entities.CalendarEventMeeting;
+using CalendarEventMeetingAttendance = ONEVO.Domain.Features.Calendar.Entities.CalendarEventMeetingAttendance;
+using CalendarEventGuest = ONEVO.Domain.Features.Calendar.Entities.CalendarEventGuest;
 using TimeAttendanceWorkMode = ONEVO.Domain.Features.TimeAttendance.Entities.WorkMode;
 using ONEVO.Domain.Features.CoreHr.Entities;
 using ONEVO.Domain.Features.DevPlatform.Compliance.Entities;
@@ -37,10 +40,12 @@ using ONEVO.Domain.Features.Monitoring.WorkSessions.Entities;
 using ONEVO.Domain.Features.Storage.EntityAssets.Entities;
 using ONEVO.Domain.Features.Storage.File.Entities;
 using ONEVO.Domain.Features.Storage.Quota.Entities;
+using ONEVO.Domain.Features.WorkManagement.Approvals.Entities;
+using ONEVO.Domain.Features.WorkManagement.Notifications.Entities;
+using ONEVO.Domain.Features.WorkManagement.Monitoring.Entities;
 using ONEVO.Domain.Features.WorkManagement.CalendarEvents.Entities;
 using ONEVO.Domain.Features.WorkManagement.Labels.Entities;
 
-using ONEVO.Domain.Features.WorkManagement.ObjectiveChangeRequests.Entities;
 using ONEVO.Domain.Features.WorkManagement.Objectives.Entities;
 using ONEVO.Domain.Features.WorkManagement.ProjectInvitations.Entities;
 using ONEVO.Domain.Features.WorkManagement.ProjectMembers.Entities;
@@ -67,6 +72,11 @@ public class ApplicationDbContext : DbContext
     private readonly SoftDeleteInterceptor _softDeleteInterceptor;
     private readonly DomainEventDispatchInterceptor _domainEventInterceptor;
     private readonly ITenantContext _tenantContext;
+
+    /// <summary>Meeting rows to check at commit. See MeetingIntegrityInterceptor.</summary>
+    public HashSet<Guid> PendingMeetingTaskIds { get; } = [];
+
+    public HashSet<Guid> PendingMeetingSeriesIds { get; } = [];
 
     public ApplicationDbContext(
         DbContextOptions<ApplicationDbContext> options,
@@ -109,6 +119,7 @@ public class ApplicationDbContext : DbContext
     // Monitoring - Employee Check-In
     public DbSet<EmployeeCheckIn> EmployeeCheckIns => Set<EmployeeCheckIn>();
     public DbSet<MonitoringFaceScan> MonitoringFaceScans => Set<MonitoringFaceScan>();
+    public DbSet<FaceVerificationAttempt> FaceVerificationAttempts => Set<FaceVerificationAttempt>();
 
     // Monitoring - Work Sessions (clock-in/break/clock-out)
     public DbSet<EmployeeWorkSession> EmployeeWorkSessions => Set<EmployeeWorkSession>();
@@ -121,8 +132,10 @@ public class ApplicationDbContext : DbContext
     public DbSet<ONEVO.Domain.Features.Monitoring.AppUsage.Entities.AppUsageSnapshot> AppUsageSnapshots => Set<ONEVO.Domain.Features.Monitoring.AppUsage.Entities.AppUsageSnapshot>();
     public DbSet<ONEVO.Domain.Features.Monitoring.DeviceState.Entities.DeviceStateSnapshot> DeviceStateSnapshots => Set<ONEVO.Domain.Features.Monitoring.DeviceState.Entities.DeviceStateSnapshot>();
     public DbSet<ONEVO.Domain.Features.Monitoring.Meetings.Entities.MeetingSignal> MeetingSignals => Set<ONEVO.Domain.Features.Monitoring.Meetings.Entities.MeetingSignal>();
+    public DbSet<ONEVO.Domain.Features.DevPlatform.AppCatalog.Entities.GlobalApplication> GlobalApplications => Set<ONEVO.Domain.Features.DevPlatform.AppCatalog.Entities.GlobalApplication>();
     public DbSet<ONEVO.Domain.Features.Monitoring.Biometrics.Entities.BiometricEnrollmentAttempt> BiometricEnrollmentAttempts => Set<ONEVO.Domain.Features.Monitoring.Biometrics.Entities.BiometricEnrollmentAttempt>();
     public DbSet<ONEVO.Domain.Features.Monitoring.Biometrics.Entities.BiometricProfile> BiometricProfiles => Set<ONEVO.Domain.Features.Monitoring.Biometrics.Entities.BiometricProfile>();
+    public DbSet<ONEVO.Domain.Features.Monitoring.PermissionConsent.Entities.MonitoringPermissionConsent> MonitoringPermissionConsents => Set<ONEVO.Domain.Features.Monitoring.PermissionConsent.Entities.MonitoringPermissionConsent>();
     public DbSet<MonitoringNotification> MonitoringNotifications => Set<MonitoringNotification>();
 
     // Monitoring - Feature toggles & overrides
@@ -163,6 +176,14 @@ public class ApplicationDbContext : DbContext
     public DbSet<TenantSessionExchangeChallenge> TenantSessionExchangeChallenges => Set<TenantSessionExchangeChallenge>();
     public DbSet<AuditLog> AuditLogs => Set<AuditLog>();
     public DbSet<LegalDocumentVersion> LegalDocumentVersions => Set<LegalDocumentVersion>();
+    public DbSet<ONEVO.Domain.Features.DevPlatform.Support.Entities.PlatformAnnouncement> PlatformAnnouncements
+        => Set<ONEVO.Domain.Features.DevPlatform.Support.Entities.PlatformAnnouncement>();
+    public DbSet<ONEVO.Domain.Features.DevPlatform.Support.Entities.SupportTicket> SupportTickets
+        => Set<ONEVO.Domain.Features.DevPlatform.Support.Entities.SupportTicket>();
+    public DbSet<ONEVO.Domain.Features.DevPlatform.Support.Entities.SupportTicketComment> SupportTicketComments
+        => Set<ONEVO.Domain.Features.DevPlatform.Support.Entities.SupportTicketComment>();
+    public DbSet<ONEVO.Domain.Features.DevPlatform.Support.Entities.SupportTicketAttachment> SupportTicketAttachments
+        => Set<ONEVO.Domain.Features.DevPlatform.Support.Entities.SupportTicketAttachment>();
     public DbSet<LegalAcceptanceRecord> LegalAcceptanceRecords => Set<LegalAcceptanceRecord>();
     public DbSet<UserExternalIdentity> UserExternalIdentities => Set<UserExternalIdentity>();
     public DbSet<TenantAuthPolicy> TenantAuthPolicies => Set<TenantAuthPolicy>();
@@ -229,6 +250,7 @@ public class ApplicationDbContext : DbContext
     // CoreHR
     public DbSet<Employee> Employees => Set<Employee>();
     public DbSet<PositionAssignment> PositionAssignments => Set<PositionAssignment>();
+    public DbSet<ReportingManagerChange> ReportingManagerChanges => Set<ReportingManagerChange>();
     public DbSet<EmployeeHierarchyClosure> EmployeeHierarchyClosures => Set<EmployeeHierarchyClosure>();
     public DbSet<EmployeeAddress> EmployeeAddresses => Set<EmployeeAddress>();
     public DbSet<EmployeeEmergencyContact> EmployeeEmergencyContacts => Set<EmployeeEmergencyContact>();
@@ -240,6 +262,7 @@ public class ApplicationDbContext : DbContext
     public DbSet<ChecklistTemplate> ChecklistTemplates => Set<ChecklistTemplate>();
     public DbSet<EmployeeChecklistTask> EmployeeChecklistTasks => Set<EmployeeChecklistTask>();
     public DbSet<AccessGrantRequest> AccessGrantRequests => Set<AccessGrantRequest>();
+    public DbSet<SeatIncreaseRequest> SeatIncreaseRequests => Set<SeatIncreaseRequest>();
     public DbSet<OffboardingRecord> OffboardingRecords => Set<OffboardingRecord>();
     public DbSet<OffboardingTaskBypassRequest> OffboardingTaskBypassRequests => Set<OffboardingTaskBypassRequest>();
 
@@ -256,16 +279,15 @@ public class ApplicationDbContext : DbContext
     // Leave Management
     public DbSet<LeaveType> LeaveTypes => Set<LeaveType>();
     public DbSet<LeavePolicy> LeavePolicies => Set<LeavePolicy>();
-    public DbSet<LeavePolicyLeaveType> LeavePolicyLeaveTypes => Set<LeavePolicyLeaveType>();
+    public DbSet<LeavePolicyVersion> LeavePolicyVersions => Set<LeavePolicyVersion>();
     public DbSet<LeavePolicyBlackoutPeriod> LeavePolicyBlackoutPeriods => Set<LeavePolicyBlackoutPeriod>();
-    public DbSet<LeavePolicyLegalEntity> LeavePolicyLegalEntities => Set<LeavePolicyLegalEntity>();
+    public DbSet<LeavePolicyAssignment> LeavePolicyAssignments => Set<LeavePolicyAssignment>();
     public DbSet<LeaveEntitlement> LeaveEntitlements => Set<LeaveEntitlement>();
     public DbSet<LeaveRequest> LeaveRequests => Set<LeaveRequest>();
     public DbSet<LeaveRequestApprover> LeaveRequestApprovers => Set<LeaveRequestApprover>();
     public DbSet<LeaveRequestDocument> LeaveRequestDocuments => Set<LeaveRequestDocument>();
     public DbSet<LeaveApprovalDelegate> LeaveApprovalDelegates => Set<LeaveApprovalDelegate>();
     public DbSet<LeaveBalanceAudit> LeaveBalanceAudits => Set<LeaveBalanceAudit>();
-    public DbSet<LeaveRequestInfoMessage> LeaveRequestInfoMessages => Set<LeaveRequestInfoMessage>();
     public DbSet<LeaveRequestDayAllocation> LeaveRequestDayAllocations => Set<LeaveRequestDayAllocation>();
 
     // Time & Attendance - Work Mode (per-legal-entity, Guid-keyed)
@@ -292,10 +314,10 @@ public class ApplicationDbContext : DbContext
         public DbSet<Project> Projects => Set<Project>();
     public DbSet<Objective> Objectives => Set<Objective>();
     public DbSet<CalendarEvent> CalendarEvents => Set<CalendarEvent>();
+    public DbSet<CalendarEventActivityLog> CalendarEventActivityLogs => Set<CalendarEventActivityLog>();
     public DbSet<CalendarEventObjective> CalendarEventObjectives => Set<CalendarEventObjective>();
     public DbSet<CalendarEventTask> CalendarEventTasks => Set<CalendarEventTask>();
 
-    public DbSet<ObjectiveChangeRequest> ObjectiveChangeRequests => Set<ObjectiveChangeRequest>();
     public DbSet<ProjectMember> ProjectMembers => Set<ProjectMember>();
     public DbSet<ProjectMemberInvitation> ProjectMemberInvitations => Set<ProjectMemberInvitation>();
     public DbSet<VersionStatus> VersionStatuses => Set<VersionStatus>();
@@ -308,33 +330,108 @@ public class ApplicationDbContext : DbContext
     public DbSet<Sprint> Sprints => Set<Sprint>();
     public DbSet<SprintActivityLog> SprintActivityLogs => Set<SprintActivityLog>();
     public DbSet<TaskAssignment> TaskAssignments => Set<TaskAssignment>();
-    public DbSet<TaskCreationRequest> TaskCreationRequests => Set<TaskCreationRequest>();
-        public DbSet<TaskEditRequest> TaskEditRequests => Set<TaskEditRequest>();
+    public DbSet<WorkApprovalRequest> WorkApprovalRequests => Set<WorkApprovalRequest>();
+    public DbSet<ONEVO.Domain.Features.Conversations.Entities.Conversation> Conversations
+        => Set<ONEVO.Domain.Features.Conversations.Entities.Conversation>();
+    public DbSet<ONEVO.Domain.Features.Conversations.Entities.ConversationParticipant> ConversationParticipants
+        => Set<ONEVO.Domain.Features.Conversations.Entities.ConversationParticipant>();
+    public DbSet<ONEVO.Domain.Features.Conversations.Entities.ConversationFavorite> ConversationFavorites
+        => Set<ONEVO.Domain.Features.Conversations.Entities.ConversationFavorite>();
+    public DbSet<ONEVO.Domain.Features.Conversations.Entities.ConversationMute> ConversationMutes
+        => Set<ONEVO.Domain.Features.Conversations.Entities.ConversationMute>();
+    public DbSet<ONEVO.Domain.Features.Conversations.Entities.ConversationMessage> ConversationMessages
+        => Set<ONEVO.Domain.Features.Conversations.Entities.ConversationMessage>();
+    public DbSet<ONEVO.Domain.Features.Conversations.Entities.ConversationMessageRevision> ConversationMessageRevisions
+        => Set<ONEVO.Domain.Features.Conversations.Entities.ConversationMessageRevision>();
+    public DbSet<ONEVO.Domain.Features.Conversations.Entities.ConversationMessageHide> ConversationMessageHides
+        => Set<ONEVO.Domain.Features.Conversations.Entities.ConversationMessageHide>();
+    public DbSet<ONEVO.Domain.Features.Conversations.Entities.ConversationMessageAttachment> ConversationMessageAttachments
+        => Set<ONEVO.Domain.Features.Conversations.Entities.ConversationMessageAttachment>();
+    public DbSet<ONEVO.Domain.Features.TimeAttendance.Alerts.AttendanceAlert> AttendanceAlerts
+        => Set<ONEVO.Domain.Features.TimeAttendance.Alerts.AttendanceAlert>();
+    public DbSet<ONEVO.Domain.Features.TimeAttendance.Alerts.AttendanceAlertDeduction> AttendanceAlertDeductions
+        => Set<ONEVO.Domain.Features.TimeAttendance.Alerts.AttendanceAlertDeduction>();
+    public DbSet<ONEVO.Domain.Features.Inbox.Entities.InboxDecisionJournalEntry> InboxDecisionJournal
+        => Set<ONEVO.Domain.Features.Inbox.Entities.InboxDecisionJournalEntry>();
+    public DbSet<ONEVO.Domain.Features.Conversations.Entities.ConversationMessageMention> ConversationMessageMentions
+        => Set<ONEVO.Domain.Features.Conversations.Entities.ConversationMessageMention>();
+    public DbSet<ONEVO.Domain.Features.Conversations.Entities.ConversationMessageReaction> ConversationMessageReactions
+        => Set<ONEVO.Domain.Features.Conversations.Entities.ConversationMessageReaction>();
+    public DbSet<WorkNotificationLog> WorkNotificationLogs => Set<WorkNotificationLog>();
+    public DbSet<MonitorAlert> MonitorAlerts => Set<MonitorAlert>();
+    public DbSet<TaskRateSetting> TaskRateSettings => Set<TaskRateSetting>();
+    public DbSet<ModuleHourSummary> ModuleHourSummaries => Set<ModuleHourSummary>();
+    public DbSet<ONEVO.Domain.Features.Dashboard.Entities.UserDashboard> UserDashboards
+        => Set<ONEVO.Domain.Features.Dashboard.Entities.UserDashboard>();
+    public DbSet<ONEVO.Domain.Features.Dashboard.Entities.DashboardWidget> DashboardWidgets
+        => Set<ONEVO.Domain.Features.Dashboard.Entities.DashboardWidget>();
+    public DbSet<ONEVO.Domain.Features.Dashboard.Entities.DashboardWidgetLayout> DashboardWidgetLayouts
+        => Set<ONEVO.Domain.Features.Dashboard.Entities.DashboardWidgetLayout>();
+    public DbSet<ONEVO.Domain.Features.Dashboard.Entities.DashboardTemplate> DashboardTemplates
+        => Set<ONEVO.Domain.Features.Dashboard.Entities.DashboardTemplate>();
+    public DbSet<ONEVO.Domain.Features.Dashboard.Entities.DashboardTemplateWidget> DashboardTemplateWidgets
+        => Set<ONEVO.Domain.Features.Dashboard.Entities.DashboardTemplateWidget>();
+    public DbSet<ONEVO.Domain.Features.Dashboard.Entities.DashboardTemplateWidgetLayout> DashboardTemplateWidgetLayouts
+        => Set<ONEVO.Domain.Features.Dashboard.Entities.DashboardTemplateWidgetLayout>();
     public DbSet<TaskEditLog> TaskEditLogs => Set<TaskEditLog>();
     public DbSet<TaskStatusChangeLog> TaskStatusChangeLogs => Set<TaskStatusChangeLog>();
     public DbSet<TaskClockingSession> TaskClockingSessions => Set<TaskClockingSession>();
     public DbSet<TaskPercentageLog> TaskPercentageLogs => Set<TaskPercentageLog>();
     public DbSet<TaskComment> TaskComments => Set<TaskComment>();
+    public DbSet<TaskDraft> TaskDrafts => Set<TaskDraft>();
     public DbSet<TaskCommentLog> TaskCommentLogs => Set<TaskCommentLog>();
     public DbSet<TaskCommentReaction> TaskCommentReactions => Set<TaskCommentReaction>();
 
     public DbSet<NotificationTemplate> NotificationTemplates => Set<NotificationTemplate>();
     public DbSet<Notification> Notifications => Set<Notification>();
+    public DbSet<NotificationTemplateVersion> NotificationTemplateVersions => Set<NotificationTemplateVersion>();
+    public DbSet<TenantNotificationRule> TenantNotificationRules => Set<TenantNotificationRule>();
+    public DbSet<NotificationDelivery> NotificationDeliveries => Set<NotificationDelivery>();
     public DbSet<PersonalCalendarEvent> PersonalCalendarEvents => Set<PersonalCalendarEvent>();
     public DbSet<PersonalCalendarEventParticipant> CalendarEventParticipants => Set<PersonalCalendarEventParticipant>();
+    public DbSet<ONEVO.Domain.Features.Calendar.Entities.CalendarEventParticipantRsvpHistory> CalendarEventParticipantRsvpHistory => Set<ONEVO.Domain.Features.Calendar.Entities.CalendarEventParticipantRsvpHistory>();
+    public DbSet<ONEVO.Domain.Features.Calendar.Entities.CalendarEventReminderLog> CalendarEventRemindersSent => Set<ONEVO.Domain.Features.Calendar.Entities.CalendarEventReminderLog>();
+    public DbSet<ONEVO.Domain.Features.Calendar.Entities.CalendarMeetingIncident> CalendarMeetingIncidents => Set<ONEVO.Domain.Features.Calendar.Entities.CalendarMeetingIncident>();
     public DbSet<ExternalCalendarConnection> ExternalCalendarConnections => Set<ExternalCalendarConnection>();
     public DbSet<ExternalCalendarEventLink> ExternalCalendarEventLinks => Set<ExternalCalendarEventLink>();
     public DbSet<HolidayCalendarSettings> HolidayCalendarSettings => Set<HolidayCalendarSettings>();
+    public DbSet<CalendarEventGuest> CalendarEventGuests => Set<CalendarEventGuest>();
+    public DbSet<CalendarEventMeeting> CalendarEventMeetings => Set<CalendarEventMeeting>();
+    public DbSet<CalendarEventMeetingAttendance> CalendarEventMeetingAttendances => Set<CalendarEventMeetingAttendance>();
+
+    // Meetings-as-tasks Phase 2: a meeting occurrence is a WorkTask (task_kind = 'meeting') plus its MeetingDetails.
+    public DbSet<ONEVO.Domain.Features.WorkManagement.Meetings.Entities.MeetingSeries> MeetingSeries => Set<ONEVO.Domain.Features.WorkManagement.Meetings.Entities.MeetingSeries>();
+    public DbSet<ONEVO.Domain.Features.WorkManagement.Planner.Entities.PlannedTaskBlock> PlannedTaskBlocks => Set<ONEVO.Domain.Features.WorkManagement.Planner.Entities.PlannedTaskBlock>();
+    public DbSet<ONEVO.Domain.Features.WorkManagement.Meetings.Entities.MeetingDetails> MeetingDetails => Set<ONEVO.Domain.Features.WorkManagement.Meetings.Entities.MeetingDetails>();
+    public DbSet<ONEVO.Domain.Features.WorkManagement.Meetings.Entities.MeetingOccurrenceSuppression> MeetingOccurrenceSuppressions => Set<ONEVO.Domain.Features.WorkManagement.Meetings.Entities.MeetingOccurrenceSuppression>();
+    public DbSet<ONEVO.Domain.Features.WorkManagement.Meetings.Entities.MeetingOccurrenceAttendee> MeetingOccurrenceAttendees => Set<ONEVO.Domain.Features.WorkManagement.Meetings.Entities.MeetingOccurrenceAttendee>();
+    public DbSet<ONEVO.Domain.Features.WorkManagement.Meetings.Entities.MeetingSeriesLink> MeetingSeriesLinks => Set<ONEVO.Domain.Features.WorkManagement.Meetings.Entities.MeetingSeriesLink>();
+    public DbSet<ONEVO.Domain.Features.WorkManagement.Meetings.Entities.MeetingAttendanceSession> MeetingAttendanceSessions => Set<ONEVO.Domain.Features.WorkManagement.Meetings.Entities.MeetingAttendanceSession>();
+    public DbSet<ONEVO.Domain.Features.WorkManagement.Meetings.Entities.MeetingActionItem> MeetingActionItems => Set<ONEVO.Domain.Features.WorkManagement.Meetings.Entities.MeetingActionItem>();
+    public DbSet<ONEVO.Domain.Features.SharedPlatform.Jobs.Entities.JobLease> JobLeases => Set<ONEVO.Domain.Features.SharedPlatform.Jobs.Entities.JobLease>();
 
     protected override void OnConfiguring(DbContextOptionsBuilder optionsBuilder)
     {
         optionsBuilder
-            .AddInterceptors(_auditInterceptor, _softDeleteInterceptor, _domainEventInterceptor);
+            .AddInterceptors(_auditInterceptor, _softDeleteInterceptor, _domainEventInterceptor, MeetingIntegrityInterceptor.Instance);
+    }
+
+    protected override void ConfigureConventions(ModelConfigurationBuilder configurationBuilder)
+    {
+        configurationBuilder.Properties<DateTimeOffset>()
+            .HaveConversion<ONEVO.Infrastructure.Persistence.SqlServer.UtcDateTimeOffsetConverter>();
     }
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         modelBuilder.ApplyConfigurationsFromAssembly(typeof(ApplicationDbContext).Assembly);
+
+        // Case-sensitive so = keeps PostgreSQL behaviour on hashes, tokens and unique indexes.
+        modelBuilder.UseCollation("Latin1_General_100_CS_AS_SC");
+        if (Database.IsSqlServer())
+        {
+            ONEVO.Infrastructure.Persistence.SqlServer.JsonColumnConvention.Apply(modelBuilder);
+        }
 
         var dbContextConst = Expression.Constant(this, typeof(ApplicationDbContext));
         var isTenantFilterActiveProperty = typeof(ApplicationDbContext).GetProperty(nameof(IsTenantFilterActive))!;
@@ -351,7 +448,13 @@ public class ApplicationDbContext : DbContext
                 isTenantFilterActiveProperty,
                 currentTenantIdProperty);
 
-            modelBuilder.Entity(entityType.ClrType).HasQueryFilter(composedFilter);
+            // An entity whose configuration declared named filters (WorkTask's ExcludeMeetings) gets the tenant filter
+            // by name too: anonymous and named filters are never mixed on one entity, and a caller can then ignore
+            // one named filter while keeping the other.
+            if (entityType.GetDeclaredQueryFilters().Any(f => f.Key is not null))
+                modelBuilder.Entity(entityType.ClrType).HasQueryFilter(WorkTaskQueryFilters.TenantScope, composedFilter);
+            else
+                modelBuilder.Entity(entityType.ClrType).HasQueryFilter(composedFilter);
         }
 
         base.OnModelCreating(modelBuilder);

@@ -10,8 +10,10 @@ public sealed class FakeObjectStorageAdapter : IObjectStorageAdapter
     public bool ObjectExistsResult { get; set; } = true;
     public List<string> PutObjectKeys { get; } = new();
     public List<string> DeletedObjectKeys { get; } = new();
+    public string? LastPutContentType { get; private set; }
+    public byte[]? LastPutBytes { get; private set; }
 
-    public Task PutObjectAsync(string objectKey, Stream content, string contentType, CancellationToken ct = default)
+    public async Task PutObjectAsync(string objectKey, Stream content, string contentType, CancellationToken ct = default)
     {
         if (ShouldFailPut)
         {
@@ -19,7 +21,10 @@ public sealed class FakeObjectStorageAdapter : IObjectStorageAdapter
         }
 
         PutObjectKeys.Add(objectKey);
-        return Task.CompletedTask;
+        LastPutContentType = contentType;
+        using var copy = new MemoryStream();
+        await content.CopyToAsync(copy, ct);
+        LastPutBytes = copy.ToArray();
     }
 
     public Task DeleteObjectAsync(string objectKey, CancellationToken ct = default)

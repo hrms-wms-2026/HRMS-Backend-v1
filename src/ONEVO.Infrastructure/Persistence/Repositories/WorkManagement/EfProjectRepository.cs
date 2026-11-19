@@ -29,12 +29,26 @@ public class EfProjectRepository : IProjectRepository
             .FirstOrDefaultAsync(p => p.TenantId == tenantId && p.Id == id, ct);
     }
 
+    public Task<Project?> GetBySystemPurposeAsync(Guid tenantId, string systemPurpose, CancellationToken ct = default)
+        => _db.Projects.AsNoTracking()
+            .FirstOrDefaultAsync(p => p.TenantId == tenantId && p.SystemPurpose == systemPurpose, ct);
+
     public async Task<Project?> GetTrackedByIdForTenantAsync(Guid tenantId, Guid id, CancellationToken ct = default)
     {
         // Deliberately no AsNoTracking - see interface doc. Callers must mutate and then call
         // SaveChanges without an explicit Update(), so only actually-changed columns are written.
         return await _db.Projects
             .FirstOrDefaultAsync(p => p.TenantId == tenantId && p.Id == id, ct);
+    }
+
+    public async Task<IReadOnlyList<Project>> GetActiveByIdsForTenantAsync(Guid tenantId, IReadOnlyCollection<Guid> ids, CancellationToken ct = default)
+    {
+        if (ids.Count == 0)
+            return Array.Empty<Project>();
+
+        return await _db.Projects.AsNoTracking()
+            .Where(p => p.TenantId == tenantId && p.IsActive && ids.Contains(p.Id))
+            .ToListAsync(ct);
     }
 
     public void Update(Project project)
@@ -79,8 +93,8 @@ public class EfProjectRepository : IProjectRepository
         var values = await _db.Database.SqlQuery<long>($@"
             UPDATE projects
             SET next_task_number = next_task_number + 1
+            OUTPUT inserted.next_task_number - 1 AS [Value]
             WHERE tenant_id = {tenantId} AND id = {projectId}
-            RETURNING (next_task_number - 1) AS ""Value""
         ").ToListAsync(ct);
 
         if (values.Count == 0)
@@ -88,4 +102,36 @@ public class EfProjectRepository : IProjectRepository
 
         return values[0];
     }
+
+    public async Task<Project?> GetOfficeProjectAsync(Guid tenantId, CancellationToken ct = default)
+        => await _db.Projects.AsNoTracking()
+            .FirstOrDefaultAsync(p => p.TenantId == tenantId && p.SystemPurpose == ProjectSystemPurposes.Office, ct);
+
+    public async Task<long> IncrementAndGetNextMeetingNumberAsync(Guid tenantId, Guid projectId, CancellationToken ct = default)
+    {
+        var values = await _db.Database.SqlQuery<long>($@"
+            UPDATE projects
+            SET next_meeting_number = next_meeting_number + 1
+            OUTPUT inserted.next_meeting_number - 1 AS [Value]
+            WHERE tenant_id = {tenantId} AND id = {projectId}
+        ").ToListAsync(ct);
+
+        if (values.Count == 0)
+            throw new InvalidOperationException("Project not found when allocating a meeting number.");
+
+        return values[0];
+    }
+
+    public async Task<IReadOnlyList<Project>> ListByIdsAsync(Guid tenantId, IReadOnlyCollection<Guid> projectIds, CancellationToken ct = default)
+    {
+        if (projectIds.Count == 0)
+            return Array.Empty<Project>();
+        var ids = projectIds.ToList();
+        return await _db.Projects.AsNoTracking().Where(p => p.TenantId == tenantId && ids.Contains(p.Id)).ToListAsync(ct);
+    }
+
+    public async Task<IReadOnlyList<Project>> ListActiveAcrossTenantsAsync(CancellationToken ct = default)
+        => await _db.Projects.AsNoTracking()
+            .Where(p => p.IsActive && !p.IsAchieved && !p.IsDeleted)
+            .ToListAsync(ct);
 }

@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata.Builders;
 using ONEVO.Domain.Features.CoreHr.Entities;
+using ONEVO.Infrastructure.Persistence.SqlServer;
 
 namespace ONEVO.Infrastructure.Persistence.Configurations.CoreHr.Onboarding;
 
@@ -18,12 +19,17 @@ public sealed class EmployeeChecklistTaskConfiguration : IEntityTypeConfiguratio
         builder.Property(x => x.IsBypassable).HasDefaultValue(false).IsRequired();
         builder.Property(x => x.BypassPenaltyDescription).HasMaxLength(500);
         builder.Property(x => x.Category).HasMaxLength(40);
+        builder.Property(x => x.Priority).HasMaxLength(20);
+        builder.Property(x => x.AttachmentFileIdsJson).IsJsonColumn();
         builder.HasIndex(x => new { x.TenantId, x.OffboardingRecordId });
         builder.HasOne<ONEVO.Domain.Features.CoreHr.Entities.OffboardingRecord>().WithMany()
             .HasForeignKey(x => x.OffboardingRecordId).OnDelete(DeleteBehavior.Restrict);
         builder.HasIndex(x => new { x.TenantId, x.EmployeeId, x.LifecycleType, x.Sequence });
+        builder.HasIndex(x => x.WorkTaskId).IsUnique().HasFilter("work_task_id IS NOT NULL");
         builder.HasOne<ONEVO.Domain.Features.CoreHr.Entities.Employee>().WithMany().HasForeignKey(x => x.EmployeeId).OnDelete(DeleteBehavior.Restrict);
         builder.HasOne<ChecklistTemplate>().WithMany().HasForeignKey(x => x.TemplateId).OnDelete(DeleteBehavior.Restrict);
+        builder.HasOne<ONEVO.Domain.Features.WorkManagement.Tasks.Entities.WorkTask>().WithMany()
+            .HasForeignKey(x => x.WorkTaskId).OnDelete(DeleteBehavior.Restrict);
         builder.HasOne<ONEVO.Domain.Features.InfrastructureModule.Entities.User>().WithMany().HasForeignKey(x => x.AssignedToId).OnDelete(DeleteBehavior.Restrict);
     }
 }

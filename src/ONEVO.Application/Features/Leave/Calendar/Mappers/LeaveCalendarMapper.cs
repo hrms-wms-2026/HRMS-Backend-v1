@@ -25,7 +25,7 @@ public static class LeaveCalendarMapper
             return new LeaveCalendarDayResponse(
                 date,
                 date.DayOfWeek.ToString(),
-                (dayAbsences ?? []).Select(instance => ToAbsence(instance, options)).ToList(),
+                (dayAbsences ?? []).Select(ToAbsence).ToList(),
                 (dayHolidays ?? []).Select(ToHoliday).ToList());
         }).ToList();
 
@@ -40,9 +40,7 @@ public static class LeaveCalendarMapper
             days);
     }
 
-    private static LeaveCalendarAbsenceResponse ToAbsence(
-        LeaveCalendarAbsenceInstance instance,
-        LeaveCalendarOptions options)
+    private static LeaveCalendarAbsenceResponse ToAbsence(LeaveCalendarAbsenceInstance instance)
     {
         var row = instance.Row;
         var request = row.Request;
@@ -58,8 +56,7 @@ public static class LeaveCalendarMapper
             request.LeaveTypeId,
             row.LeaveTypeName,
             row.LeaveTypeCode,
-            row.LeaveTypeCategory,
-            options.ColorFor(row.LeaveTypeCategory),
+            row.LeaveTypeColor,
             request.Status,
             instance.IsTentative,
             instance.IsPartialCancellationHistory,

@@ -49,6 +49,8 @@ public class SprintTaskAssignmentService : ISprintTaskAssignmentService
             var task = await _tasks.GetTrackedByIdForTenantAsync(tenantId, id, ct);
             if (task is null || task.ProjectId != sprint.ProjectId)
                 return Result<SprintTaskChangeSet>.NotFound($"Task {id} not found in this project.");
+            if (task.TaskKind == WorkTaskKinds.EmployeeChecklist)
+                return Result<SprintTaskChangeSet>.Conflict("Employee checklist tasks cannot be added to a sprint.");
             if (task.SprintId == sprint.Id) continue;
             if (task.SprintId is not null)
             {
@@ -66,6 +68,8 @@ public class SprintTaskAssignmentService : ISprintTaskAssignmentService
         {
             var task = await _tasks.GetTrackedByIdForTenantAsync(tenantId, id, ct);
             if (task is null || task.SprintId != sprint.Id) continue;
+            if (task.TaskKind == WorkTaskKinds.EmployeeChecklist)
+                return Result<SprintTaskChangeSet>.Conflict("Employee checklist tasks cannot be changed through a sprint.");
             if (!await OwnsAsync(task.ObjectiveId))
                 return Result<SprintTaskChangeSet>.Forbidden("You can only remove tasks from modules you own.");
             toRemove.Add(task);

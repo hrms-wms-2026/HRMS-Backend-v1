@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging.Abstractions;
 using NSubstitute;
 using ONEVO.Application.Common.Models.Auth;
 using ONEVO.Application.Common.RepositoryInterfaces;
@@ -63,7 +64,7 @@ public class TenantDatabaseTicketStoreTests
     };
 
     private TenantDatabaseTicketStore CreateSut() =>
-        new(_scopeFactory, _clock);
+        new(_scopeFactory, _clock, DisabledTicketCache.Create(_clock), NullLogger<TenantDatabaseTicketStore>.Instance);
 
     [Fact]
     public async Task StoreAsync_PersistsSession_ReturnsRawKey()
@@ -258,8 +259,7 @@ public class TenantDatabaseTicketStoreTests
         _tenants.GetByIdAsync(tenantId, Arg.Any<CancellationToken>()).Returns(ActiveTenant(tenantId));
         _users.GetByIdAsync(userId, Arg.Any<CancellationToken>()).Returns(
             new ONEVO.Domain.Features.InfrastructureModule.Entities.User { Id = userId, Email = "a@b.com", IsActive = true });
-        _employees.GetByIdAsync(tenantId, employeeId, Arg.Any<CancellationToken>()).Returns(
-            new Employee { Id = employeeId, TenantId = tenantId, UserId = userId, LegalEntityId = legalEntityId });
+        _employees.GetLegalEntityIdAsync(tenantId, employeeId, Arg.Any<CancellationToken>()).Returns(legalEntityId);
         _permissions.ResolveAsync(userId, tenantId, legalEntityId, Arg.Any<CancellationToken>())
                     .Returns(["employees:read"]);
 
@@ -352,7 +352,7 @@ public class TenantDatabaseTicketStoreTests
         var mockSp = Substitute.For<IServiceProvider>();
         mockSp.GetService(typeof(Microsoft.AspNetCore.Hosting.IWebHostEnvironment)).Returns(env);
         httpContext.RequestServices = mockSp;
-        httpContext.Request.Headers["Cookie"] = "onevo_csrf=existing_csrf_val";
+        httpContext.Request.Headers["Cookie"] = "crownus_csrf=existing_csrf_val";
 
         var sut = CreateSut();
         var properties = new AuthenticationProperties();
@@ -367,7 +367,7 @@ public class TenantDatabaseTicketStoreTests
             Arg.Is<TenantRegistryEntry>(t => t.TenantId == tenantId), Arg.Any<CancellationToken>());
 
         var setCookieHeader = httpContext.Response.Headers["Set-Cookie"].ToString();
-        Assert.Contains("onevo_csrf=existing_csrf_val", setCookieHeader);
+        Assert.Contains("crownus_csrf=existing_csrf_val", setCookieHeader);
         Assert.Contains("expires=", setCookieHeader, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("path=/", setCookieHeader, StringComparison.OrdinalIgnoreCase);
     }

@@ -1,40 +1,34 @@
 using MediatR;
 using ONEVO.Application.Common.Models;
-using ONEVO.Application.Common.RepositoryInterfaces;
 using ONEVO.Application.Common.ServiceInterfaces;
 using ONEVO.Application.Features.WorkManagement.Common.Services;
-using ONEVO.Application.Features.WorkManagement.ObjectiveChangeRequests.RepositoryInterfaces;
 using ONEVO.Application.Features.WorkManagement.Objectives.DTOs.Responses;
-using ONEVO.Application.Features.WorkManagement.Objectives.Mappers;
 using ONEVO.Application.Features.WorkManagement.Objectives.RepositoryInterfaces;
 using ONEVO.Application.Features.WorkManagement.Objectives.Services;
-using ONEVO.Application.Features.WorkManagement.Sprints.RepositoryInterfaces;
-using ONEVO.Domain.Features.WorkManagement.ObjectiveChangeRequests.Entities;
+using ONEVO.Domain.Features.WorkManagement.Approvals.Entities;
 
 namespace ONEVO.Application.Features.WorkManagement.Objectives.Commands.AchieveObjective;
 
+/// <summary>Marks a milestone Achieved through the approval engine (the parent's owner or above applies it now; others request).</summary>
 public class AchieveObjectiveCommandHandler : IRequestHandler<AchieveObjectiveCommand, Result<ObjectiveChangeOutcomeResponse>>
 {
     private readonly ICurrentUser _currentUser;
     private readonly ICallerIdentityResolver _identity;
     private readonly IObjectiveRepository _objectives;
-    private readonly IObjectiveChangeRequestRepository _changeRequests;
     private readonly IMilestoneMembershipCoordinator _membership;
-    private readonly ISprintRepository _sprints;
-    private readonly IUnitOfWork _unitOfWork;
+    private readonly IModuleWriteService _modules;
+    private readonly IModuleActionSubmitter _submitter;
 
     public AchieveObjectiveCommandHandler(
         ICurrentUser currentUser, ICallerIdentityResolver identity, IObjectiveRepository objectives,
-        IObjectiveChangeRequestRepository changeRequests, IMilestoneMembershipCoordinator membership,
-        ISprintRepository sprints, IUnitOfWork unitOfWork)
+        IMilestoneMembershipCoordinator membership, IModuleWriteService modules, IModuleActionSubmitter submitter)
     {
         _currentUser = currentUser;
         _identity = identity;
         _objectives = objectives;
-        _changeRequests = changeRequests;
         _membership = membership;
-        _sprints = sprints;
-        _unitOfWork = unitOfWork;
+        _modules = modules;
+        _submitter = submitter;
     }
 
     public async Task<Result<ObjectiveChangeOutcomeResponse>> Handle(AchieveObjectiveCommand request, CancellationToken ct)
@@ -58,66 +52,18 @@ public class AchieveObjectiveCommandHandler : IRequestHandler<AchieveObjectiveCo
         if (objective.IsDefault)
             return Result<ObjectiveChangeOutcomeResponse>.Failure("Use the Project achieve endpoint for the Default Objective.");
 
-        if (objective.IsAchieved)
-            return Result<ObjectiveChangeOutcomeResponse>.Conflict("Objective is already achieved.");
-
         if (!await _membership.IsEffectiveManagerAsync(tenantId, objective.Id, callerEmployeeId.Value, ct))
             return Result<ObjectiveChangeOutcomeResponse>.Forbidden("Only this milestone's head can achieve it.");
 
-        // Precondition (design §6): every direct child must already be achieved. Shallow check -
-        // grandchildren are covered transitively, since a child can't itself be achieved until
-        // ITS children are.
-        var directChildren = await _objectives.GetTrackedActiveDirectChildrenAsync(tenantId, objective.Id, ct);
-        if (directChildren.Any(c => !c.IsAchieved))
-            return Result<ObjectiveChangeOutcomeResponse>.Failure("All sub-milestones must be achieved before this one can be.");
+        var validation = await _modules.ValidateAchieveAsync(tenantId, objective, ct);
+        if (!validation.IsSuccess)
+            return Result<ObjectiveChangeOutcomeResponse>.Failure(validation.Error!, validation.StatusCode ?? 400);
 
-        // A module is blocked while any of its tasks sits in an Active sprint (sprints are project-level now).
-        if (await _sprints.AnyActiveContainingObjectiveTasksAsync(tenantId, objective.Id, ct))
-            return Result<ObjectiveChangeOutcomeResponse>.Failure("Tasks of this milestone are still in an Active sprint - complete that sprint first.");
+        var outcome = await _submitter.SubmitAsync(tenantId, callerEmployeeId.Value, objective, WorkActionTypes.ModuleAchieve, null,
+            (tracked, innerCt) => _modules.ApplyAchieveAsync(tenantId, tracked, innerCt), ct: ct);
 
-        if (objective.CreatedById == userId)
-        {
-            return await _unitOfWork.ExecuteInTransactionAsync(async innerCt =>
-            {
-                var now = DateTimeOffset.UtcNow;
-                objective.IsAchieved = true;
-                objective.AchievedAt = now;
-                objective.UpdatedAt = now;
-                _objectives.Update(objective);
-
-                // Freezing drops the Head's active participation on this milestone (design §6) -
-                // same outgoing-access pattern as Transfer step 6, just with no new Head to
-                // upsert a membership for.
-                await _membership.DeactivateMembershipAsync(tenantId, objective.ProjectId, objective.Id, objective.OwnerId, innerCt);
-                await _membership.HasOtherActiveAccessAsync(tenantId, objective.ProjectId, objective.OwnerId, objective.Id, innerCt);
-
-                await _unitOfWork.SaveChangesAsync(innerCt);
-
-                return Result<ObjectiveChangeOutcomeResponse>.Success(new ObjectiveChangeOutcomeResponse(Applied: true, PendingRequest: null));
-            }, ct);
-        }
-
-        if (await _changeRequests.HasPendingForObjectiveAsync(tenantId, objective.Id, ct))
-            return Result<ObjectiveChangeOutcomeResponse>.Conflict("A change request is already pending for this objective.");
-
-        var changeRequest = new ObjectiveChangeRequest
-        {
-            Id = Guid.NewGuid(),
-            TenantId = tenantId,
-            ObjectiveId = objective.Id,
-            RequestType = ObjectiveChangeRequestTypes.Achieve,
-            RequestedById = callerEmployeeId.Value,
-            ReportingManagerId = objective.ReportingManagerId!.Value,
-            Status = ObjectiveChangeRequestStatuses.Pending,
-            PayloadJson = null,
-            CreatedById = userId,
-            CreatedAt = DateTimeOffset.UtcNow
-        };
-
-        await _changeRequests.AddAsync(changeRequest, ct);
-        await _unitOfWork.SaveChangesAsync(ct);
-
-        return Result<ObjectiveChangeOutcomeResponse>.Success(
-            new ObjectiveChangeOutcomeResponse(Applied: false, ObjectiveMapper.ToResponse(changeRequest)));
+        return outcome.IsSuccess
+            ? Result<ObjectiveChangeOutcomeResponse>.Success(new ObjectiveChangeOutcomeResponse(outcome.Value!.Applied, outcome.Value.ApprovalRequestId))
+            : Result<ObjectiveChangeOutcomeResponse>.Failure(outcome.Error!, outcome.StatusCode ?? 400);
     }
 }

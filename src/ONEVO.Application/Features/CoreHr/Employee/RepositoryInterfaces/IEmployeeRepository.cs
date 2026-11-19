@@ -11,8 +11,16 @@ namespace ONEVO.Application.Features.CoreHr.Employee.RepositoryInterfaces;
 /// unaffected). An empty (non-null) collection means "nothing visible".
 /// </summary>
 public sealed record EmployeeListFilter(
-    string? Search, Guid? DepartmentId, Guid? LegalEntityId, IReadOnlyCollection<Guid>? RestrictToEmployeeIds = null);
-
+    string? Search, Guid? DepartmentId, Guid? LegalEntityId,
+    IReadOnlyCollection<Guid>? RestrictToEmployeeIds = null, Guid? PositionId = null,
+    IReadOnlyCollection<string>? EmploymentTypeCodes = null, Guid? ReportingManagerId = null,
+    string? SortBy = null, bool SortDescending = false,
+    // Opt-in, not a default-on filter: this list is shared by HR-admin screens that need to find
+    // an offboarded/terminated employee's record, as well as picker-style callers (e.g. calendar
+    // participants) that should only ever offer someone who could actually attend. Same
+    // definition of "active" as MilestoneMembershipCoordinator.GetActiveAssigneeAsync and
+    // CreateProjectCommandHandler already use elsewhere for assignment eligibility.
+    bool ActiveOnly = false);
 /// <summary>
 /// Enables the employee-list repository to calculate attendance warnings in one batch query. A
 /// null option means attendance-sensitive data must not be projected.
@@ -49,6 +57,12 @@ public interface IEmployeeRepository
     Task<ONEVO.Domain.Features.CoreHr.Entities.Employee?> GetByIdAsync(
         Guid tenantId, Guid employeeId, CancellationToken ct = default);
 
+    /// <summary>Projection-only companion to GetByIdAsync for callers that need nothing but the
+    /// legal entity id (e.g. resolving a session's active employee on every authenticated
+    /// request) - avoids materializing the full Employee row just to read one column.</summary>
+    Task<Guid?> GetLegalEntityIdAsync(
+        Guid tenantId, Guid employeeId, CancellationToken ct = default);
+
     /// <summary>The Employee row a fresh session should default its ActiveEmployeeId to: the
     /// user's only Employee row if they have exactly one, or - if they have more than one -
     /// the one with the most recent active PrimaryEmployment PositionAssignment.EffectiveFrom.
@@ -66,9 +80,9 @@ public interface IEmployeeRepository
     Task<ONEVO.Domain.Features.CoreHr.Entities.Employee?> GetTrackedByIdAsync(
         Guid tenantId, Guid employeeId, CancellationToken ct = default);
 
-    /// <summary>Reads the current PostgreSQL xmin system-column value for optimistic-concurrency
+    /// <summary>Reads the current rowversion value for optimistic-concurrency
     /// display to the client (returned as the profile's "version" token).</summary>
-    Task<uint?> GetVersionTokenAsync(Guid tenantId, Guid employeeId, CancellationToken ct = default);
+    Task<ulong?> GetVersionTokenAsync(Guid tenantId, Guid employeeId, CancellationToken ct = default);
 
     /// <summary>Sets the EF shadow "xmin" original value on a tracked Employee instance so
     /// SaveChangesAsync raises DbUpdateConcurrencyException when the row was modified since the
@@ -120,6 +134,11 @@ public interface IEmployeeRepository
     /// reporting-line ancestor/holder candidates without one query per id. Ids not found are
     /// simply absent from the result.</summary>
     Task<IReadOnlyDictionary<Guid, ONEVO.Domain.Features.CoreHr.Entities.Employee>> ListByIdsAsync(
+        Guid tenantId, IReadOnlyCollection<Guid> employeeIds, CancellationToken ct = default);
+
+    /// <summary>The name of each employee's active primary-employment position (one query). Employees without one are
+    /// absent from the result.</summary>
+    Task<IReadOnlyDictionary<Guid, string>> ListPositionNamesAsync(
         Guid tenantId, IReadOnlyCollection<Guid> employeeIds, CancellationToken ct = default);
 
     Task AddAsync(ONEVO.Domain.Features.CoreHr.Entities.Employee employee, CancellationToken ct = default);

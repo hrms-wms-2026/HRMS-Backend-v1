@@ -28,4 +28,17 @@ public interface ITaskAssetLinker
     /// file: a source file that no longer opens or re-uploads is skipped rather than failing the whole copy.</summary>
     Task CopyAttachmentsAsync(
         Guid tenantId, Guid userId, Guid sourceTaskId, Guid destinationTaskId, CancellationToken ct = default);
+
+    /// <summary>Links a checklist template to exactly the given attachment files (owner type
+    /// checklist_template), unlinking and deleting any it no longer references.</summary>
+    Task SyncChecklistTemplateAttachmentsAsync(
+        Guid tenantId, Guid userId, Guid templateId, IReadOnlyList<Guid> desiredFileIds, CancellationToken ct = default);
+
+    /// <summary>Copies checklist-template attachment files onto a Work task as new file records and
+    /// saves. Only files currently linked to a checklist template (to templateId, when given) are
+    /// copied; anything else is skipped. File uploads save the shared unit of work, so callers run
+    /// this after their own transaction has committed.</summary>
+    Task CopyChecklistTemplateFilesToTaskAsync(
+        Guid tenantId, Guid userId, IReadOnlyList<Guid> templateFileIds, Guid? templateId, Guid destinationTaskId,
+        CancellationToken ct = default);
 }

@@ -8,7 +8,8 @@ public record CurrentUserDto(
     [property: JsonIgnore] Guid UserId,
     [property: JsonIgnore] Guid TenantId,
     [property: JsonPropertyName("email")] string Email,
-    Guid? EmployeeId = null
+    Guid? EmployeeId = null,
+    [property: JsonPropertyName("display_name")] string? DisplayName = null
 );
 
 /// <summary>
@@ -32,5 +33,8 @@ public record AuthSessionResponseDto(
     [property: JsonPropertyName("pending_legal_documents")] IReadOnlyList<PendingLegalDocumentDto>? PendingLegalDocuments = null,
     [property: JsonPropertyName("expires_at")] DateTimeOffset? ExpiresAt = null,
     [property: JsonPropertyName("continue_url")] string? ContinueUrl = null,
-    [property: JsonPropertyName("workspace")] WorkspaceResponseDto? Workspace = null
+    [property: JsonPropertyName("workspace")] WorkspaceResponseDto? Workspace = null,
+    // True when the user's position covers other employees (management coverage). Drives the
+    // People menu now that employee visibility is relationship-based, not a permission.
+    [property: JsonPropertyName("manages_people")] bool ManagesPeople = false
 );

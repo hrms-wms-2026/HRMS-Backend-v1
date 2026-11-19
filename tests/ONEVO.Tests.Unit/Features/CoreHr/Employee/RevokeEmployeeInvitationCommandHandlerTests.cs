@@ -1,10 +1,12 @@
 using Moq;
 using ONEVO.Application.Common.ServiceInterfaces;
 using ONEVO.Application.Features.Auth.Invite.RepositoryInterfaces;
+using ONEVO.Application.Features.CoreHr.Employee.Access;
 using ONEVO.Application.Features.CoreHr.Employee.Commands.RevokeEmployeeInvitation;
 using ONEVO.Application.Features.CoreHr.Employee.RepositoryInterfaces;
 using ONEVO.Application.Features.CoreHr.PositionAssignment.RepositoryInterfaces;
 using ONEVO.Domain.Features.Auth.Entities;
+using EmployeeEntity = ONEVO.Domain.Features.CoreHr.Entities.Employee;
 using IUnitOfWork = ONEVO.Application.Common.RepositoryInterfaces.IUnitOfWork;
 using Xunit;
 
@@ -18,6 +20,17 @@ public class RevokeEmployeeInvitationCommandHandlerTests
     private readonly Mock<IUnitOfWork> _unitOfWork = new();
     private readonly Mock<ICurrentUser> _currentUser = new();
     private readonly Mock<IDateTimeProvider> _clock = new();
+    private readonly Mock<IEmployeeInvitationAccess> _invitationAccess = new();
+
+    public RevokeEmployeeInvitationCommandHandlerTests()
+    {
+        _employeeRepository
+            .Setup(r => r.GetByIdAsync(It.IsAny<Guid>(), It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((Guid tenantId, Guid id, CancellationToken _) => new EmployeeEntity { Id = id, TenantId = tenantId });
+        _invitationAccess
+            .Setup(a => a.CanManageAsync(It.IsAny<InvitationToken>(), It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(true);
+    }
 
     private RevokeEmployeeInvitationCommandHandler CreateHandler() => new(
         _employeeRepository.Object,
@@ -25,7 +38,8 @@ public class RevokeEmployeeInvitationCommandHandlerTests
         _positionAssignmentRepository.Object,
         _unitOfWork.Object,
         _currentUser.Object,
-        _clock.Object);
+        _clock.Object,
+        _invitationAccess.Object);
 
     private static InvitationToken BuildPendingInvitation(Guid tenantId, Guid employeeId, Guid? positionAssignmentId) => new()
     {
@@ -125,5 +139,29 @@ public class RevokeEmployeeInvitationCommandHandlerTests
 
         Assert.False(result.IsSuccess);
         Assert.Equal("No invitation has been sent to this employee.", result.Error);
+    }
+
+    [Fact]
+    public async Task Handle_CallerIsNotInviterNorUserManager_ReturnsForbidden_DoesNotRevoke()
+    {
+        var tenantId = Guid.NewGuid();
+        var employeeId = Guid.NewGuid();
+        var invitation = BuildPendingInvitation(tenantId, employeeId, Guid.NewGuid());
+
+        _currentUser.Setup(c => c.TenantId).Returns(tenantId);
+        _clock.Setup(c => c.UtcNow).Returns(DateTimeOffset.UtcNow);
+        _invitationTokenRepository
+            .Setup(r => r.GetLatestByEmployeeIdAsync(tenantId, employeeId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(invitation);
+        _invitationAccess
+            .Setup(a => a.CanManageAsync(invitation, It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(false);
+
+        var result = await CreateHandler().Handle(new RevokeEmployeeInvitationCommand(employeeId), CancellationToken.None);
+
+        Assert.False(result.IsSuccess);
+        Assert.Equal(403, result.StatusCode);
+        Assert.Null(invitation.RevokedAt);
+        _unitOfWork.Verify(u => u.SaveChangesAsync(It.IsAny<CancellationToken>()), Times.Never);
     }
 }

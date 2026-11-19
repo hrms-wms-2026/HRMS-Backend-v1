@@ -74,10 +74,11 @@ public class GetObjectiveMembersQueryHandlerTests
 
         var permissionResolver = new Mock<IPermissionResolver>();
         permissionResolver.Setup(x => x.ResolveAsync(It.IsAny<Guid>(), TenantId, It.IsAny<Guid?>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(permissions ?? ["projects:read"]);
+            .ReturnsAsync(permissions ?? ["*"]);
 
         return new GetObjectiveMembersQueryHandler(
-            currentUser.Object, identity.Object, objectives.Object, members.Object, invitations.Object, permissionResolver.Object);
+            currentUser.Object, identity.Object, objectives.Object, members.Object, invitations.Object, permissionResolver.Object,
+            WorkHierarchyServiceMocks.ReadAccess(members, objective));
     }
 
     [Fact]

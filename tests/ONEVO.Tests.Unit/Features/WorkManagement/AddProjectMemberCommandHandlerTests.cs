@@ -1,3 +1,4 @@
+using ONEVO.Application.Features.Inbox.OutboxHandlers;
 using MediatR;
 using Moq;
 using ONEVO.Application.Common.Models;
@@ -212,8 +213,14 @@ public class AddProjectMemberCommandHandlerTests
     public async Task Handle_NewInvite_CreatesPendingMemberInvitationOnDefaultObjective()
     {
         var setup = BuildHandler(ActiveProject(), DefaultObjective());
+        var outbox = setup.Outbox;
 
         var result = await setup.Handler.Handle(new AddProjectMemberCommand(ProjectId, MemberEmployeeId), CancellationToken.None);
+        outbox.Verify(x => x.EnqueueAsync(
+            OutboxMessageTypes.InboxChanged,
+            It.Is<InboxChangedPayload>(p => p.Source == "work" && p.Kind == "invitation" && p.Id == result.Value!.Invitation!.Id
+                && p.EmployeeIds.Contains(MemberEmployeeId) && p.EmployeeIds.Contains(LeadEmployeeId)),
+            TenantId, It.IsAny<CancellationToken>()), Times.Once);
 
         Assert.True(result.IsSuccess);
         Assert.False(result.Value!.AlreadyMember);

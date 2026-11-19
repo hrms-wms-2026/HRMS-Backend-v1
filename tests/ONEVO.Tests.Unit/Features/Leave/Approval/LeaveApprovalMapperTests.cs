@@ -15,16 +15,6 @@ public class LeaveApprovalMapperTests
     }
 }
 
-public class LeaveApprovalVocabularyTests
-{
-    [Fact]
-    public void InformationRequestedStatus_UsesStableWireValue()
-    {
-        LeaveRequestStatuses.InformationRequested.Should().Be("information_requested");
-        LeaveRequestApproverStatuses.InformationRequested.Should().Be("information_requested");
-    }
-}
-
 public class LeaveApprovalOptionsTests
 {
     [Fact]

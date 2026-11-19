@@ -3,7 +3,6 @@ using ONEVO.Application.Common.RepositoryInterfaces;
 using ONEVO.Application.Common.ServiceInterfaces;
 using ONEVO.Application.Features.Calendar.RepositoryInterfaces;
 using ONEVO.Application.Features.Calendar.ServiceInterfaces;
-using ONEVO.Application.Features.DevPlatform.SystemConfig.PlatformOAuthApps.ServiceInterfaces;
 using ONEVO.Domain.Features.Calendar.Entities;
 using ONEVO.Infrastructure.Services.Calendar;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -19,10 +18,9 @@ public sealed class CalendarSyncServiceTests
     private readonly Mock<IExternalCalendarConnectionRepository> _connections = new();
     private readonly Mock<IExternalCalendarEventLinkRepository> _links = new();
     private readonly Mock<ICalendarEventRepository> _events = new();
-    private readonly Mock<ICalendarOAuthTokenExchangeClient> _tokenClient = new();
+    private readonly Mock<ICalendarConnectionTokenProvider> _tokenProvider = new();
     private readonly Mock<IGoogleCalendarClient> _googleClient = new();
     private readonly Mock<IMicrosoftGraphCalendarClient> _msClient = new();
-    private readonly Mock<IPlatformOAuthAppResolver> _appResolver = new();
     private readonly Mock<IEncryptionService> _encryption = new();
     private readonly Mock<IUnitOfWork> _unitOfWork = new();
 
@@ -36,9 +34,15 @@ public sealed class CalendarSyncServiceTests
     {
         _encryption.Setup(x => x.DecryptBytes(It.IsAny<byte[]>())).Returns("decrypted-token");
         _encryption.Setup(x => x.EncryptBytes(It.IsAny<string>())).Returns<string>(s => System.Text.Encoding.UTF8.GetBytes(s));
+        // Token refresh mechanics (expiry, refresh, reauth-on-failure) are
+        // CalendarConnectionTokenProvider's own concern now - see
+        // CalendarConnectionTokenProviderTests.cs. This default just hands SyncConnectionAsync a
+        // usable token so every other test here can focus on pull/push behavior.
+        _tokenProvider.Setup(t => t.GetFreshAccessTokenAsync(It.IsAny<ExternalCalendarConnection>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync("decrypted-token");
         return new CalendarSyncService(
-            _connections.Object, _links.Object, _events.Object, _tokenClient.Object,
-            _googleClient.Object, _msClient.Object, _appResolver.Object, _encryption.Object,
+            _connections.Object, _links.Object, _events.Object, _tokenProvider.Object,
+            _googleClient.Object, _msClient.Object, _encryption.Object,
             _unitOfWork.Object, NullLogger<CalendarSyncService>.Instance);
     }
 
@@ -73,6 +77,26 @@ public sealed class CalendarSyncServiceTests
         await sut.SyncConnectionAsync(TenantId, ConnectionId, CancellationToken.None);
 
         _googleClient.Verify(x => x.ListEventsAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string?>(), It.IsAny<DateTimeOffset>(), It.IsAny<DateTimeOffset>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task SyncConnectionAsync_ZoomConnectionWithSyncDirectionChangedAwayFromDisabled_StillSkipsSync()
+    {
+        // Task 2 relied entirely on SyncDirection = Disabled (set once, at connection-creation
+        // time) to keep Zoom connections out of this sync path - but a connection owner can change
+        // SyncDirection afterward via UpdateCalendarConnectionCommandHandler. If that happens for a
+        // Zoom connection, the guard must still be structural (Provider-based), not just
+        // data-dependent, otherwise this code would treat the connection as "microsoft" (since its
+        // Provider isn't GoogleCalendar) and drive Microsoft Graph calls with a Zoom access token.
+        var sut = BuildSut();
+        var connection = MakeConnection(CalendarSyncDirections.TwoWay);
+        connection.Provider = CalendarExternalSources.Zoom;
+        _connections.Setup(x => x.GetTrackedByIdForTenantAsync(TenantId, ConnectionId, It.IsAny<CancellationToken>())).ReturnsAsync(connection);
+
+        await sut.SyncConnectionAsync(TenantId, ConnectionId, CancellationToken.None);
+
+        _googleClient.Verify(x => x.ListEventsAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string?>(), It.IsAny<DateTimeOffset>(), It.IsAny<DateTimeOffset>(), It.IsAny<CancellationToken>()), Times.Never);
+        _msClient.Verify(x => x.ListEventsAsync(It.IsAny<string>(), It.IsAny<string?>(), It.IsAny<DateTimeOffset>(), It.IsAny<DateTimeOffset>(), It.IsAny<CancellationToken>()), Times.Never);
     }
 
     [Fact]
@@ -115,21 +139,19 @@ public sealed class CalendarSyncServiceTests
     }
 
     [Fact]
-    public async Task SyncConnectionAsync_TokenRefreshFails_SetsReauthRequiredAndSkipsSync()
+    public async Task SyncConnectionAsync_TokenProviderReturnsNull_SkipsSyncWithoutThrowing()
     {
+        // CalendarConnectionTokenProvider already marks the connection ReauthRequired and saves
+        // before returning null on a refresh failure (see CalendarConnectionTokenProviderTests.cs)
+        // - SyncConnectionAsync's own job here is just to not attempt a sync with no usable token.
         var sut = BuildSut();
-        var connection = MakeConnection(CalendarSyncDirections.PullOnly, expiresAt: DateTimeOffset.UtcNow.AddMinutes(2));
+        var connection = MakeConnection(CalendarSyncDirections.PullOnly);
         _connections.Setup(x => x.GetTrackedByIdForTenantAsync(TenantId, ConnectionId, It.IsAny<CancellationToken>())).ReturnsAsync(connection);
-        _appResolver.Setup(x => x.GetActiveCredentialForProviderAsync("google", It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new ONEVO.Application.Features.DevPlatform.SystemConfig.PlatformOAuthApps.ServiceInterfaces.ResolvedPlatformOAuthAppCredential("google", "client", "secret", null, 1));
-        _appResolver.Setup(x => x.GetActiveAppForProviderAsync("google", It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new ONEVO.Application.Features.DevPlatform.SystemConfig.PlatformOAuthApps.ServiceInterfaces.ResolvedPlatformOAuthApp("google", "client", "https://accounts.google.com/o/oauth2/v2/auth", "https://oauth2.googleapis.com/token", ["scope"]));
-        _tokenClient.Setup(x => x.RefreshTokenAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
-            .ThrowsAsync(new HttpRequestException("invalid_grant"));
+        _tokenProvider.Setup(t => t.GetFreshAccessTokenAsync(connection, "google", It.IsAny<CancellationToken>()))
+            .ReturnsAsync((string?)null);
 
         await sut.SyncConnectionAsync(TenantId, ConnectionId, CancellationToken.None);
 
-        _connections.Verify(x => x.Update(It.Is<ExternalCalendarConnection>(c => c.Status == ExternalCalendarConnectionStatuses.ReauthRequired)), Times.Once);
         _googleClient.Verify(x => x.ListEventsAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string?>(), It.IsAny<DateTimeOffset>(), It.IsAny<DateTimeOffset>(), It.IsAny<CancellationToken>()), Times.Never);
     }
 
@@ -378,5 +400,130 @@ public sealed class CalendarSyncServiceTests
         await sut.SyncConnectionAsync(TenantId, ConnectionId, CancellationToken.None);
 
         Assert.Null(connection.DeltaLinkEncrypted);
+    }
+
+    private CalendarSyncService BuildSutWithNotifications(Mock<ONEVO.Application.Features.Calendar.Services.ICalendarNotificationSender> notifications)
+    {
+        BuildSut();
+        return new CalendarSyncService(
+            _connections.Object, _links.Object, _events.Object, _tokenProvider.Object,
+            _googleClient.Object, _msClient.Object, _encryption.Object,
+            _unitOfWork.Object, NullLogger<CalendarSyncService>.Instance, notifications.Object);
+    }
+
+    [Theory]
+    [InlineData(ExternalCalendarConnectionStatuses.Active, true)]
+    [InlineData(ExternalCalendarConnectionStatuses.Failed, false)]
+    public async Task SyncConnectionAsync_TheRunThatTurnsAConnectionFailed_TellsItsOwnerOnce(string priorStatus, bool notified)
+    {
+        var notifications = new Mock<ONEVO.Application.Features.Calendar.Services.ICalendarNotificationSender>();
+        var sut = BuildSutWithNotifications(notifications);
+        var connection = MakeConnection(CalendarSyncDirections.PullOnly);
+        connection.FailureCount = 2;
+        connection.Status = priorStatus;
+        _connections.Setup(x => x.GetTrackedByIdForTenantAsync(TenantId, ConnectionId, It.IsAny<CancellationToken>())).ReturnsAsync(connection);
+        _googleClient.Setup(x => x.ListEventsAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string?>(), It.IsAny<DateTimeOffset>(), It.IsAny<DateTimeOffset>(), It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new HttpRequestException("rate limited"));
+
+        await sut.SyncConnectionAsync(TenantId, ConnectionId, CancellationToken.None);
+
+        notifications.Verify(n => n.NotifyConnectionProblemAsync(TenantId, connection.UserId, "Google Calendar", "failed", It.IsAny<CancellationToken>()),
+            notified ? Times.Once() : Times.Never());
+    }
+
+    [Fact]
+    public async Task SyncConnectionAsync_ANewTwoWayConflict_TellsTheOwner()
+    {
+        var notifications = new Mock<ONEVO.Application.Features.Calendar.Services.ICalendarNotificationSender>();
+        var sut = BuildSutWithNotifications(notifications);
+        var connection = MakeConnection(CalendarSyncDirections.TwoWay);
+        connection.LastSuccessfulSyncAt = DateTimeOffset.UtcNow.AddHours(-2);
+        _connections.Setup(x => x.GetTrackedByIdForTenantAsync(TenantId, ConnectionId, It.IsAny<CancellationToken>())).ReturnsAsync(connection);
+        var local = new CalendarEvent { Id = Guid.NewGuid(), TenantId = TenantId, Title = "Local edit", UpdatedAt = DateTimeOffset.UtcNow.AddHours(-1) };
+        var link = new ExternalCalendarEventLink
+        {
+            Id = Guid.NewGuid(), TenantId = TenantId, CalendarEventId = local.Id, ExternalCalendarConnectionId = ConnectionId, ExternalEventId = "ext-1",
+            ExternalEtag = "etag-old", SyncStatus = ExternalCalendarSyncStatuses.Synced,
+        };
+        _googleClient.Setup(x => x.ListEventsAsync("decrypted-token", "me@acme.com", null, It.IsAny<DateTimeOffset>(), It.IsAny<DateTimeOffset>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new GoogleCalendarPage(
+                [new GoogleCalendarEventDto("ext-1", "etag-new", "Remote edit", null, DateTimeOffset.UtcNow, DateTimeOffset.UtcNow.AddHours(1), false, "UTC", null, false, false)],
+                "sync-token-1"));
+        _links.Setup(x => x.GetTrackedByConnectionAndExternalEventAsync(TenantId, ConnectionId, "ext-1", It.IsAny<CancellationToken>())).ReturnsAsync(link);
+        _events.Setup(x => x.GetTrackedByIdForTenantAsync(TenantId, local.Id, It.IsAny<CancellationToken>())).ReturnsAsync(local);
+
+        await sut.SyncConnectionAsync(TenantId, ConnectionId, CancellationToken.None);
+
+        Assert.Equal(ExternalCalendarSyncStatuses.Conflict, link.SyncStatus);
+        notifications.Verify(n => n.NotifyConnectionProblemAsync(TenantId, connection.UserId, "Google Calendar", "sync_conflict", It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Fact]
+    public async Task SyncConnectionAsync_PulledEchoOfOurOwnPush_OnlyMovesTheEtagAndLeavesTheEventUntouched()
+    {
+        // Touching the event would bump UpdatedAt, re-push it, and make Outlook re-send its attendees an update every run.
+        var sut = BuildSut();
+        var connection = MakeConnection(CalendarSyncDirections.TwoWay);
+        _connections.Setup(x => x.GetTrackedByIdForTenantAsync(TenantId, ConnectionId, It.IsAny<CancellationToken>())).ReturnsAsync(connection);
+        var start = DateTimeOffset.UtcNow.AddDays(1);
+        var updatedAt = DateTimeOffset.UtcNow.AddHours(-3);
+        var local = new CalendarEvent { Id = Guid.NewGuid(), TenantId = TenantId, Title = "Standup", StartDate = start, EndDate = start.AddHours(1), Location = "Room 4", UpdatedAt = updatedAt };
+        var link = new ExternalCalendarEventLink { Id = Guid.NewGuid(), TenantId = TenantId, CalendarEventId = local.Id, ExternalCalendarConnectionId = ConnectionId, ExternalEventId = "ext-1", ExternalEtag = "etag-old" };
+        _googleClient.Setup(x => x.ListEventsAsync("decrypted-token", "me@acme.com", null, It.IsAny<DateTimeOffset>(), It.IsAny<DateTimeOffset>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new GoogleCalendarPage(
+                [new GoogleCalendarEventDto("ext-1", "etag-new", "Standup", "body differs", start, start.AddHours(1), false, "UTC", "Room 4", false, false)], "sync-token-1"));
+        _links.Setup(x => x.GetTrackedByConnectionAndExternalEventAsync(TenantId, ConnectionId, "ext-1", It.IsAny<CancellationToken>())).ReturnsAsync(link);
+        _events.Setup(x => x.GetTrackedByIdForTenantAsync(TenantId, local.Id, It.IsAny<CancellationToken>())).ReturnsAsync(local);
+        _events.Setup(x => x.GetManualEventsUpdatedSinceForUserAsync(TenantId, connection.UserId, It.IsAny<DateTimeOffset>(), It.IsAny<CancellationToken>())).ReturnsAsync([]);
+
+        await sut.SyncConnectionAsync(TenantId, ConnectionId, CancellationToken.None);
+
+        Assert.Equal("etag-new", link.ExternalEtag);
+        Assert.Equal(updatedAt, local.UpdatedAt);
+        _events.Verify(x => x.Update(It.IsAny<CalendarEvent>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task PushOutlookEventAsync_SendsParticipantsAndGuestsAsAttendees_WithoutTheOrganizer()
+    {
+        var employees = new Mock<ONEVO.Application.Features.CoreHr.Employee.RepositoryInterfaces.IEmployeeRepository>();
+        BuildSut();
+        var sut = new CalendarSyncService(_connections.Object, _links.Object, _events.Object, _tokenProvider.Object,
+            _googleClient.Object, _msClient.Object, _encryption.Object, _unitOfWork.Object, NullLogger<CalendarSyncService>.Instance,
+            employees: employees.Object);
+        var connection = MakeConnection(CalendarSyncDirections.TwoWay);
+        connection.Provider = CalendarExternalSources.OutlookCalendar;
+        _connections.Setup(x => x.GetTrackedByIdForTenantAsync(TenantId, ConnectionId, It.IsAny<CancellationToken>())).ReturnsAsync(connection);
+        var local = new CalendarEvent
+        {
+            Id = Guid.NewGuid(), TenantId = TenantId, Title = "Sync", SourceType = CalendarEventSourceTypes.Manual,
+            Recurrence = CalendarRecurrences.None, CreatedById = connection.UserId, StartDate = DateTimeOffset.UtcNow, EndDate = DateTimeOffset.UtcNow.AddHours(1),
+            MeetingLink = "https://teams.example/join"
+        };
+        _events.Setup(x => x.GetByIdForTenantAsync(TenantId, local.Id, It.IsAny<CancellationToken>())).ReturnsAsync(local);
+        var employeeId = Guid.NewGuid();
+        var organizerEmployeeId = Guid.NewGuid();
+        _events.Setup(x => x.GetParticipantsForEventsAsync(TenantId, It.IsAny<IReadOnlyList<Guid>>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new Dictionary<Guid, IReadOnlyList<CalendarEventParticipant>>
+            {
+                [local.Id] = [new CalendarEventParticipant { EmployeeId = employeeId }, new CalendarEventParticipant { EmployeeId = organizerEmployeeId }]
+            });
+        _events.Setup(x => x.GetGuestsForEventsAsync(TenantId, It.IsAny<IReadOnlyList<Guid>>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new Dictionary<Guid, IReadOnlyList<CalendarEventGuest>> { [local.Id] = [new CalendarEventGuest { Email = "guest@example.com" }] });
+        employees.Setup(x => x.GetByIdAsync(TenantId, employeeId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new ONEVO.Domain.Features.CoreHr.Entities.Employee { Id = employeeId, Email = "ada@example.com" });
+        employees.Setup(x => x.GetByIdAsync(TenantId, organizerEmployeeId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new ONEVO.Domain.Features.CoreHr.Entities.Employee { Id = organizerEmployeeId, Email = "ME@acme.com" });
+        GraphEventDto? sent = null;
+        _msClient.Setup(x => x.CreateEventAsync("decrypted-token", It.IsAny<GraphEventDto>(), It.IsAny<CancellationToken>()))
+            .Callback<string, GraphEventDto, CancellationToken>((_, dto, _) => sent = dto)
+            .ReturnsAsync(new GraphEventDto("outlook-1", "etag-1", "Sync", null, local.StartDate, local.EndDate, false, null, null, false, false));
+
+        await sut.PushOutlookEventAsync(TenantId, ConnectionId, local.Id, CancellationToken.None);
+
+        Assert.NotNull(sent);
+        Assert.Equal(["ada@example.com", "guest@example.com"], sent!.AttendeeEmails);
+        Assert.Contains("https://teams.example/join", sent.Description);
+        _unitOfWork.Verify(x => x.SaveChangesAsync(It.IsAny<CancellationToken>()), Times.Once);
     }
 }

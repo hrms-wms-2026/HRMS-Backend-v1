@@ -11,6 +11,7 @@ public static class SprintActivityActions
     public const string Achieved = "achieved";
     public const string TasksAdded = "tasks_added";
     public const string TasksRemoved = "tasks_removed";
+    public const string Reverted = "reverted";
 }
 
 /// <summary>Audit row for every sprint action (spec D6). Who/when/what - never updated or deleted.</summary>

@@ -1,4 +1,3 @@
-using ONEVO.Application.Features.WorkManagement.Tasks.DTOs;
 using ONEVO.Application.Features.WorkManagement.Tasks.DTOs.Responses;
 
 namespace ONEVO.Api.Contracts.WorkManagement.Tasks;
@@ -6,18 +5,17 @@ namespace ONEVO.Api.Contracts.WorkManagement.Tasks;
 public sealed record CreateTaskRequest(
     string Title, string? Description, Guid CategoryId, string Priority,
     DateOnly? DueDate, decimal? EstimatedHours, int? StoryPoints, Guid? SprintId,
-    IReadOnlyList<Guid>? AttachmentFileIds = null);
+    IReadOnlyList<Guid>? AttachmentFileIds = null,
+    /// <summary>The meeting occurrence this task is raised from (an action item, spec 5.4). Null = an ordinary task.</summary>
+    Guid? SourceMeetingOccurrenceId = null,
+    /// <summary>Planner create popover: when the create goes for approval, assign the caller (the only allowed value)
+    /// and plan this slot once approved. Ignored when the task is created directly.</summary>
+    Guid? AssigneeEmployeeId = null, DateTimeOffset? PlanStartAt = null, DateTimeOffset? PlanEndAt = null);
 
 public sealed record EditTaskRequest(
     string Title, string? Description, string Priority,
     DateOnly? DueDate, decimal? EstimatedHours, int? StoryPoints, int? ProgressPercent, string? Reason,
     IReadOnlyList<Guid>? AttachmentFileIds = null, Guid? SprintId = null);
-
-public sealed record CreateTaskEditRequestRequest(
-    string Title, string? Description, string Priority,
-    DateOnly? DueDate, decimal? EstimatedHours, int? StoryPoints, int? ProgressPercent, string? Reason);
-
-public sealed record RejectTaskEditRequestRequest(string Comment);
 
 public sealed record MoveTaskStatusRequest(Guid NewStatusId);
 
@@ -35,6 +33,8 @@ public sealed record DuplicateTaskRequest(
 
 public sealed record ConvertTaskToSubtaskRequest(Guid NewParentTaskId);
 
+// RequiresApproval/ApproverId below: dead fields, round-tripped for backward compatibility only -
+// see TaskStatus.RequiresApproval's doc comment (WM-01, docs/superpowers/plans/next/2026-10-12-pre-uat-audit-wm-sec-findings.md).
 public sealed record EditTaskStatusRequest(
     string Name, int DisplayOrder, bool RequiresApproval, Guid? ApproverId, string Visibility,
     string Category, string Color);
@@ -48,19 +48,23 @@ public sealed record TaskStatusOrderUpdateRequest(
 
 public sealed record ReorderTaskStatusesRequest(List<TaskStatusOrderUpdateRequest> Updates);
 
-public sealed record EditTaskCategoryRequest(string Name, int DisplayOrder);
+public sealed record EditTaskCategoryRequest(string Name, int DisplayOrder, string? Kind = null, string? Icon = null);
 
-public sealed record CreateTaskCategoryRequest(string Name, int DisplayOrder);
+public sealed record CreateTaskCategoryRequest(string Name, int DisplayOrder, string? Kind = null, string? Icon = null);
 
 public sealed record TaskCategoryOrderUpdateRequest(Guid CategoryId, int DisplayOrder);
 
 public sealed record ReorderTaskCategoriesRequest(List<TaskCategoryOrderUpdateRequest> Updates);
 
-public sealed record TaskCategoryViewModel(Guid Id, string Name, int DisplayOrder);
+public sealed record TaskCategoryViewModel(Guid Id, string Name, int DisplayOrder, string? SystemKey, bool IsSystem, string Kind, string? Icon = null);
 
 public sealed record TaskAttachmentViewModel(Guid FileId, string FileName, long FileSizeBytes, string ContentType);
 
-public sealed record TaskAssigneeIdentityViewModel(Guid EmployeeId, string Name, string? AvatarUrl);
+public sealed record TaskAssigneeIdentityViewModel(
+    Guid EmployeeId,
+    string Name,
+    Guid? AvatarFileId,
+    string? AvatarUrl = null);
 
 public sealed record WorkTaskViewModel(
     Guid Id, Guid ObjectiveId, string ShortId, string Title, string? Description,
@@ -71,8 +75,10 @@ public sealed record WorkTaskViewModel(
     IReadOnlyList<TaskAttachmentViewModel> Attachments,
     IReadOnlyList<TaskAssigneeIdentityViewModel> Assignees,
     Guid? ParentTaskId, int SubtaskTotalCount, int SubtaskCompletedCount,
-    IReadOnlyList<Guid> SubtaskAssigneeEmployeeIds, DateTimeOffset CreatedAt);
+    IReadOnlyList<Guid> SubtaskAssigneeEmployeeIds, DateTimeOffset CreatedAt,
+    bool HasPendingApproval = false);
 
+// RequiresApproval/ApproverId below: dead fields - see TaskStatus.RequiresApproval's doc comment (WM-01).
 public sealed record TaskStatusViewModel(
     Guid Id, string Name, int DisplayOrder, bool RequiresApproval,
     Guid? ApproverId, bool MarksTaskComplete, string Visibility,
@@ -81,16 +87,6 @@ public sealed record TaskStatusViewModel(
 public sealed record TaskStatusMoveInfoViewModel(Guid Id, string Name, string Color);
 
 public sealed record ClockInTaskViewModel(TaskStatusMoveInfoViewModel? MovedToStatus);
-
-public sealed record TaskEditRequestViewModel(
-    Guid Id, Guid TaskId, string Status, TaskEditRequestPayload Payload,
-    string RequestedByName, DateTimeOffset CreatedAt);
-
-public static class TaskEditRequestViewModelMapper
-{
-    public static TaskEditRequestViewModel ToViewModel(this TaskEditRequestResponse dto) =>
-        new(dto.Id, dto.TaskId, dto.Status, dto.Payload, dto.RequestedByName, dto.CreatedAt);
-}
 
 public sealed record ObjectiveDeadlineViewModel(Guid ObjectiveId, string Title, DateOnly EndDate);
 

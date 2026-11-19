@@ -1,6 +1,7 @@
 using FluentAssertions;
 using ONEVO.Application.Features.Monitoring.ActivityMonitoring.Services;
 using ONEVO.Domain.Features.Monitoring.ActivityMonitoring.Entities;
+using ONEVO.Domain.Features.Monitoring.Meetings.Entities;
 using Xunit;
 
 namespace ONEVO.Tests.Unit.Features.Monitoring.ActivityMonitoring;
@@ -135,5 +136,29 @@ public sealed class ActivityTimelineBuilderTests
         segments.Should().ContainSingle();
         segments[0].StartedAt.Should().Be(baseTime.AddMinutes(5));
         segments[0].EndedAt.Should().Be(baseTime.AddMinutes(10));
+    }
+
+    [Fact]
+    public void BuildSegments_MeetingOverlappingWindow_EmitsMeetingSegment()
+    {
+        var meetingAt = new DateTimeOffset(2026, 9, 25, 9, 10, 0, TimeSpan.Zero);
+        var snapAt = new DateTimeOffset(2026, 9, 25, 9, 9, 0, TimeSpan.Zero); // window [09:08,09:09)
+        var snaps = new[]
+        {
+            new ActivitySnapshot
+            {
+                Id = Guid.NewGuid(), CapturedAt = snapAt, ActiveSeconds = 40, IdleSeconds = 20,
+                ForegroundProcessName = "teams.exe"
+            }
+        };
+        var meetings = new[]
+        {
+            new MeetingSignal { Id = Guid.NewGuid(), CapturedAt = meetingAt, IsMeetingAppRunning = true }
+        };
+
+        var segments = ActivityTimelineBuilder.BuildSegments(snaps, meetings);
+
+        var segment = Assert.Single(segments);
+        Assert.Equal(ActivityTimelineBuilder.MeetingType, segment.Type);
     }
 }

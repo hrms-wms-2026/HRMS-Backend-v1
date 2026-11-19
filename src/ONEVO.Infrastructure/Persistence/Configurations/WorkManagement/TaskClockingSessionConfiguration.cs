@@ -10,7 +10,7 @@ public class TaskClockingSessionConfiguration : IEntityTypeConfiguration<TaskClo
     {
         builder.ToTable("task_clocking_sessions");
         builder.HasKey(session => session.Id);
-        builder.Property(session => session.Reason).HasColumnType("text");
+        builder.Property(session => session.Reason);
 
         builder.HasIndex(session => new { session.TenantId, session.TaskId })
             .HasDatabaseName("ix_task_clocking_sessions_one_open_per_task")
@@ -19,6 +19,10 @@ public class TaskClockingSessionConfiguration : IEntityTypeConfiguration<TaskClo
 
         builder.HasIndex(session => new { session.TenantId, session.TaskId, session.ClockInAt })
             .HasDatabaseName("ix_task_clocking_sessions_tenant_id_task_id_clock_in_at");
+
+        // One employee's sessions in a time range: the day planner and the weekly work progress widget.
+        builder.HasIndex(session => new { session.TenantId, session.EmployeeId, session.ClockInAt })
+            .HasDatabaseName("ix_task_clocking_sessions_tenant_id_employee_id_clock_in_at");
 
         builder.HasOne<WorkTask>().WithMany().HasForeignKey(session => session.TaskId).OnDelete(DeleteBehavior.Restrict);
     }

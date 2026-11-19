@@ -7,7 +7,6 @@ using ONEVO.Application.Features.WorkManagement.Tasks.Commands.CreateTaskStatus;
 using ONEVO.Application.Features.WorkManagement.Tasks.DTOs.Responses;
 using ONEVO.Application.Features.WorkManagement.Tasks.RepositoryInterfaces;
 using ONEVO.Application.Features.WorkManagement.Objectives.RepositoryInterfaces;
-using ONEVO.Application.Features.WorkManagement.Objectives.Services;
 using ONEVO.Application.Features.WorkManagement.Projects.RepositoryInterfaces;
 using ONEVO.Domain.Features.WorkManagement.Objectives.Entities;
 using ONEVO.Domain.Features.WorkManagement.Projects.Entities;
@@ -27,7 +26,7 @@ public class CreateTaskStatusCommandHandlerTests
     private static readonly Guid ProjectId = Guid.NewGuid();
 
     private (CreateTaskStatusCommandHandler Handler, Mock<ITaskStatusRepository> Statuses) Build(
-        Guid callerEmployeeId, bool? callerIsEffectiveManager = null, List<TaskStatusEntity>? existing = null)
+        Guid callerEmployeeId, List<TaskStatusEntity>? existing = null)
     {
         var currentUser = new Mock<ICurrentUser>();
         currentUser.SetupGet(x => x.IsAuthenticated).Returns(true);
@@ -55,11 +54,8 @@ public class CreateTaskStatusCommandHandlerTests
             .Returns((Func<CancellationToken, Task<Result<TaskStatusResponse>>> op, CancellationToken ct) => op(ct));
         unitOfWork.Setup(x => x.SaveChangesAsync(It.IsAny<CancellationToken>())).ReturnsAsync(1);
 
-        var membership = new Mock<IMilestoneMembershipCoordinator>();
-        membership.Setup(x => x.IsEffectiveManagerAsync(TenantId, ObjectiveId, callerEmployeeId, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(callerIsEffectiveManager ?? (callerEmployeeId == OwnerEmployeeId));
 
-        var handler = new CreateTaskStatusCommandHandler(currentUser.Object, identity.Object, objectives.Object, projects.Object, statuses.Object, unitOfWork.Object, membership.Object);
+        var handler = new CreateTaskStatusCommandHandler(currentUser.Object, identity.Object, objectives.Object, projects.Object, statuses.Object, unitOfWork.Object);
         return (handler, statuses);
     }
 
@@ -120,14 +116,16 @@ public class CreateTaskStatusCommandHandlerTests
     }
 
     [Fact]
-    public async Task Handle_CallerIsEffectiveManagerViaAncestor_CreatesStatus()
+    public async Task Root_module_member_who_is_not_owner_is_forbidden()
     {
-        var (handler, statuses) = Build(OtherEmployeeId, callerIsEffectiveManager: true);
+        // Root members used to edit statuses directly; since 2026-09-28 only the root owner does,
+        // everyone else sends a change request.
+        var (handler, statuses) = Build(OtherEmployeeId);
         var command = new CreateTaskStatusCommand(ProjectId, "Blocked", 4, TaskStatusVisibilities.Public, TaskStatusCategories.Active, "#2563EB", false, null);
 
         var result = await handler.Handle(command, CancellationToken.None);
 
-        Assert.True(result.IsSuccess);
-        statuses.Verify(x => x.AddAsync(It.Is<TaskStatusEntity>(s => s.Name == "Blocked" && s.ProjectId == ProjectId && s.ObjectiveId == null), It.IsAny<CancellationToken>()), Times.Once);
+        Assert.Equal(403, result.StatusCode);
+        statuses.Verify(x => x.AddAsync(It.IsAny<TaskStatusEntity>(), It.IsAny<CancellationToken>()), Times.Never);
     }
 }

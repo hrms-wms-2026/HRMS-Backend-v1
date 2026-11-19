@@ -11,9 +11,15 @@ public static class InactivityCaptureOutcomes
     public const string MonitoringStopped = "monitoring_stopped";
     public const string CaptureFailed = "capture_failed";
 
+    // Keyboard/mouse-only employees (screenshot capture off) get a "Were you working?" check
+    // instead of a screenshot request — no image is ever attached to these two.
+    public const string ConfirmedWorking = "confirmed_working";
+    public const string NotWorking = "not_working";
+
     public static readonly IReadOnlyCollection<string> All =
     [
-        Captured, Declined, TimedOut, ActivityResumed, MonitoringStopped, CaptureFailed
+        Captured, Declined, TimedOut, ActivityResumed, MonitoringStopped, CaptureFailed,
+        ConfirmedWorking, NotWorking
     ];
 }
 

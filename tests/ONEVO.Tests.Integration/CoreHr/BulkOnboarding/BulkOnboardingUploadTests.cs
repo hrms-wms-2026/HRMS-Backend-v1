@@ -26,7 +26,7 @@ public sealed class BulkOnboardingUploadTests : IAsyncLifetime
 
     public async Task InitializeAsync()
     {
-        _connectionString = await SharedPostgresTemplate.CreateDatabaseAsync();
+        _connectionString = await SharedSqlServerTemplate.CreateDatabaseAsync();
 
         await using var db = CreateContext();
         var tenant = new Tenant
@@ -90,17 +90,16 @@ public sealed class BulkOnboardingUploadTests : IAsyncLifetime
     {
         return new UploadBulkOnboardingBatchCommandHandler(
             new EfBulkOnboardingBatchRepository(db),
-            new StubCurrentUser(_tenantId, _userId, permission),
-            _clock);
+            new StubCurrentUser(_tenantId, _userId, permission));
     }
 
     private ApplicationDbContext CreateContext()
     {
         var tenantContext = new TenantContextAccessor();
         var options = new DbContextOptionsBuilder<ApplicationDbContext>()
-            .UseNpgsql(_connectionString)
+            .UseTestSqlServer(_connectionString)
             .UseSnakeCaseNamingConvention()
-            .AddInterceptors(new TenantRlsInterceptor(tenantContext))
+            .AddTestRls(new TenantRlsInterceptor(tenantContext))
             .Options;
 
         return new ApplicationDbContext(

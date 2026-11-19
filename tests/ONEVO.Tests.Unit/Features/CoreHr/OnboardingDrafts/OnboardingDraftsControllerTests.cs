@@ -5,10 +5,13 @@ using Moq;
 using ONEVO.Api.Contracts.CoreHr.OnboardingDrafts;
 using ONEVO.Api.Controllers.Tenant.CoreHr;
 using ONEVO.Application.Common.Models;
+using ONEVO.Api.Filters;
+using ONEVO.Application.Features.CoreHr.OnboardingDrafts.Commands.CancelOnboardingDraft;
 using ONEVO.Application.Features.CoreHr.OnboardingDrafts.Commands.FinalizeOnboardingDraft;
 using ONEVO.Application.Features.CoreHr.OnboardingDrafts.Commands.SaveOnboardingDraft;
 using ONEVO.Application.Features.CoreHr.OnboardingDrafts.DTOs.Responses;
 using ONEVO.Application.Features.CoreHr.OnboardingDrafts.Queries.GetOnboardingDraft;
+using ONEVO.Application.Features.CoreHr.OnboardingDrafts.Queries.ListOnboardingDrafts;
 
 namespace ONEVO.Tests.Unit.Features.CoreHr.OnboardingDrafts;
 
@@ -104,6 +107,43 @@ public sealed class OnboardingDraftsControllerTests
 
         var objectResult = Assert.IsAssignableFrom<ObjectResult>(result);
         Assert.Equal(409, objectResult.StatusCode);
+    }
+
+    [Fact]
+    public async Task Cancel_SendsCommand_AndReturnsNoContent()
+    {
+        var draftId = Guid.NewGuid();
+        _mediator
+            .Setup(m => m.Send(It.IsAny<CancelOnboardingDraftCommand>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(Result.Success());
+
+        var result = await _sut.Cancel(draftId, CancellationToken.None);
+
+        Assert.IsType<NoContentResult>(result);
+        _mediator.Verify(m => m.Send(
+            It.Is<CancelOnboardingDraftCommand>(c => c.DraftId == draftId), It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Fact]
+    public void Cancel_RequiresEmployeesWritePermission()
+    {
+        var attribute = typeof(OnboardingDraftsController).GetMethod(nameof(OnboardingDraftsController.Cancel))!
+            .GetCustomAttributesData()
+            .Single(a => a.AttributeType == typeof(RequirePermissionAttribute));
+        Assert.Equal("employees:write", attribute.ConstructorArguments[0].Value);
+    }
+
+    [Fact]
+    public async Task List_PassesMine()
+    {
+        _mediator
+            .Setup(m => m.Send(It.IsAny<ListOnboardingDraftsQuery>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(Result<DraftListPageResponse>.Success(new DraftListPageResponse([], 0, 1, 25)));
+
+        await _sut.List(1, 25, mine: true, ct: CancellationToken.None);
+
+        _mediator.Verify(m => m.Send(
+            It.Is<ListOnboardingDraftsQuery>(q => q.Mine), It.IsAny<CancellationToken>()), Times.Once);
     }
 
     [Fact]

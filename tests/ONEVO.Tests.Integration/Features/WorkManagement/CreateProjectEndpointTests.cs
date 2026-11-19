@@ -55,10 +55,10 @@ public sealed class CreateProjectEndpointTestsFixture : IAsyncLifetime
 
     public async Task InitializeAsync()
     {
-        var connectionString = Environment.GetEnvironmentVariable("ONEVO_TEST_DB");
+        var connectionString = Environment.GetEnvironmentVariable("CROWNUS_TEST_DB");
         if (string.IsNullOrWhiteSpace(connectionString))
         {
-            connectionString = await SharedPostgresTemplate.CreateDatabaseAsync();
+            connectionString = await SharedSqlServerTemplate.CreateDatabaseAsync();
         }
         else
         {
@@ -75,11 +75,11 @@ public sealed class CreateProjectEndpointTestsFixture : IAsyncLifetime
 
         await WaitForSeedersAsync();
 
-        var loginResponse = await SendJsonAsync(HttpMethod.Post, AdminHost, "/admin/v1/auth/login",
-            new { email = "test_admin@onevo.dev", password = "test_password_123" });
-        var adminCookies = ParseSetCookies(loginResponse);
-        _adminCsrfToken = adminCookies["admin_csrf"];
-        _adminCookie = $"admin_session={adminCookies["admin_session"]}";
+        // F-02: sign-in completes mandatory MFA enrollment; no gate bypass.
+        var adminSession = await PlatformAdminTestSignIn.SignInAsync(
+            _client, "test_admin@onevo.dev", "test_password_123", AdminHost);
+        _adminCsrfToken = adminSession.CsrfToken;
+        _adminCookie = adminSession.SessionCookie;
 
         TenantA = await ProvisionAndLoginOwnerAsync("wm-int-a", "Work Mgmt Int A Co", "owner-a@wm-int.test");
         TenantB = await ProvisionAndLoginOwnerAsync("wm-int-b", "Work Mgmt Int B Co", "owner-b@wm-int.test");
@@ -184,13 +184,6 @@ public sealed class CreateProjectEndpointTestsFixture : IAsyncLifetime
             cookie: session.SessionCookie, csrfToken: session.CsrfHeader);
     }
 
-
-    public async Task<HttpResponseMessage> SendApproveObjectiveChangeRequestAsync(TenantSession session, Guid requestId)
-    {
-        var body = new { approvedAdditionalHours = (decimal?)null };
-        return await SendJsonAsync(HttpMethod.Post, session.Host, $"/api/v1/work/objectives/change-requests/{requestId}/approve", body,
-            cookie: session.SessionCookie, csrfToken: session.CsrfHeader);
-    }
 
 
     public async Task<HttpResponseMessage> SendDeleteObjectiveAsync(TenantSession session, Guid objectiveId)
@@ -502,8 +495,8 @@ public sealed class CreateProjectEndpointTestsFixture : IAsyncLifetime
         exchangeResponse.StatusCode.Should().Be(HttpStatusCode.OK);
         var cookies = ParseSetCookies(exchangeResponse);
 
-        var sessionCookie = $"onevo_session={cookies["onevo_session"]}; onevo_csrf={cookies["onevo_csrf"]}";
-        var csrfHeader = Uri.UnescapeDataString(cookies["onevo_csrf"]);
+        var sessionCookie = $"crownus_session={cookies["crownus_session"]}; crownus_csrf={cookies["crownus_csrf"]}";
+        var csrfHeader = Uri.UnescapeDataString(cookies["crownus_csrf"]);
 
         return new TenantSession(tenantId, host, sessionCookie, csrfHeader);
     }
@@ -837,36 +830,25 @@ public sealed class CreateProjectEndpointTests : IClassFixture<CreateProjectEndp
     }
 
     [Fact]
-    public async Task EditObjective_ByCreatorHead_CreatesPendingRequest_AppliedOnApproval()
+    public async Task EditObjective_ByParentOwner_AppliesDirectly()
     {
         var created = await _fixture.SendCreateProjectAsync(_fixture.TenantA, _fixture.TenantACategoryId, "Edit Milestone Target", "EMT1");
         var defaultObjectiveId = (await ReadJsonAsync(created)).GetProperty("defaultObjective").GetProperty("id").GetGuid();
         var sub = await _fixture.SendCreateObjectiveAsync(_fixture.TenantA, defaultObjectiveId, "Editable Phase", new DateOnly(2026, 1, 1), new DateOnly(2026, 3, 1), 15m);
         var subId = (await ReadJsonAsync(sub)).GetProperty("id").GetGuid();
 
-        // Every edit routes through the Reporting Manager for approval, even the creator's own.
+        // The test user owns the Default Objective - the sub-milestone's creator position - so the
+        // approval engine lets them edit directly.
         var editResponse = await _fixture.SendEditObjectiveAsync(_fixture.TenantA, subId, "Editable Phase Renamed", new DateOnly(2026, 1, 10), new DateOnly(2026, 3, 15), 18m);
 
-        editResponse.StatusCode.Should().Be(HttpStatusCode.Accepted, await editResponse.Content.ReadAsStringAsync());
-        var pending = await ReadJsonAsync(editResponse);
-        pending.GetProperty("objectiveId").GetGuid().Should().Be(subId);
-        pending.GetProperty("status").GetString().Should().Be("pending");
-        pending.GetProperty("requestType").GetString().Should().Be("edit");
-        pending.GetProperty("payloadJson").GetString().Should().Contain("Editable Phase Renamed");
-
-        var unchanged = await ReadJsonAsync(await _fixture.Client.SendAsync(_fixture.BuildGetRequest(_fixture.TenantA, $"/api/v1/work/objectives/{subId}")));
-        unchanged.GetProperty("title").GetString().Should().Be("Editable Phase");
-
-        // The test owner is also the sub-milestone's Reporting Manager (head of the Default Objective).
-        var approveResponse = await _fixture.SendApproveObjectiveChangeRequestAsync(_fixture.TenantA, pending.GetProperty("id").GetGuid());
-        approveResponse.StatusCode.Should().Be(HttpStatusCode.NoContent, await approveResponse.Content.ReadAsStringAsync());
+        editResponse.StatusCode.Should().Be(HttpStatusCode.OK, await editResponse.Content.ReadAsStringAsync());
 
         var applied = await ReadJsonAsync(await _fixture.Client.SendAsync(_fixture.BuildGetRequest(_fixture.TenantA, $"/api/v1/work/objectives/{subId}")));
         applied.GetProperty("title").GetString().Should().Be("Editable Phase Renamed");
     }
 
     [Fact]
-    public async Task EditObjective_ConflictingWithParent_CreatesPendingRequest_RejectedOnApproval()
+    public async Task EditObjective_ConflictingWithParent_Returns409()
     {
         var created = await _fixture.SendCreateProjectAsync(_fixture.TenantA, _fixture.TenantACategoryId, "Creator Conflict Target", "CCT1");
         var defaultObjectiveId = (await ReadJsonAsync(created)).GetProperty("defaultObjective").GetProperty("id").GetGuid();
@@ -874,19 +856,11 @@ public sealed class CreateProjectEndpointTests : IClassFixture<CreateProjectEndp
         var subId = (await ReadJsonAsync(sub)).GetProperty("id").GetGuid();
 
         // Exceeds the Default Objective's own allocated hours (mirrors the Project's
-        // defaultObjectiveAllocatedHours=40 from SendCreateProjectAsync). Submission still just
-        // creates a pending request - parent-constraint conflicts are validated at approval time.
+        // defaultObjectiveAllocatedHours=40 from SendCreateProjectAsync): rejected up front, before
+        // anything is applied or sent for approval.
         var editResponse = await _fixture.SendEditObjectiveAsync(_fixture.TenantA, subId, "Creator Conflict Phase", new DateOnly(2026, 1, 1), new DateOnly(2026, 3, 1), 999m);
 
-        editResponse.StatusCode.Should().Be(HttpStatusCode.Accepted, await editResponse.Content.ReadAsStringAsync());
-        var pending = await ReadJsonAsync(editResponse);
-        pending.GetProperty("objectiveId").GetGuid().Should().Be(subId);
-        pending.GetProperty("status").GetString().Should().Be("pending");
-        pending.GetProperty("payloadJson").GetString().Should().Contain("999");
-        var requestId = pending.GetProperty("id").GetGuid();
-
-        var approveResponse = await _fixture.SendApproveObjectiveChangeRequestAsync(_fixture.TenantA, requestId);
-        approveResponse.StatusCode.Should().Be(HttpStatusCode.Conflict, await approveResponse.Content.ReadAsStringAsync());
+        editResponse.StatusCode.Should().Be(HttpStatusCode.Conflict, await editResponse.Content.ReadAsStringAsync());
     }
 
     [Fact]

@@ -48,12 +48,15 @@ public class AchieveSprintCommandHandlerTests
         var projects = new Mock<IProjectRepository>();
         projects.Setup(x => x.GetByIdForTenantAsync(TenantId, ProjectId, It.IsAny<CancellationToken>())).ReturnsAsync(project);
 
-        var access = new Mock<ISprintAccessService>();
-        access.Setup(x => x.CanManageAsync(TenantId, sprint, UserId, resolvedCallerEmployeeId, It.IsAny<CancellationToken>()))
+        var wiring = new SprintTestWiring(TenantId, ProjectId);
+        // "Can manage" is now "is a project member" - the engine decides direct vs request.
+        wiring.Members.Setup(x => x.HasActiveMembershipAsync(TenantId, ProjectId, resolvedCallerEmployeeId, It.IsAny<CancellationToken>()))
             .ReturnsAsync(callerCanManage ?? (resolvedCallerEmployeeId == OwnerEmployeeId));
-        access.Setup(x => x.GetAudienceEmployeeIdsAsync(TenantId, SprintId, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new List<Guid> { MemberEmployeeId });
-
+        // Audience = active members of the Modules of the sprint's tasks.
+        wiring.Tasks.Setup(x => x.GetBySprintIdAsync(TenantId, SprintId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new List<ONEVO.Domain.Features.WorkManagement.Tasks.Entities.WorkTask> { new() { Id = Guid.NewGuid(), ObjectiveId = Guid.NewGuid(), SprintId = SprintId } });
+        wiring.Members.Setup(x => x.ListActiveForObjectiveAsync(TenantId, It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new List<ONEVO.Domain.Features.WorkManagement.ProjectMembers.Entities.ProjectMember> { new() { EmployeeId = MemberEmployeeId } });
         var logs = new Mock<ISprintActivityLogRepository>();
 
         var membership = new Mock<IMilestoneMembershipCoordinator>();
@@ -62,14 +65,15 @@ public class AchieveSprintCommandHandlerTests
 
         var notifications = new Mock<INotificationDispatcher>();
 
-        var unitOfWork = new Mock<IUnitOfWork>();
-        unitOfWork.Setup(x => x.ExecuteInTransactionAsync(It.IsAny<Func<CancellationToken, Task<Result<SprintResponse>>>>(), It.IsAny<CancellationToken>()))
-            .Returns((Func<CancellationToken, Task<Result<SprintResponse>>> op, CancellationToken ct) => op(ct));
-        unitOfWork.Setup(x => x.SaveChangesAsync(It.IsAny<CancellationToken>())).ReturnsAsync(1);
+        wiring.Sprints = sprints;
+        wiring.Projects = projects;
+        wiring.Logs = logs;
+        wiring.Membership = membership;
+        wiring.Notifications = notifications;
+        wiring.Identity = identity;
 
         var handler = new AchieveSprintCommandHandler(
-            currentUser.Object, identity.Object, sprints.Object, projects.Object,
-            access.Object, logs.Object, membership.Object, notifications.Object, unitOfWork.Object);
+            currentUser.Object, identity.Object, sprints.Object, wiring.Members.Object, wiring.Writes(), wiring.Submitter());
         return (handler, sprint, notifications, logs);
     }
 
@@ -105,7 +109,7 @@ public class AchieveSprintCommandHandlerTests
     }
 
     [Fact]
-    public async Task Handle_CannotManage_ReturnsForbidden()
+    public async Task Handle_NotProjectMember_ReturnsForbidden()
     {
         var (handler, sprint, _, _) = Build(SprintStatuses.Active, callerEmployeeId: OtherEmployeeId, callerCanManage: false);
 
@@ -117,11 +121,10 @@ public class AchieveSprintCommandHandlerTests
     }
 
     [Fact]
-    public async Task Handle_CallerCanManageViaTaskModuleOwnership_AchievesSprint()
+    public async Task Handle_CallerIsProjectMember_AchievesSprint()
     {
-        // Caller is not the sprint's creator, but CanManageAsync reports them able to manage via
-        // task-module ownership - the service's own logic is unit-tested separately, so this only
-        // proves the handler defers to its answer.
+        // Caller is not the sprint's creator but is a project member; the engine (mocked Direct
+        // here) decides direct vs request, so the handler lets any project member through.
         var (handler, sprint, _, _) = Build(SprintStatuses.Active, callerEmployeeId: OtherEmployeeId, callerCanManage: true);
 
         var result = await handler.Handle(new AchieveSprintCommand(SprintId), CancellationToken.None);

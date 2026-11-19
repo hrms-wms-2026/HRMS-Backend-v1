@@ -90,6 +90,26 @@ public sealed class StartCalendarConnectionCommandHandlerTests
     }
 
     [Fact]
+    public async Task Handle_ZoomProvider_ReturnsAuthorizeUrlWithoutGoogleOnlyConsentParams()
+    {
+        // Zoom returns a refresh token on the authorization_code grant unconditionally, so unlike
+        // Google, no access_type=offline/prompt=consent params are needed on the authorize URL.
+        var sut = BuildSut();
+        _appResolver.Setup(x => x.GetActiveAppForProviderAsync("zoom", It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new ResolvedPlatformOAuthApp("zoom", "client-123", "https://zoom.us/oauth/authorize", "https://zoom.us/oauth/token", ["meeting:write:meeting"]));
+        _stateProtector.Setup(x => x.Protect(It.Is<CalendarOAuthState>(s => s.Provider == "zoom")))
+            .Returns("protected-state-token");
+
+        var result = await sut.Handle(new StartCalendarConnectionCommand("zoom"), CancellationToken.None);
+
+        Assert.True(result.IsSuccess);
+        Assert.StartsWith("https://zoom.us/oauth/authorize?", result.Value!.AuthorizeUrl);
+        Assert.Contains("client_id=client-123", result.Value.AuthorizeUrl);
+        Assert.DoesNotContain("access_type=offline", result.Value.AuthorizeUrl);
+        Assert.DoesNotContain("prompt=consent", result.Value.AuthorizeUrl);
+    }
+
+    [Fact]
     public async Task Handle_MixedCaseProvider_NormalizesToLowercaseEverywhere()
     {
         // "Google" and "google" must produce the byte-identical redirect_uri, app lookup key, and

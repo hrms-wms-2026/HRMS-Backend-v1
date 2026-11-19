@@ -1,7 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using ONEVO.Application.Features.Leave.Approval.RepositoryInterfaces;
 using ONEVO.Application.Features.Leave.Entitlement.Mappers;
-using ONEVO.Application.Features.Leave.Policy.RepositoryInterfaces;
+using ONEVO.Application.Features.Leave.Policy.Services;
 using ONEVO.Domain.Features.Leave.BalanceAudit.Entities;
 using ONEVO.Domain.Features.Leave.Common;
 using ONEVO.Domain.Features.Leave.Request.Entities;
@@ -12,9 +12,9 @@ namespace ONEVO.Infrastructure.Persistence.Repositories.Leave.Approval;
 public class EfLeaveApprovalRepository : ILeaveApprovalRepository
 {
     private readonly ApplicationDbContext _db;
-    private readonly ILeavePolicyRepository _policies;
+    private readonly ILeavePolicyResolver _policies;
 
-    public EfLeaveApprovalRepository(ApplicationDbContext db, ILeavePolicyRepository policies)
+    public EfLeaveApprovalRepository(ApplicationDbContext db, ILeavePolicyResolver policies)
     {
         _db = db;
         _policies = policies;
@@ -50,18 +50,19 @@ public class EfLeaveApprovalRepository : ILeaveApprovalRepository
             .ThenBy(x => x.Id)
             .ToListAsync(ct);
 
-        var messages = await _db.LeaveRequestInfoMessages.AsNoTracking()
-            .Where(x => x.TenantId == tenantId && x.LeaveRequestId == request.Id)
-            .OrderBy(x => x.CreatedAt)
-            .ToListAsync(ct);
-
-        string? approvalMode = null;
-        if (employee.LegalEntityId is Guid legalEntityId)
+        string? approvalMode;
+        if (request.LeavePolicyVersionId is { } versionId)
         {
-            var policies = await _policies.ListActiveAggregatesByLegalEntityIdsAsync(
-                tenantId, [legalEntityId], request.StartAt.Year, ct);
-            if (policies.TryGetValue(legalEntityId, out var policy))
-                approvalMode = policy.Policy.ApprovalMode;
+            approvalMode = await _db.LeavePolicyVersions.AsNoTracking()
+                .Where(v => v.TenantId == tenantId && v.Id == versionId)
+                .Select(v => v.ApprovalMode)
+                .SingleOrDefaultAsync(ct);
+        }
+        else
+        {
+            var policy = await _policies.ResolveAsync(
+                tenantId, employee.Id, request.LeaveTypeId, DateOnly.FromDateTime(request.StartAt.UtcDateTime), ct);
+            approvalMode = policy?.Version.ApprovalMode;
         }
 
         return new LeaveApprovalState(
@@ -71,8 +72,7 @@ public class EfLeaveApprovalRepository : ILeaveApprovalRepository
             leaveType.Name,
             leaveType.Code,
             approvalMode,
-            approvers,
-            messages);
+            approvers);
     }
 
     public async Task<IReadOnlyList<LeavePendingApprovalListRow>> ListPendingForApproverAsync(
@@ -93,6 +93,8 @@ public class EfLeaveApprovalRepository : ILeaveApprovalRepository
                 && request.Status == LeaveRequestStatuses.Pending
             select new { request, employee, leaveType };
 
+        if (filter.LegalEntityId is { } legalEntityId)
+            query = query.Where(x => x.employee.LegalEntityId == legalEntityId);
         if (filter.DepartmentId is { } departmentId)
             query = query.Where(x => x.employee.DepartmentId == departmentId);
         if (filter.LeaveTypeId is { } leaveTypeId)
@@ -164,18 +166,88 @@ public class EfLeaveApprovalRepository : ILeaveApprovalRepository
         }
 
         var rows = await query.OrderByDescending(x => x.request.CreatedAt).ToListAsync(ct);
+        var requestIds = rows.Select(x => x.request.Id).ToList();
+        var approverRows = await (
+            from approver in _db.LeaveRequestApprovers.AsNoTracking()
+            join person in _db.Employees.AsNoTracking() on approver.ApproverEmployeeId equals person.Id
+            where approver.TenantId == tenantId && requestIds.Contains(approver.LeaveRequestId)
+            orderby approver.SequenceOrder
+            select new { approver.LeaveRequestId, person.FirstName, person.LastName })
+            .ToListAsync(ct);
+        var approverNames = approverRows
+            .GroupBy(a => a.LeaveRequestId)
+            .ToDictionary(
+                g => g.Key,
+                g => (IReadOnlyList<string>)g.Select(a => LeaveEntitlementMapper.EmployeeName(a.FirstName, a.LastName)).Distinct().ToList());
+
         return rows.Select(x => new LeaveRequestAllListRow(
             x.request,
             LeaveEntitlementMapper.EmployeeName(x.employee.FirstName, x.employee.LastName),
             x.employee.DepartmentId,
             x.department?.Name,
-            x.leaveType.Name)).ToList();
+            x.leaveType.Name,
+            approverNames.TryGetValue(x.request.Id, out var names) ? names : [])).ToList();
     }
 
-    public Task AddInfoMessageAsync(LeaveRequestInfoMessage message, CancellationToken ct = default)
+    public Task AddApproverAsync(LeaveRequestApprover approver, CancellationToken ct = default)
     {
-        _db.LeaveRequestInfoMessages.Add(message);
+        _db.LeaveRequestApprovers.Add(approver);
         return Task.CompletedTask;
+    }
+
+    public async Task<IReadOnlyList<LeaveApprovalHistoryRow>> ListApprovalHistoryAsync(
+        Guid tenantId,
+        Guid approverEmployeeId,
+        DateOnly? fromDate,
+        DateOnly? toDate,
+        int limit,
+        CancellationToken ct = default)
+    {
+        string[] acted =
+        [
+            LeaveRequestApproverStatuses.Approved,
+            LeaveRequestApproverStatuses.Rejected
+        ];
+
+        var query =
+            from approver in _db.LeaveRequestApprovers.AsNoTracking()
+            join request in _db.LeaveRequests.AsNoTracking() on approver.LeaveRequestId equals request.Id
+            join employee in _db.Employees.AsNoTracking() on request.EmployeeId equals employee.Id
+            join leaveType in _db.LeaveTypes.AsNoTracking() on request.LeaveTypeId equals leaveType.Id
+            where approver.TenantId == tenantId &&
+                  request.TenantId == tenantId &&
+                  approver.ApproverEmployeeId == approverEmployeeId &&
+                  acted.Contains(approver.Status)
+            select new
+            {
+                request,
+                employee.FirstName,
+                employee.LastName,
+                LeaveTypeName = leaveType.Name,
+                approver.Status,
+                approver.Comment,
+                ActedAt = approver.DecidedAt ?? request.UpdatedAt ?? request.CreatedAt
+            };
+
+        if (fromDate is { } from)
+        {
+            var fromStart = new DateTimeOffset(from.ToDateTime(TimeOnly.MinValue, DateTimeKind.Utc));
+            query = query.Where(x => x.request.EndAt >= fromStart);
+        }
+        if (toDate is { } to)
+        {
+            var toExclusive = new DateTimeOffset(to.AddDays(1).ToDateTime(TimeOnly.MinValue, DateTimeKind.Utc));
+            query = query.Where(x => x.request.StartAt < toExclusive);
+        }
+
+        var rows = await query.OrderByDescending(x => x.ActedAt).Take(limit).ToListAsync(ct);
+        return rows.Select(x => new LeaveApprovalHistoryRow(
+            x.request,
+            LeaveEntitlementMapper.EmployeeName(x.FirstName, x.LastName),
+            x.LeaveTypeName,
+            x.Status,
+            x.ActedAt,
+            x.Comment)).ToList();
     }
 
     public Task AddBalanceAuditAsync(LeaveBalanceAudit audit, CancellationToken ct = default)
@@ -205,6 +277,40 @@ public class EfLeaveApprovalRepository : ILeaveApprovalRepository
                 && f.Status == FileRecordStatus.Available, ct);
         return available == distinct.Length;
     }
+
+    public async Task<int> CountDocumentsAsync(Guid tenantId, Guid requestId, CancellationToken ct = default)
+        => await _db.LeaveRequestDocuments.AsNoTracking().CountAsync(x => x.TenantId == tenantId && x.LeaveRequestId == requestId, ct);
+
+    public async Task<IReadOnlyList<LeaveRequest>> ListSubmittedOnBehalfAsync(Guid tenantId, Guid submitterUserId, CancellationToken ct = default)
+        => await _db.LeaveRequests.AsNoTracking()
+            .Where(x => x.TenantId == tenantId && x.SubmittedOnBehalfOfBy == submitterUserId)
+            .OrderByDescending(x => x.CreatedAt)
+            .ToListAsync(ct);
+
+    public async Task<IReadOnlyDictionary<Guid, string>> ListLeaveTypeNamesAsync(Guid tenantId, IReadOnlyCollection<Guid> leaveTypeIds, CancellationToken ct = default)
+    {
+        var ids = leaveTypeIds.ToList();
+        return await _db.LeaveTypes.AsNoTracking().Where(x => x.TenantId == tenantId && ids.Contains(x.Id))
+            .ToDictionaryAsync(x => x.Id, x => x.Name, ct);
+    }
+
+    public void RemoveApprover(LeaveRequestApprover approver) => _db.LeaveRequestApprovers.Remove(approver);
+
+    public async Task<IReadOnlyList<LeaveRequestDayAllocation>> ListActiveAllocationsAsync(Guid tenantId, Guid requestId, CancellationToken ct = default)
+        => await _db.LeaveRequestDayAllocations
+            .Where(x => x.TenantId == tenantId && x.LeaveRequestId == requestId && x.Status == LeaveRequestDayAllocationStatuses.Active)
+            .OrderBy(x => x.LeaveDate)
+            .ToListAsync(ct);
+
+    public async Task AddAllocationsAsync(IReadOnlyCollection<LeaveRequestDayAllocation> allocations, CancellationToken ct = default)
+        => await _db.LeaveRequestDayAllocations.AddRangeAsync(allocations, ct);
+
+    public async Task<IReadOnlyList<LeaveBalanceAudit>> ListBalanceAuditsSinceAsync(
+        Guid tenantId, Guid employeeId, Guid leaveTypeId, DateTimeOffset since, CancellationToken ct = default)
+        => await _db.LeaveBalanceAudits.AsNoTracking()
+            .Where(x => x.TenantId == tenantId && x.EmployeeId == employeeId && x.LeaveTypeId == leaveTypeId && x.CreatedAt > since)
+            .OrderBy(x => x.CreatedAt)
+            .ToListAsync(ct);
 
     public Task SaveChangesAsync(CancellationToken ct = default) => _db.SaveChangesAsync(ct);
 }

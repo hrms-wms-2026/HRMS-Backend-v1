@@ -4,10 +4,12 @@ using ONEVO.Application.Common.RepositoryInterfaces;
 using ONEVO.Application.Common.ServiceInterfaces;
 using ONEVO.Application.Features.WorkManagement.Common.Services;
 using ONEVO.Application.Features.WorkManagement.Objectives.RepositoryInterfaces;
-using ONEVO.Application.Features.WorkManagement.Objectives.Services;
 using ONEVO.Application.Features.WorkManagement.Projects.RepositoryInterfaces;
+using ONEVO.Application.Features.WorkManagement.Tasks.DTOs;
 using ONEVO.Application.Features.WorkManagement.Tasks.RepositoryInterfaces;
+using ONEVO.Application.Features.WorkManagement.Tasks.Services;
 using ONEVO.Domain.Features.WorkManagement.Tasks.Entities;
+using ONEVO.Domain.Features.WorkManagement.Projects.Entities;
 
 namespace ONEVO.Application.Features.WorkManagement.Tasks.Commands.EditTaskStatus;
 
@@ -19,12 +21,12 @@ public class EditTaskStatusCommandHandler : IRequestHandler<EditTaskStatusComman
     private readonly IObjectiveRepository _objectives;
     private readonly IProjectRepository _projects;
     private readonly IUnitOfWork _unitOfWork;
-    private readonly IMilestoneMembershipCoordinator _membership;
+    private readonly ITaskStatusChangeRequestConflictSweeper _sweeper;
 
     public EditTaskStatusCommandHandler(
         ICurrentUser currentUser, ICallerIdentityResolver identity, ITaskStatusRepository statuses,
         IObjectiveRepository objectives, IProjectRepository projects, IUnitOfWork unitOfWork,
-        IMilestoneMembershipCoordinator membership)
+        ITaskStatusChangeRequestConflictSweeper sweeper)
     {
         _currentUser = currentUser;
         _identity = identity;
@@ -32,7 +34,7 @@ public class EditTaskStatusCommandHandler : IRequestHandler<EditTaskStatusComman
         _objectives = objectives;
         _projects = projects;
         _unitOfWork = unitOfWork;
-        _membership = membership;
+        _sweeper = sweeper;
     }
 
     public async Task<Result> Handle(EditTaskStatusCommand request, CancellationToken ct)
@@ -54,13 +56,15 @@ public class EditTaskStatusCommandHandler : IRequestHandler<EditTaskStatusComman
         var project = await _projects.GetByIdForTenantAsync(tenantId, status.ProjectId, ct);
         if (project is null || !project.IsActive)
             return Result.NotFound("Project not found.");
+        if (project.SystemPurpose == ProjectSystemPurposes.Office)
+            return Result.Conflict("The Office project workflow is system-managed.");
 
         var defaultObjective = await _objectives.GetDefaultByProjectIdAsync(tenantId, project.Id, ct);
         if (defaultObjective is null)
             return Result.NotFound("Project has no default milestone.");
 
-        if (!await _membership.IsEffectiveManagerAsync(tenantId, defaultObjective.Id, callerEmployeeId.Value, ct))
-            return Result.Forbidden("Only an owner or member of this project can change task status configuration.");
+        if (defaultObjective.OwnerId != callerEmployeeId.Value)
+            return Result.Forbidden("Only the project's top module owner can change task statuses directly. Others can send a change request.");
 
         var siblings = await _statuses.GetProjectTemplateAsync(tenantId, project.Id, ct);
 
@@ -75,6 +79,8 @@ public class EditTaskStatusCommandHandler : IRequestHandler<EditTaskStatusComman
             && siblings.Count(s => s.Category == TaskStatusCategories.Active) <= 1)
             return Result.Conflict("A project must always have at least one Active status.");
 
+        var before = TaskStatusChangeSetApplier.Snapshot(status);
+
         return await _unitOfWork.ExecuteInTransactionAsync(async innerCt =>
         {
             status.Name = request.Name.Trim();
@@ -87,6 +93,12 @@ public class EditTaskStatusCommandHandler : IRequestHandler<EditTaskStatusComman
             status.MarksTaskComplete = request.Category == TaskStatusCategories.Done;
             status.UpdatedAt = DateTimeOffset.UtcNow;
             _statuses.Update(status);
+
+            if (!TaskStatusChangeSetApplier.Snapshot(status).Equals(before))
+                await _sweeper.MarkConflictingStaleAsync(
+                    tenantId, project.Id, callerEmployeeId.Value,
+                    new TaskStatusChangeFootprint(new HashSet<Guid> { status.Id }, ReordersExisting: false), null, innerCt);
+
             await _unitOfWork.SaveChangesAsync(innerCt);
             return Result.Success();
         }, ct);

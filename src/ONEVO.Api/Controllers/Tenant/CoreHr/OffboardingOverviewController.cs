@@ -12,7 +12,7 @@ namespace ONEVO.Api.Controllers.Tenant.CoreHr;
 public class OffboardingOverviewController(IMediator mediator) : ControllerBase
 {
     [HttpGet]
-    [RequirePermission("employees:read")]
+    [RequireAnyPermission("employees:offboard", "employees:write")]
     public async Task<IActionResult> List([FromQuery] int page = 1, [FromQuery] int pageSize = 25, CancellationToken ct = default)
     {
         var result = await mediator.Send(new ListOffboardingOverviewQuery(page, pageSize), ct);

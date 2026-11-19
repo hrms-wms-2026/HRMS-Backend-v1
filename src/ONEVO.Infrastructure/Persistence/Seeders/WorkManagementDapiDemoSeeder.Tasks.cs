@@ -1,9 +1,8 @@
 using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
-using ONEVO.Application.Features.WorkManagement.ObjectiveChangeRequests.DTOs;
+using ONEVO.Application.Features.WorkManagement.Objectives.DTOs;
 using ONEVO.Application.Features.WorkManagement.Tasks.DTOs;
-using ONEVO.Domain.Features.WorkManagement.ObjectiveChangeRequests.Entities;
-using ONEVO.Domain.Features.WorkManagement.Objectives.Entities;
+using ONEVO.Domain.Features.WorkManagement.Approvals.Entities;
 using ONEVO.Domain.Features.WorkManagement.Projects.Entities;
 using ONEVO.Domain.Features.WorkManagement.Tasks.Entities;
 using TaskStatusEntity = ONEVO.Domain.Features.WorkManagement.Tasks.Entities.TaskStatus;
@@ -13,7 +12,15 @@ namespace ONEVO.Infrastructure.Persistence.Seeders;
 public sealed partial class WorkManagementDapiDemoSeeder
 {
     private static readonly string[] CanonicalStatusNames = ["To Do", "In Process", "Review", "Done"];
-    private static readonly string[] CanonicalCategoryNames = ["task", "bug", "story", "feature"];
+    private static readonly string[] CanonicalCategoryNames = ["task", "bug", "story", "feature", TaskCategorySystemKeys.Meeting];
+    private static readonly Dictionary<string, string> CanonicalCategoryKinds = new()
+    {
+        ["task"] = TaskCategoryKinds.Task,
+        ["bug"] = TaskCategoryKinds.Bug,
+        ["story"] = TaskCategoryKinds.Story,
+        ["feature"] = TaskCategoryKinds.Feature,
+        [TaskCategorySystemKeys.Meeting] = TaskCategoryKinds.Meeting,
+    };
 
     private static async Task SeedTasksAndApprovalsAsync(
         ApplicationDbContext db,
@@ -66,7 +73,7 @@ public sealed partial class WorkManagementDapiDemoSeeder
             project.NextTaskNumber = nextTaskNumber;
         }
 
-        await SeedTaskCreationRequestsAsync(db, employeeIdByPersonKey, categoryIdsByProjectKey, now, ct);
+        await SeedTaskApprovalRequestsAsync(db, employeeIdByPersonKey, categoryIdsByProjectKey, now, ct);
         await SeedAllocationExtendsAsync(db, employeeIdByPersonKey, now, ct);
     }
 
@@ -107,6 +114,8 @@ public sealed partial class WorkManagementDapiDemoSeeder
                 ProjectId = projectId,
                 Name = name,
                 DisplayOrder = order,
+                SystemKey = name == TaskCategorySystemKeys.Meeting ? TaskCategorySystemKeys.Meeting : null,
+                Kind = CanonicalCategoryKinds[name],
                 CreatedById = DapiOwnerUserId,
                 CreatedAt = now
             });
@@ -186,8 +195,12 @@ public sealed partial class WorkManagementDapiDemoSeeder
             }
 
             var taskId = DeterministicGuid($"dapi-demo:task:{tree.ProjectKey}:{path}:{slotIndex}");
-            if (db.WorkTasks.Local.Any(t => t.Id == taskId)
-                || await db.WorkTasks.AnyAsync(t => t.Id == taskId, ct))
+            // IgnoreQueryFilters: a demo task soft-deleted from the app is still in the table, so the
+            // default is_deleted filter would hide it and the re-insert would hit pk_tasks at startup.
+            // Keep the tenant predicate explicit because IgnoreQueryFilters also bypasses tenant filters.
+            if (db.WorkTasks.Local.Any(t => t.TenantId == DapiTenantId && t.Id == taskId)
+                || await db.WorkTasks.IgnoreQueryFilters()
+                    .AnyAsync(t => t.TenantId == DapiTenantId && t.Id == taskId, ct))
             {
                 continue;
             }
@@ -233,19 +246,6 @@ public sealed partial class WorkManagementDapiDemoSeeder
                 now,
                 ct);
 
-            if (slot.AssignExtraMember && node.ExtraMemberKeys.Length > 0)
-            {
-                await SeedTaskAssignmentAsync(
-                    db,
-                    tree.ProjectKey,
-                    path,
-                    slotIndex,
-                    taskId,
-                    node.ExtraMemberKeys[0],
-                    employeeIdByPersonKey,
-                    now,
-                    ct);
-            }
         }
 
         return nextTaskNumber;
@@ -281,43 +281,49 @@ public sealed partial class WorkManagementDapiDemoSeeder
         });
     }
 
-    private static async Task SeedTaskCreationRequestsAsync(
+    private static async Task SeedTaskApprovalRequestsAsync(
         ApplicationDbContext db,
         Dictionary<string, Guid> employeeIdByPersonKey,
         Dictionary<string, Dictionary<string, Guid>> categoryIdsByProjectKey,
         DateTimeOffset now,
         CancellationToken ct)
     {
-        foreach (var spec in WorkManagementDapiDemoData.TaskCreationRequests)
+        foreach (var spec in WorkManagementDapiDemoData.TaskApprovalRequests)
         {
             var requestId = DeterministicGuid(
                 $"dapi-demo:task-creation-request:{spec.ProjectKey}:{spec.ObjectivePath}:{spec.Title}");
-            if (db.TaskCreationRequests.Local.Any(r => r.Id == requestId)
-                || await db.TaskCreationRequests.AnyAsync(r => r.Id == requestId, ct))
+            // IgnoreQueryFilters lets the idempotency check see soft-deleted demo requests. Retain
+            // explicit tenant scoping because the bypass also removes the global tenant filter.
+            if (db.WorkApprovalRequests.Local.Any(r => r.TenantId == DapiTenantId && r.Id == requestId)
+                || await db.WorkApprovalRequests.IgnoreQueryFilters()
+                    .AnyAsync(r => r.TenantId == DapiTenantId && r.Id == requestId, ct))
             {
                 continue;
             }
 
             var objectiveId = DeterministicGuid($"dapi-demo:objective:{spec.ProjectKey}:{spec.ObjectivePath}");
             var categoryId = categoryIdsByProjectKey[spec.ProjectKey][spec.CategoryName];
-            var payload = new TaskCreationRequestPayload(
-                spec.Title,
-                spec.Description,
-                categoryId,
-                spec.Priority,
-                DueDate: null,
-                EstimatedHours: spec.EstimatedHours,
-                StoryPoints: null,
-                SprintId: Guid.Empty);
+            var objective = db.Objectives.Local.FirstOrDefault(o => o.Id == objectiveId)
+                ?? await db.Objectives.IgnoreQueryFilters().FirstAsync(o => o.TenantId == DapiTenantId && o.Id == objectiveId, ct);
+            // SprintId null = backlog. (The old seed wrote Guid.Empty, which fails sprint validation on approve.)
+            var input = new TaskCreateInput(objectiveId, spec.Title, spec.Description, categoryId, spec.Priority,
+                DueDate: null, EstimatedHours: spec.EstimatedHours, StoryPoints: null, SprintId: null);
 
-            db.TaskCreationRequests.Add(new TaskCreationRequest
+            db.WorkApprovalRequests.Add(new WorkApprovalRequest
             {
                 Id = requestId,
                 TenantId = DapiTenantId,
-                ObjectiveId = objectiveId,
+                ProjectId = objective.ProjectId,
+                ActionType = WorkActionTypes.TaskCreate,
+                TargetType = WorkTargetTypes.Task,
+                TargetId = null,
+                TargetTitle = spec.Title,
+                PositionObjectiveId = objectiveId,
+                ApproverSource = WorkApprovalSources.Hierarchy,
+                ApproverEmployeeId = objective.OwnerId,
                 RequestedByEmployeeId = employeeIdByPersonKey[spec.RequesterKey],
-                PayloadJson = JsonSerializer.Serialize(payload),
-                Status = TaskCreationRequestStatuses.Pending,
+                PayloadJson = JsonSerializer.Serialize(input),
+                Status = WorkApprovalRequestStatuses.Pending,
                 CreatedById = ResolveUserId(spec.RequesterKey),
                 CreatedAt = now
             });
@@ -333,8 +339,11 @@ public sealed partial class WorkManagementDapiDemoSeeder
         foreach (var spec in WorkManagementDapiDemoData.AllocationExtends)
         {
             var requestId = DeterministicGuid($"dapi-demo:allocation-extend:{spec.ProjectKey}:{spec.ObjectivePath}");
-            if (db.ObjectiveChangeRequests.Local.Any(r => r.Id == requestId)
-                || await db.ObjectiveChangeRequests.AnyAsync(r => r.Id == requestId, ct))
+            // IgnoreQueryFilters lets the idempotency check see soft-deleted demo requests. Retain
+            // explicit tenant scoping because the bypass also removes the global tenant filter.
+            if (db.WorkApprovalRequests.Local.Any(r => r.TenantId == DapiTenantId && r.Id == requestId)
+                || await db.WorkApprovalRequests.IgnoreQueryFilters()
+                    .AnyAsync(r => r.TenantId == DapiTenantId && r.Id == requestId, ct))
             {
                 continue;
             }
@@ -342,7 +351,16 @@ public sealed partial class WorkManagementDapiDemoSeeder
             var objectiveId = DeterministicGuid($"dapi-demo:objective:{spec.ProjectKey}:{spec.ObjectivePath}");
             var objective = db.Objectives.Local.FirstOrDefault(o => o.Id == objectiveId)
                 ?? await db.Objectives.FirstOrDefaultAsync(o => o.Id == objectiveId, ct);
-            if (objective is null || objective.ReportingManagerId is null)
+            if (objective?.ParentObjectiveId is null)
+            {
+                continue;
+            }
+
+            // The parent module's owner decides (the request's creator position is the parent).
+            var parentId = objective.ParentObjectiveId.Value;
+            var parent = db.Objectives.Local.FirstOrDefault(o => o.Id == parentId)
+                ?? await db.Objectives.FirstOrDefaultAsync(o => o.Id == parentId, ct);
+            if (parent is null)
             {
                 continue;
             }
@@ -354,17 +372,21 @@ public sealed partial class WorkManagementDapiDemoSeeder
                 continue;
             }
 
-            var payload = new ExtendAllocationRequestPayload(spec.AdditionalHours, spec.Reason);
-            db.ObjectiveChangeRequests.Add(new ObjectiveChangeRequest
+            db.WorkApprovalRequests.Add(new WorkApprovalRequest
             {
                 Id = requestId,
                 TenantId = DapiTenantId,
-                ObjectiveId = objectiveId,
-                RequestType = ObjectiveChangeRequestTypes.ExtendAllocation,
-                RequestedById = employeeIdByPersonKey[ownerPersonKey],
-                ReportingManagerId = objective.ReportingManagerId.Value,
-                Status = ObjectiveChangeRequestStatuses.Pending,
-                PayloadJson = JsonSerializer.Serialize(payload),
+                ProjectId = objective.ProjectId,
+                ActionType = WorkActionTypes.ModuleAllocationExtend,
+                TargetType = WorkTargetTypes.Module,
+                TargetId = objectiveId,
+                TargetTitle = objective.Title,
+                PositionObjectiveId = parentId,
+                ApproverSource = WorkApprovalSources.Hierarchy,
+                ApproverEmployeeId = parent.OwnerId,
+                RequestedByEmployeeId = employeeIdByPersonKey[ownerPersonKey],
+                Status = WorkApprovalRequestStatuses.Pending,
+                PayloadJson = JsonSerializer.Serialize(new ModuleAllocationExtendInput(spec.AdditionalHours, spec.Reason), ModulePayloadJson.Options),
                 CreatedById = ResolveUserId(ownerPersonKey),
                 CreatedAt = now
             });

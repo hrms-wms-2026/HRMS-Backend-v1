@@ -1,200 +1,122 @@
 using Moq;
-using ONEVO.Application.Common.Models;
-using ONEVO.Application.Common.RepositoryInterfaces;
-using ONEVO.Application.Common.ServiceInterfaces;
-using ONEVO.Application.Features.WorkManagement.Common.OutboxHandlers;
-using ONEVO.Application.Features.WorkManagement.Common.Services;
 using ONEVO.Application.Features.WorkManagement.Objectives.Commands.AddObjectiveMember;
-using ONEVO.Application.Features.WorkManagement.Objectives.RepositoryInterfaces;
-using ONEVO.Application.Features.WorkManagement.Objectives.Services;
-using ONEVO.Application.Features.WorkManagement.ProjectInvitations.RepositoryInterfaces;
-using ONEVO.Domain.Features.CoreHr.Entities;
 using ONEVO.Domain.Features.WorkManagement.Objectives.Entities;
-using ONEVO.Domain.Features.WorkManagement.ProjectInvitations.Entities;
-using ONEVO.Domain.Lookups;
 using Xunit;
+using K = ONEVO.Tests.Unit.Features.WorkManagement.Objectives.ModuleHandlerTestKit;
 
 namespace ONEVO.Tests.Unit.Features.WorkManagement;
 
 public class AddObjectiveMemberCommandHandlerTests
 {
-    private static readonly Guid TenantId = Guid.NewGuid();
-    private static readonly Guid HeadUserId = Guid.NewGuid();
-    private static readonly Guid HeadEmployeeId = Guid.NewGuid();
-    private static readonly Guid OtherUserId = Guid.NewGuid();
-    private static readonly Guid OtherEmployeeId = Guid.NewGuid();
-    private static readonly Guid MemberEmployeeId = Guid.NewGuid();
-    private static readonly Guid ProjectId = Guid.NewGuid();
-    private static readonly Guid ObjectiveId = Guid.NewGuid();
-
-    private static Objective SubObjective(bool isActive = true, bool isAchieved = false) => new()
-    {
-        Id = ObjectiveId, TenantId = TenantId, ProjectId = ProjectId, IsDefault = false, Title = "Sub",
-        OwnerId = HeadEmployeeId, IsActive = isActive, IsAchieved = isAchieved,
-        StartDate = new DateOnly(2026, 1, 1), EndDate = new DateOnly(2026, 3, 1), CreatedAt = DateTimeOffset.UtcNow
-    };
-
-    private (AddObjectiveMemberCommandHandler Handler, Mock<IProjectMemberInvitationRepository> Invitations, Mock<IMilestoneMembershipCoordinator> Membership, Mock<IOutboxWriter> OutboxWriter) BuildHandler(
-        Objective? objective, Employee? assignee = null, Guid? callerId = null, bool explicitNullAssignee = false,
-        bool alreadyActiveMember = false, ProjectMemberInvitation? existingPendingInvite = null, bool? callerIsEffectiveManager = null)
-    {
-        var resolvedCallerUserId = callerId ?? HeadUserId;
-        var resolvedCallerEmployeeId = resolvedCallerUserId == OtherUserId ? OtherEmployeeId : HeadEmployeeId;
-
-        var currentUser = new Mock<ICurrentUser>();
-        currentUser.SetupGet(x => x.IsAuthenticated).Returns(true);
-        currentUser.SetupGet(x => x.TenantId).Returns(TenantId);
-        currentUser.SetupGet(x => x.UserId).Returns(resolvedCallerUserId);
-
-        var identity = new Mock<ICallerIdentityResolver>();
-        identity.Setup(x => x.ResolveCallerEmployeeIdAsync(TenantId, HeadUserId, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(HeadEmployeeId);
-        identity.Setup(x => x.ResolveCallerEmployeeIdAsync(TenantId, OtherUserId, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(OtherEmployeeId);
-        identity.Setup(x => x.ResolveDisplayNamesByEmployeeIdAsync(TenantId, It.IsAny<IReadOnlyList<Guid>>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new Dictionary<Guid, string> { [resolvedCallerEmployeeId] = "Inviter" });
-
-        var objectives = new Mock<IObjectiveRepository>();
-        objectives.Setup(x => x.GetByIdForTenantAsync(TenantId, ObjectiveId, It.IsAny<CancellationToken>())).ReturnsAsync(objective);
-
-        var membership = new Mock<IMilestoneMembershipCoordinator>();
-        var mockAssignee = explicitNullAssignee ? null
-            : assignee ?? new Employee { Id = MemberEmployeeId, TenantId = TenantId, EmploymentStatusId = EmploymentStatusIds.Active };
-        membership.Setup(x => x.GetActiveAssigneeAsync(TenantId, MemberEmployeeId, It.IsAny<CancellationToken>())).ReturnsAsync(mockAssignee);
-        membership.Setup(x => x.HasActiveMembershipAsync(TenantId, ProjectId, ObjectiveId, MemberEmployeeId, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(alreadyActiveMember);
-        // Mirrors direct-owner-only behavior by default so pre-existing tests keep passing
-        // unmodified; callerIsEffectiveManager lets a test override this to simulate an
-        // ancestor-cascade grant (the coordinator's own ancestor-walk logic is unit-tested
-        // separately in MilestoneMembershipCoordinatorTests).
-        membership.Setup(x => x.IsEffectiveManagerAsync(TenantId, ObjectiveId, resolvedCallerEmployeeId, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(callerIsEffectiveManager ?? (objective is not null && objective.OwnerId == resolvedCallerEmployeeId));
-
-        var invitations = new Mock<IProjectMemberInvitationRepository>();
-        invitations.Setup(x => x.GetPendingForObjectiveAndEmployeeAsync(TenantId, ObjectiveId, MemberEmployeeId, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(existingPendingInvite);
-
-        var unitOfWork = new Mock<IUnitOfWork>();
-        unitOfWork.Setup(x => x.SaveChangesAsync(It.IsAny<CancellationToken>())).ReturnsAsync(1);
-
-        var outboxWriter = new Mock<IOutboxWriter>();
-
-        var handler = new AddObjectiveMemberCommandHandler(
-            currentUser.Object, identity.Object, objectives.Object, membership.Object, invitations.Object, unitOfWork.Object,
-            outboxWriter.Object);
-        return (handler, invitations, membership, outboxWriter);
-    }
+    private static AddObjectiveMemberCommand Command() => new(K.ModuleId, K.NewHead);
 
     [Fact]
-    public async Task Handle_NewInvite_CreatesPendingMemberInvitationAndReturns202Shape()
+    public async Task Handle_AddByHeadBelowPosition_EnginePending_ReturnsApprovalRequestId()
     {
-        var (handler, invitations, membership, outboxWriter) = BuildHandler(SubObjective());
+        var kit = new K();
+        kit.EnginePending();
 
-        var result = await handler.Handle(new AddObjectiveMemberCommand(ObjectiveId, MemberEmployeeId), CancellationToken.None);
+        var result = await kit.AddMember().Handle(Command(), CancellationToken.None);
 
         Assert.True(result.IsSuccess);
-        Assert.False(result.Value!.AlreadyMember);
-        Assert.NotNull(result.Value.Invitation);
-        Assert.Equal(ProjectInvitationTypes.Member, result.Value.Invitation!.InviteType);
-        membership.Verify(x => x.UpsertMembershipAsync(It.IsAny<Guid>(), It.IsAny<Guid>(), It.IsAny<Guid>(), It.IsAny<Guid>(), It.IsAny<CancellationToken>()), Times.Never);
-        invitations.Verify(x => x.AddAsync(It.Is<ProjectMemberInvitation>(i =>
-            i.ObjectiveId == ObjectiveId && i.InvitedEmployeeId == MemberEmployeeId
-            && i.InviteType == ProjectInvitationTypes.Member && i.Status == ProjectInvitationStatuses.Pending
-            && i.InvitedById == HeadEmployeeId), It.IsAny<CancellationToken>()), Times.Once);
-        outboxWriter.Verify(x => x.EnqueueAsync(
-            OutboxMessageTypes.WorkNotification,
-            It.Is<WorkNotificationPayload>(p => p.TemplateCode == "work_objective_invitation_created" && p.RelatedEntityType == "project_member_invitation"),
-            TenantId, It.IsAny<CancellationToken>()), Times.Once);
+        Assert.False(result.Value!.Applied);
+        Assert.False(result.Value.AlreadyMember);
+        Assert.Null(result.Value.Invitation);
+        Assert.Equal(K.RequestId, result.Value.ApprovalRequestId);
     }
 
     [Fact]
-    public async Task Handle_AlreadyActiveMember_NoOpReturnsAlreadyMemberTrue()
+    public async Task Handle_EngineDirect_CreatesInvitationAndReturnsIt()
     {
-        var (handler, invitations, _, _) = BuildHandler(SubObjective(), alreadyActiveMember: true);
+        var kit = new K();
+        kit.CallAs(K.ParentOwnerUser);
 
-        var result = await handler.Handle(new AddObjectiveMemberCommand(ObjectiveId, MemberEmployeeId), CancellationToken.None);
+        var result = await kit.AddMember().Handle(Command(), CancellationToken.None);
+
+        Assert.True(result.Value!.Applied);
+        Assert.False(result.Value.AlreadyMember);
+        Assert.NotNull(result.Value.Invitation);
+        Assert.Null(result.Value.ApprovalRequestId);
+        kit.Membership.Verify(x => x.ApplyMemberAddAsync(K.TenantId, kit.Module, K.ParentOwner, K.NewHead, It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Fact]
+    public async Task Handle_AlreadyActiveMember_ShortCircuitsBeforeTheEngine()
+    {
+        var kit = new K();
+        kit.Membership.Setup(x => x.HasActiveMembershipAsync(K.TenantId, K.ProjectId, K.ModuleId, K.NewHead, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(true);
+
+        var result = await kit.AddMember().Handle(Command(), CancellationToken.None);
 
         Assert.True(result.IsSuccess);
         Assert.True(result.Value!.AlreadyMember);
         Assert.Null(result.Value.Invitation);
-        invitations.Verify(x => x.AddAsync(It.IsAny<ProjectMemberInvitation>(), It.IsAny<CancellationToken>()), Times.Never);
+        kit.VerifyEngineNeverCalled();
     }
 
     [Fact]
-    public async Task Handle_AlreadyPendingInvite_ReturnsConflict()
+    public async Task Handle_AlreadyPendingInvite_ReturnsConflict_BeforeTheEngine()
     {
-        var existing = new ProjectMemberInvitation
-        {
-            Id = Guid.NewGuid(), TenantId = TenantId, ObjectiveId = ObjectiveId, InvitedEmployeeId = MemberEmployeeId,
-            InviteType = ProjectInvitationTypes.Member, Status = ProjectInvitationStatuses.Pending
-        };
-        var (handler, _, _, _) = BuildHandler(SubObjective(), existingPendingInvite: existing);
+        var kit = new K();
+        kit.Invitations.Setup(x => x.GetPendingForObjectiveAndEmployeeAsync(K.TenantId, K.ModuleId, K.NewHead, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new ONEVO.Domain.Features.WorkManagement.ProjectInvitations.Entities.ProjectMemberInvitation
+            {
+                Id = Guid.NewGuid(), TenantId = K.TenantId, ObjectiveId = K.ModuleId, InvitedEmployeeId = K.NewHead
+            });
 
-        var result = await handler.Handle(new AddObjectiveMemberCommand(ObjectiveId, MemberEmployeeId), CancellationToken.None);
+        var result = await kit.AddMember().Handle(Command(), CancellationToken.None);
 
-        Assert.False(result.IsSuccess);
         Assert.Equal(409, result.StatusCode);
+        kit.VerifyEngineNeverCalled();
     }
 
     [Fact]
-    public async Task Handle_CallerNotHead_ReturnsForbidden()
+    public async Task Handle_MemberNotActiveEmployee_ReturnsBadRequest_BeforeTheEngine()
     {
-        var (handler, _, _, _) = BuildHandler(SubObjective(), callerId: OtherUserId);
+        var kit = new K();
+        kit.Membership.Setup(x => x.GetActiveAssigneeAsync(K.TenantId, K.NewHead, It.IsAny<CancellationToken>()))
+            .ReturnsAsync((ONEVO.Domain.Features.CoreHr.Entities.Employee?)null);
 
-        var result = await handler.Handle(new AddObjectiveMemberCommand(ObjectiveId, MemberEmployeeId), CancellationToken.None);
+        var result = await kit.AddMember().Handle(Command(), CancellationToken.None);
 
-        Assert.False(result.IsSuccess);
-        Assert.Equal(403, result.StatusCode);
-    }
-
-    [Fact]
-    public async Task Handle_CallerIsActiveMemberOfAncestorObjective_CreatesPendingInvite()
-    {
-        // Caller is not this objective's own OwnerId, but IsEffectiveManagerAsync reports them as
-        // an effective manager via an ancestor (grandparent) membership - the coordinator's own
-        // ancestor-walk logic is unit-tested separately in MilestoneMembershipCoordinatorTests, so
-        // this only proves the handler defers to its answer instead of the direct OwnerId check.
-        var (handler, invitations, _, _) = BuildHandler(SubObjective(), callerId: OtherUserId, callerIsEffectiveManager: true);
-
-        var result = await handler.Handle(new AddObjectiveMemberCommand(ObjectiveId, MemberEmployeeId), CancellationToken.None);
-
-        Assert.True(result.IsSuccess);
-        Assert.False(result.Value!.AlreadyMember);
-        invitations.Verify(x => x.AddAsync(It.Is<ProjectMemberInvitation>(i =>
-            i.ObjectiveId == ObjectiveId && i.InvitedEmployeeId == MemberEmployeeId
-            && i.InvitedById == OtherEmployeeId), It.IsAny<CancellationToken>()), Times.Once);
-    }
-
-    [Fact]
-    public async Task Handle_MemberNotActiveEmployee_ReturnsBadRequest()
-    {
-        var (handler, _, _, _) = BuildHandler(SubObjective(), explicitNullAssignee: true);
-
-        var result = await handler.Handle(new AddObjectiveMemberCommand(ObjectiveId, MemberEmployeeId), CancellationToken.None);
-
-        Assert.False(result.IsSuccess);
         Assert.Equal(400, result.StatusCode);
+        kit.VerifyEngineNeverCalled();
+    }
+
+    [Fact]
+    public async Task Handle_CallerNotMember_ReturnsForbidden()
+    {
+        var kit = new K { OtherIsMember = false };
+        kit.CallAs(K.OtherUser);
+
+        var result = await kit.AddMember().Handle(Command(), CancellationToken.None);
+
+        Assert.Equal(403, result.StatusCode);
+        kit.VerifyEngineNeverCalled();
     }
 
     [Fact]
     public async Task Handle_ObjectiveAchieved_ReturnsBadRequest()
     {
-        var (handler, _, _, _) = BuildHandler(SubObjective(isAchieved: true));
+        var module = K.NewModule();
+        module.IsAchieved = true;
+        var kit = new K(module);
 
-        var result = await handler.Handle(new AddObjectiveMemberCommand(ObjectiveId, MemberEmployeeId), CancellationToken.None);
+        var result = await kit.AddMember().Handle(Command(), CancellationToken.None);
 
-        Assert.False(result.IsSuccess);
         Assert.Equal(400, result.StatusCode);
+        kit.VerifyEngineNeverCalled();
     }
 
     [Fact]
     public async Task Handle_ObjectiveNotFound_ReturnsNotFound()
     {
-        var (handler, _, _, _) = BuildHandler(null);
+        var kit = new K();
+        kit.Objectives.Setup(x => x.GetByIdForTenantAsync(K.TenantId, K.ModuleId, It.IsAny<CancellationToken>())).ReturnsAsync((Objective?)null);
 
-        var result = await handler.Handle(new AddObjectiveMemberCommand(ObjectiveId, MemberEmployeeId), CancellationToken.None);
+        var result = await kit.AddMember().Handle(Command(), CancellationToken.None);
 
-        Assert.False(result.IsSuccess);
         Assert.Equal(404, result.StatusCode);
     }
 }

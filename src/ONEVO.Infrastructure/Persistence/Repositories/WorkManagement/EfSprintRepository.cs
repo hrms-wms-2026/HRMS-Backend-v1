@@ -1,4 +1,5 @@
 using Microsoft.EntityFrameworkCore;
+using ONEVO.Application.Common.Exceptions;
 using ONEVO.Application.Features.WorkManagement.Sprints.RepositoryInterfaces;
 using ONEVO.Domain.Features.WorkManagement.Sprints.Entities;
 
@@ -18,6 +19,9 @@ public class EfSprintRepository : ISprintRepository
 
     public async Task<Sprint?> GetTrackedByIdForTenantAsync(Guid tenantId, Guid id, CancellationToken ct = default)
         => await _db.Sprints.FirstOrDefaultAsync(s => s.TenantId == tenantId && s.Id == id, ct);
+
+    public async Task<Sprint?> GetTrackedByIdForTenantIncludingDeletedAsync(Guid tenantId, Guid id, CancellationToken ct = default)
+        => await _db.Sprints.IgnoreQueryFilters().FirstOrDefaultAsync(s => s.TenantId == tenantId && s.Id == id, ct);
 
     public async Task<IReadOnlyList<Sprint>> GetByProjectAsync(Guid tenantId, Guid projectId, CancellationToken ct = default)
         => await _db.Sprints.AsNoTracking()
@@ -40,8 +44,19 @@ public class EfSprintRepository : ISprintRepository
         => await _db.WorkTasks.AnyAsync(t => t.TenantId == tenantId && t.ObjectiveId == objectiveId && t.SprintId != null
                && _db.Sprints.Any(s => s.Id == t.SprintId && s.Status == SprintStatuses.Active), ct);
 
-    public async Task<IReadOnlyList<Sprint>> GetByStatusAsync(string status, CancellationToken ct = default)
-        => await _db.Sprints.Where(s => s.Status == status).ToListAsync(ct);
-
     public void Update(Sprint sprint) => _db.Sprints.Update(sprint);
+
+    public void Remove(Sprint sprint) => _db.Sprints.Remove(sprint);
+
+    public async Task<int> SaveChangesAsync(CancellationToken ct = default)
+    {
+        try
+        {
+            return await _db.SaveChangesAsync(ct);
+        }
+        catch (DbUpdateConcurrencyException ex)
+        {
+            throw new ConcurrencyConflictException(ex);
+        }
+    }
 }

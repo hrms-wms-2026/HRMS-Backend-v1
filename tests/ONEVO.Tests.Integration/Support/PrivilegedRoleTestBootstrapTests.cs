@@ -1,91 +1,76 @@
-using FluentAssertions;
-using Npgsql;
-using Testcontainers.PostgreSql;
+using Xunit;
 
 namespace ONEVO.Tests.Integration.Support;
 
 /// <summary>
-/// Proves PrivilegedRoleTestBootstrap's Testcontainers-only role shape: onevo_app and
-/// onevo_migrator must actually be able to authenticate (Program.cs's pre-Build()
-/// DatabaseConnectionStartupValidator opens a real onevo_app connection before any
-/// WebApplicationFactory override can apply), while onevo_auth_base_login_fn_owner stays exactly
-/// as production expects it - NOLOGIN, BYPASSRLS. Requires Docker.
+/// The harness's logins must really work and stay restricted, or every test built on them would
+/// prove less than it claims.
 /// </summary>
-public sealed class PrivilegedRoleTestBootstrapTests : IAsyncLifetime
+public sealed class PrivilegedRoleTestBootstrapTests
 {
-    private readonly PostgreSqlContainer _postgres = new PostgreSqlBuilder("postgres:16-alpine")
-        .WithDatabase("onevo_role_bootstrap_test")
-        .WithUsername("test")
-        .WithPassword("test")
-        .Build();
-
-    public async Task InitializeAsync() => await _postgres.StartAsync();
-
-    public async Task DisposeAsync() => await _postgres.DisposeAsync();
+    private static string As(string adminConnection, string login, string password)
+        => new SqlConnectionStringBuilder(adminConnection) { UserID = login, Password = password }.ConnectionString;
 
     [Fact]
-    public async Task EnsureRolesExistAsync_CreatesOnevoAppAndOnevoMigrator_AsLoginRoles()
+    public async Task TestLogins_Authenticate()
     {
-        var adminConnectionString = _postgres.GetConnectionString();
-        await PrivilegedRoleTestBootstrap.EnsureRolesExistAsync(adminConnectionString);
+        var admin = await SharedSqlServerTemplate.CreateDatabaseAsync();
 
-        await using var connection = new NpgsqlConnection(adminConnectionString);
+        foreach (var (login, password) in new[]
+        {
+            ("crownus_app", PrivilegedRoleTestBootstrap.AppRolePassword),
+            ("crownus_migrator", PrivilegedRoleTestBootstrap.MigratorRolePassword),
+        })
+        {
+            await using var connection = new SqlConnection(As(admin, login, password));
+            await connection.OpenAsync();
+            await using var command = connection.CreateCommand();
+            command.CommandText = "SELECT USER_NAME()";
+
+            Assert.Equal(login, await command.ExecuteScalarAsync());
+        }
+    }
+
+    [Fact]
+    public async Task AppLogin_HasNoAdminContextFromTheHarness()
+    {
+        var admin = await SharedSqlServerTemplate.CreateDatabaseAsync();
+        await using var connection = TestDb.CreateConnection(As(admin, "crownus_app", PrivilegedRoleTestBootstrap.AppRolePassword));
         await connection.OpenAsync();
+        await using var command = connection.CreateCommand();
+        command.CommandText = "SELECT CAST(SESSION_CONTEXT(N'app.tenant_context_mode') AS nvarchar(16))";
 
-        (await CanLoginAsync(connection, "onevo_app")).Should().BeTrue(
-            "onevo_app must be LOGIN in Testcontainers so the pre-Build() startup validator can authenticate");
-        (await CanLoginAsync(connection, "onevo_migrator")).Should().BeTrue(
-            "onevo_migrator must be LOGIN in Testcontainers");
-        (await CanLoginAsync(connection, "onevo_auth_base_login_fn_owner")).Should().BeFalse(
-            "the function-owner role must remain NOLOGIN, matching production");
-
-        (await BypassesRlsAsync(connection, "onevo_app")).Should().BeFalse(
-            "onevo_app must not bypass RLS, matching production");
-        (await BypassesRlsAsync(connection, "onevo_auth_base_login_fn_owner")).Should().BeTrue(
-            "the function-owner role must remain BYPASSRLS, matching production");
+        Assert.Null(await command.ExecuteScalarAsync() as string);
     }
 
     [Fact]
-    public async Task EnsureRolesExistAsync_DeterministicPasswords_ActuallyAuthenticate()
+    public async Task AdminConnection_GetsAdminContext()
     {
-        var adminConnectionString = _postgres.GetConnectionString();
-        await PrivilegedRoleTestBootstrap.EnsureRolesExistAsync(adminConnectionString);
+        var admin = await SharedSqlServerTemplate.CreateDatabaseAsync();
+        await using var connection = TestDb.CreateConnection(admin);
+        await connection.OpenAsync();
+        await using var command = connection.CreateCommand();
+        command.CommandText = "SELECT CAST(SESSION_CONTEXT(N'app.tenant_context_mode') AS nvarchar(16))";
 
-        var appConnectionString = new NpgsqlConnectionStringBuilder(adminConnectionString)
-        {
-            Username = "onevo_app",
-            Password = PrivilegedRoleTestBootstrap.AppRolePassword
-        }.ConnectionString;
-        await using var appConnection = new NpgsqlConnection(appConnectionString);
-        var openAsApp = async () => await appConnection.OpenAsync();
-        await openAsApp.Should().NotThrowAsync(
-            "the deterministic test password must actually authenticate onevo_app, exactly like " +
-            "Program.cs's pre-Build() DatabaseConnectionStartupValidator does against DefaultConnection");
-
-        var migratorConnectionString = new NpgsqlConnectionStringBuilder(adminConnectionString)
-        {
-            Username = "onevo_migrator",
-            Password = PrivilegedRoleTestBootstrap.MigratorRolePassword
-        }.ConnectionString;
-        await using var migratorConnection = new NpgsqlConnection(migratorConnectionString);
-        var openAsMigrator = async () => await migratorConnection.OpenAsync();
-        await openAsMigrator.Should().NotThrowAsync(
-            "the deterministic test password must actually authenticate onevo_migrator");
+        Assert.Equal("admin", await command.ExecuteScalarAsync());
     }
 
-    private static async Task<bool> CanLoginAsync(NpgsqlConnection connection, string roleName)
+    [Fact]
+    public async Task EachCloneKeepsTheSettingsTenantIsolationNeeds()
     {
-        await using var command = connection.CreateCommand();
-        command.CommandText = "SELECT rolcanlogin FROM pg_roles WHERE rolname = @roleName";
-        command.Parameters.AddWithValue("roleName", roleName);
-        return (bool)(await command.ExecuteScalarAsync())!;
+        var admin = await SharedSqlServerTemplate.CreateDatabaseAsync();
+        await ONEVO.Infrastructure.Configuration.DatabaseSettingsStartupValidator.ValidateAsync(
+            As(admin, "crownus_app", PrivilegedRoleTestBootstrap.AppRolePassword), default);
     }
 
-    private static async Task<bool> BypassesRlsAsync(NpgsqlConnection connection, string roleName)
+    [Fact]
+    public async Task ClonesAreIndependent()
     {
-        await using var command = connection.CreateCommand();
-        command.CommandText = "SELECT rolbypassrls FROM pg_roles WHERE rolname = @roleName";
-        command.Parameters.AddWithValue("roleName", roleName);
-        return (bool)(await command.ExecuteScalarAsync())!;
+        var first = await SharedSqlServerTemplate.CreateDatabaseAsync();
+        var second = await SharedSqlServerTemplate.CreateDatabaseAsync();
+
+        Assert.NotEqual(
+            new SqlConnectionStringBuilder(first).InitialCatalog,
+            new SqlConnectionStringBuilder(second).InitialCatalog);
     }
 }

@@ -104,6 +104,16 @@ public sealed class MicrosoftGraphCalendarClient(HttpClient httpClient) : IMicro
             ["start"] = new Dictionary<string, object?> { ["dateTime"] = e.Start.UtcDateTime.ToString("s"), ["timeZone"] = "UTC" },
             ["end"] = new Dictionary<string, object?> { ["dateTime"] = e.End.UtcDateTime.ToString("s"), ["timeZone"] = "UTC" }
         };
+        // Null leaves Outlook's attendee list untouched on PATCH; a list (even empty) replaces it.
+        // Outlook itself sends the invite / update / cancellation to whoever is added or dropped here.
+        if (e.AttendeeEmails is not null)
+            payload["attendees"] = e.AttendeeEmails
+                .Select(email => new Dictionary<string, object?>
+                {
+                    ["emailAddress"] = new Dictionary<string, object?> { ["address"] = email },
+                    ["type"] = "required"
+                })
+                .ToArray();
         return JsonSerializer.Serialize(payload);
     }
 

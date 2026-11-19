@@ -38,10 +38,10 @@ public class LeaveRequestsIntegrationTests : IAsyncLifetime
 
     public async Task InitializeAsync()
     {
-        var connectionString = Environment.GetEnvironmentVariable("ONEVO_TEST_DB");
+        var connectionString = Environment.GetEnvironmentVariable("CROWNUS_TEST_DB");
         if (string.IsNullOrWhiteSpace(connectionString))
         {
-            connectionString = await SharedPostgresTemplate.CreateDatabaseAsync();
+            connectionString = await SharedSqlServerTemplate.CreateDatabaseAsync();
         }
         else
         {
@@ -58,11 +58,11 @@ public class LeaveRequestsIntegrationTests : IAsyncLifetime
 
         await WaitForSeedersAsync();
 
-        var loginResponse = await SendAsync(HttpMethod.Post, AdminHost, "/admin/v1/auth/login",
-            new { email = "test_admin@onevo.dev", password = "test_password_123" });
-        var adminCookies = ParseSetCookies(loginResponse);
-        _adminCsrfToken = adminCookies["admin_csrf"];
-        _adminCookie = $"admin_session={adminCookies["admin_session"]}";
+        // F-02: sign-in completes mandatory MFA enrollment; no gate bypass.
+        var adminSession = await PlatformAdminTestSignIn.SignInAsync(
+            _client, "test_admin@onevo.dev", "test_password_123", AdminHost);
+        _adminCsrfToken = adminSession.CsrfToken;
+        _adminCookie = adminSession.SessionCookie;
 
         _owner = await ProvisionAndLoginOwnerAsync("leave-req", "Leave Req Co", OwnerEmail);
         _tenantId = await GetTenantIdAsync(_owner.Host);
@@ -80,11 +80,15 @@ public class LeaveRequestsIntegrationTests : IAsyncLifetime
     [Fact]
     public async Task SubmitOwnRequest_ReservesPaidPendingHoursAndListsMine()
     {
-        var leaveTypeId = await CreateLeaveTypeAsync("Annual Leave", "AL", requiresApproval: false);
+        var leaveTypeId = await CreateLeaveTypeAsync("Annual Leave", "AL");
         var legalEntityId = await GetPrimaryLegalEntityIdAsync(_tenantId);
         await EnsureWorkWindowAsync(legalEntityId);
         await CreatePolicyAsync("Annual Policy", leaveTypeId, legalEntityId, 17.5m);
         var employeeId = await EnsureEmployeeInLegalEntityAsync(_tenantId, legalEntityId);
+        // Every request needs an approver; the owner has no manager, so it routes to HR.
+        await SeedAndLoginFixtureUserAsync(
+            _tenantId, _owner.Host, "hr@leave-req.test", permissionCodes: ["leave:manage", "leave:approve"], roleName: "HR Manager");
+        await AddEmployeeForUserAsync(_tenantId, legalEntityId, "hr@leave-req.test", "EMP-LEAVE-HR");
 
         var leaveDay = FutureWeekdayUtc();
         var generate = await SendAsync(HttpMethod.Post, _owner.Host, "/api/v1/leave/entitlements/generate",
@@ -144,11 +148,15 @@ public class LeaveRequestsIntegrationTests : IAsyncLifetime
     [Fact]
     public async Task Submit_OverlappingDates_Returns409()
     {
-        var leaveTypeId = await CreateLeaveTypeAsync("Sick Leave", "SICK", requiresApproval: false);
+        var leaveTypeId = await CreateLeaveTypeAsync("Sick Leave", "SICK");
         var legalEntityId = await GetPrimaryLegalEntityIdAsync(_tenantId);
         await EnsureWorkWindowAsync(legalEntityId);
         await CreatePolicyAsync("Sick Policy", leaveTypeId, legalEntityId, 10m);
         await EnsureEmployeeInLegalEntityAsync(_tenantId, legalEntityId);
+        // Every request needs an approver; the owner has no manager, so it routes to HR.
+        await SeedAndLoginFixtureUserAsync(
+            _tenantId, _owner.Host, "hr@leave-req.test", permissionCodes: ["leave:manage", "leave:approve"], roleName: "HR Manager");
+        await AddEmployeeForUserAsync(_tenantId, legalEntityId, "hr@leave-req.test", "EMP-LEAVE-HR");
         var leaveDay = FutureWeekdayUtc();
         var generate = await SendAsync(HttpMethod.Post, _owner.Host, "/api/v1/leave/entitlements/generate",
             new { year = leaveDay.Year, legalEntityId },
@@ -172,7 +180,242 @@ public class LeaveRequestsIntegrationTests : IAsyncLifetime
         second.StatusCode.Should().Be(HttpStatusCode.Conflict);
     }
 
-    private async Task<Guid> CreateLeaveTypeAsync(string name, string code, bool requiresApproval = true)
+    [Fact]
+    public async Task Submit_WithoutReportingManager_RoutesToHrManagerWhoCanApprove()
+    {
+        var leaveTypeId = await CreateLeaveTypeAsync("Annual Leave", "AL");
+        var legalEntityId = await GetPrimaryLegalEntityIdAsync(_tenantId);
+        await EnsureWorkWindowAsync(legalEntityId);
+        await CreatePolicyAsync("Annual Policy", leaveTypeId, legalEntityId, 17.5m);
+        await EnsureEmployeeInLegalEntityAsync(_tenantId, legalEntityId);
+        var hr = await SeedAndLoginFixtureUserAsync(
+            _tenantId, _owner.Host, "hr@leave-req.test", permissionCodes: ["leave:manage", "leave:approve"], roleName: "HR Manager");
+        var hrEmployeeId = await AddEmployeeForUserAsync(_tenantId, legalEntityId, "hr@leave-req.test", "EMP-LEAVE-HR");
+
+        var leaveDay = FutureWeekdayUtc();
+        var generate = await SendAsync(HttpMethod.Post, _owner.Host, "/api/v1/leave/entitlements/generate",
+            new { year = leaveDay.Year, legalEntityId },
+            cookie: _owner.SessionCookie, csrfToken: _owner.CsrfHeader);
+        generate.StatusCode.Should().Be(HttpStatusCode.OK);
+
+        // The owner sits at the top of the reporting line - no direct manager.
+        var submit = await SendAsync(HttpMethod.Post, _owner.Host, "/api/v1/leave/requests",
+            new
+            {
+                leaveTypeId,
+                startAt = $"{leaveDay:yyyy-MM-dd}T09:00:00Z",
+                endAt = $"{leaveDay:yyyy-MM-dd}T18:00:00Z",
+                reason = "Family event",
+                fileRecordIds = Array.Empty<Guid>()
+            },
+            cookie: _owner.SessionCookie, csrfToken: _owner.CsrfHeader);
+        submit.StatusCode.Should().Be(HttpStatusCode.OK, await submit.Content.ReadAsStringAsync());
+        var requestId = (await ReadJsonAsync(submit)).GetProperty("id").GetGuid();
+
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+            var approvers = await db.LeaveRequestApprovers
+                .Where(x => x.TenantId == _tenantId && x.LeaveRequestId == requestId)
+                .Select(x => x.ApproverEmployeeId)
+                .ToListAsync();
+            approvers.Should().ContainSingle().Which.Should().Be(hrEmployeeId);
+        }
+
+        var pending = await SendAsync(HttpMethod.Get, _owner.Host, "/api/v1/leave/requests/pending-approvals",
+            body: null, cookie: hr.SessionCookie, csrfToken: hr.CsrfHeader);
+        pending.StatusCode.Should().Be(HttpStatusCode.OK, await pending.Content.ReadAsStringAsync());
+        var pendingJson = await ReadJsonAsync(pending);
+        var pendingItems = pendingJson.ValueKind == JsonValueKind.Array ? pendingJson : pendingJson.GetProperty("items");
+        pendingItems.EnumerateArray().Should().Contain(x => x.GetProperty("requestId").GetGuid() == requestId);
+
+        var approve = await SendAsync(HttpMethod.Post, _owner.Host, $"/api/v1/leave/requests/{requestId}/approve",
+            new { comment = (string?)null },
+            cookie: hr.SessionCookie, csrfToken: hr.CsrfHeader);
+        approve.StatusCode.Should().Be(HttpStatusCode.OK, await approve.Content.ReadAsStringAsync());
+        (await ReadJsonAsync(approve)).GetProperty("status").GetString().Should().Be("approved");
+    }
+
+    [Fact]
+    public async Task AllRequestsLedger_ShowsApprover_AndOnlyTheAssignedApproverCanDecide()
+    {
+        var leaveTypeId = await CreateLeaveTypeAsync("Annual Leave", "AL");
+        var legalEntityId = await GetPrimaryLegalEntityIdAsync(_tenantId);
+        await EnsureWorkWindowAsync(legalEntityId);
+        await CreatePolicyAsync("Annual Policy", leaveTypeId, legalEntityId, 17.5m);
+        await EnsureEmployeeInLegalEntityAsync(_tenantId, legalEntityId);
+        var hr = await SeedAndLoginFixtureUserAsync(
+            _tenantId, _owner.Host, "hr@leave-req.test", permissionCodes: ["leave:manage", "leave:approve"], roleName: "HR Manager");
+        var hrEmployeeId = await AddEmployeeForUserAsync(_tenantId, legalEntityId, "hr@leave-req.test", "EMP-LEAVE-HR");
+
+        var leaveDay = FutureWeekdayUtc();
+        var generate = await SendAsync(HttpMethod.Post, _owner.Host, "/api/v1/leave/entitlements/generate",
+            new { year = leaveDay.Year, legalEntityId },
+            cookie: _owner.SessionCookie, csrfToken: _owner.CsrfHeader);
+        generate.StatusCode.Should().Be(HttpStatusCode.OK);
+
+        // Owner is top of the org, so the request falls back to the HR manager (Hema Rajan).
+        var submit = await SendAsync(HttpMethod.Post, _owner.Host, "/api/v1/leave/requests",
+            new
+            {
+                leaveTypeId,
+                startAt = $"{leaveDay:yyyy-MM-dd}T09:00:00Z",
+                endAt = $"{leaveDay:yyyy-MM-dd}T18:00:00Z",
+                reason = "Family event",
+                fileRecordIds = Array.Empty<Guid>()
+            },
+            cookie: _owner.SessionCookie, csrfToken: _owner.CsrfHeader);
+        submit.StatusCode.Should().Be(HttpStatusCode.OK, await submit.Content.ReadAsStringAsync());
+        var requestId = (await ReadJsonAsync(submit)).GetProperty("id").GetGuid();
+
+        // All Requests ledger names the approver.
+        var all = await SendAsync(HttpMethod.Get, _owner.Host, "/api/v1/leave/requests/all",
+            body: null, cookie: _owner.SessionCookie, csrfToken: _owner.CsrfHeader);
+        all.StatusCode.Should().Be(HttpStatusCode.OK, await all.Content.ReadAsStringAsync());
+        var row = (await ReadJsonAsync(all)).EnumerateArray().Single(x => x.GetProperty("requestId").GetGuid() == requestId);
+        row.GetProperty("approverNames").EnumerateArray().Select(x => x.GetString()).Should().Equal("Hema Rajan");
+
+        // The approver-only endpoint still refuses a non-assigned viewer...
+        var ownerApproval = await SendAsync(HttpMethod.Get, _owner.Host, $"/api/v1/leave/requests/{requestId}/approval",
+            body: null, cookie: _owner.SessionCookie, csrfToken: _owner.CsrfHeader);
+        ownerApproval.StatusCode.Should().Be(HttpStatusCode.Forbidden);
+
+        // ...but the ledger detail opens read-only for the owner and for a leave:read-only user.
+        var ownerDetail = await SendAsync(HttpMethod.Get, _owner.Host, $"/api/v1/leave/requests/{requestId}/detail",
+            body: null, cookie: _owner.SessionCookie, csrfToken: _owner.CsrfHeader);
+        ownerDetail.StatusCode.Should().Be(HttpStatusCode.OK, await ownerDetail.Content.ReadAsStringAsync());
+        var ownerDetailJson = await ReadJsonAsync(ownerDetail);
+        ownerDetailJson.GetProperty("canDecide").GetBoolean().Should().BeFalse();
+        ownerDetailJson.GetProperty("approvers").EnumerateArray()
+            .Should().ContainSingle(a => a.GetProperty("approverEmployeeId").GetGuid() == hrEmployeeId);
+
+        var readerDetail = await SendAsync(HttpMethod.Get, _owner.Host, $"/api/v1/leave/requests/{requestId}/detail",
+            body: null, cookie: _noManage.SessionCookie, csrfToken: _noManage.CsrfHeader);
+        readerDetail.StatusCode.Should().Be(HttpStatusCode.OK, await readerDetail.Content.ReadAsStringAsync());
+        (await ReadJsonAsync(readerDetail)).GetProperty("canDecide").GetBoolean().Should().BeFalse();
+
+        // The assigned approver can decide; once approved nobody can.
+        var hrApproval = await SendAsync(HttpMethod.Get, _owner.Host, $"/api/v1/leave/requests/{requestId}/approval",
+            body: null, cookie: hr.SessionCookie, csrfToken: hr.CsrfHeader);
+        hrApproval.StatusCode.Should().Be(HttpStatusCode.OK, await hrApproval.Content.ReadAsStringAsync());
+        (await ReadJsonAsync(hrApproval)).GetProperty("canDecide").GetBoolean().Should().BeTrue();
+
+        var ownerApprove = await SendAsync(HttpMethod.Post, _owner.Host, $"/api/v1/leave/requests/{requestId}/approve",
+            new { comment = (string?)null },
+            cookie: _owner.SessionCookie, csrfToken: _owner.CsrfHeader);
+        ownerApprove.StatusCode.Should().Be(HttpStatusCode.Forbidden);
+
+        var approve = await SendAsync(HttpMethod.Post, _owner.Host, $"/api/v1/leave/requests/{requestId}/approve",
+            new { comment = (string?)null },
+            cookie: hr.SessionCookie, csrfToken: hr.CsrfHeader);
+        approve.StatusCode.Should().Be(HttpStatusCode.OK, await approve.Content.ReadAsStringAsync());
+
+        var afterApproval = await SendAsync(HttpMethod.Get, _owner.Host, $"/api/v1/leave/requests/{requestId}/approval",
+            body: null, cookie: hr.SessionCookie, csrfToken: hr.CsrfHeader);
+        (await ReadJsonAsync(afterApproval)).GetProperty("canDecide").GetBoolean().Should().BeFalse();
+    }
+
+    [Fact]
+    public async Task ChangeDecision_ApprovedToRejectedAndBack_MovesTheBalanceEachTime()
+    {
+        var leaveTypeId = await CreateLeaveTypeAsync("Annual Leave", "AL");
+        var legalEntityId = await GetPrimaryLegalEntityIdAsync(_tenantId);
+        await EnsureWorkWindowAsync(legalEntityId);
+        await CreatePolicyAsync("Annual Policy", leaveTypeId, legalEntityId, 17.5m);
+        var ownerEmployeeId = await EnsureEmployeeInLegalEntityAsync(_tenantId, legalEntityId);
+        var hr = await SeedAndLoginFixtureUserAsync(
+            _tenantId, _owner.Host, "hr@leave-req.test", permissionCodes: ["leave:manage", "leave:approve"], roleName: "HR Manager");
+        await AddEmployeeForUserAsync(_tenantId, legalEntityId, "hr@leave-req.test", "EMP-LEAVE-HR");
+
+        var leaveDay = FutureWeekdayUtc();
+        var generate = await SendAsync(HttpMethod.Post, _owner.Host, "/api/v1/leave/entitlements/generate",
+            new { year = leaveDay.Year, legalEntityId },
+            cookie: _owner.SessionCookie, csrfToken: _owner.CsrfHeader);
+        generate.StatusCode.Should().Be(HttpStatusCode.OK);
+
+        var submit = await SendAsync(HttpMethod.Post, _owner.Host, "/api/v1/leave/requests",
+            new
+            {
+                leaveTypeId,
+                startAt = $"{leaveDay:yyyy-MM-dd}T09:00:00Z",
+                endAt = $"{leaveDay:yyyy-MM-dd}T18:00:00Z",
+                reason = "Family event",
+                fileRecordIds = Array.Empty<Guid>()
+            },
+            cookie: _owner.SessionCookie, csrfToken: _owner.CsrfHeader);
+        submit.StatusCode.Should().Be(HttpStatusCode.OK, await submit.Content.ReadAsStringAsync());
+        var requestId = (await ReadJsonAsync(submit)).GetProperty("id").GetGuid();
+
+        var approve = await SendAsync(HttpMethod.Post, _owner.Host, $"/api/v1/leave/requests/{requestId}/approve",
+            new { comment = (string?)null },
+            cookie: hr.SessionCookie, csrfToken: hr.CsrfHeader);
+        approve.StatusCode.Should().Be(HttpStatusCode.OK, await approve.Content.ReadAsStringAsync());
+        var usedAfterApprove = await UsedHoursAsync(ownerEmployeeId, leaveTypeId);
+        usedAfterApprove.Should().BeGreaterThan(0m);
+
+        var detail = await SendAsync(HttpMethod.Get, _owner.Host, $"/api/v1/leave/requests/{requestId}/approval",
+            body: null, cookie: hr.SessionCookie, csrfToken: hr.CsrfHeader);
+        (await ReadJsonAsync(detail)).GetProperty("canChangeDecision").GetBoolean().Should().BeTrue();
+
+        var toRejected = await SendAsync(HttpMethod.Post, _owner.Host, $"/api/v1/leave/requests/{requestId}/change-decision",
+            new { decision = "reject", comment = "Team is short that week" },
+            cookie: hr.SessionCookie, csrfToken: hr.CsrfHeader);
+        toRejected.StatusCode.Should().Be(HttpStatusCode.OK, await toRejected.Content.ReadAsStringAsync());
+        (await ReadJsonAsync(toRejected)).GetProperty("status").GetString().Should().Be("rejected");
+        (await UsedHoursAsync(ownerEmployeeId, leaveTypeId)).Should().Be(0m);
+
+        // Only the approver who decided may change it.
+        var ownerChange = await SendAsync(HttpMethod.Post, _owner.Host, $"/api/v1/leave/requests/{requestId}/change-decision",
+            new { decision = "approve", comment = (string?)null },
+            cookie: _owner.SessionCookie, csrfToken: _owner.CsrfHeader);
+        ownerChange.StatusCode.Should().Be(HttpStatusCode.Forbidden);
+
+        var toApproved = await SendAsync(HttpMethod.Post, _owner.Host, $"/api/v1/leave/requests/{requestId}/change-decision",
+            new { decision = "approve", comment = "Cover found" },
+            cookie: hr.SessionCookie, csrfToken: hr.CsrfHeader);
+        toApproved.StatusCode.Should().Be(HttpStatusCode.OK, await toApproved.Content.ReadAsStringAsync());
+        (await ReadJsonAsync(toApproved)).GetProperty("status").GetString().Should().Be("approved");
+        (await UsedHoursAsync(ownerEmployeeId, leaveTypeId)).Should().Be(usedAfterApprove);
+    }
+
+    private async Task<decimal> UsedHoursAsync(Guid employeeId, Guid leaveTypeId)
+    {
+        using var scope = _factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+        return await db.LeaveEntitlements
+            .Where(x => x.TenantId == _tenantId && x.EmployeeId == employeeId && x.LeaveTypeId == leaveTypeId)
+            .Select(x => x.UsedHours)
+            .SingleAsync();
+    }
+
+    private async Task<Guid> AddEmployeeForUserAsync(Guid tenantId, Guid legalEntityId, string email, string employeeNumber)
+    {
+        using var scope = _factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+        var userId = await db.Users
+            .Where(u => u.TenantId == tenantId && u.Email == email)
+            .Select(u => u.Id)
+            .SingleAsync();
+
+        var employeeId = Guid.NewGuid();
+        db.Employees.Add(new ONEVO.Domain.Features.CoreHr.Entities.Employee
+        {
+            Id = employeeId,
+            TenantId = tenantId,
+            UserId = userId,
+            EmployeeNumber = employeeNumber,
+            FirstName = "Hema",
+            LastName = "Rajan",
+            Email = email,
+            LegalEntityId = legalEntityId,
+            HireDate = new DateOnly(2024, 1, 1),
+            EmploymentStatusId = 1
+        });
+        await db.SaveChangesAsync();
+        return employeeId;
+    }
+
+    private async Task<Guid> CreateLeaveTypeAsync(string name, string code)
     {
         var response = await SendAsync(HttpMethod.Post, _owner.Host, "/api/v1/leave/types",
             new
@@ -180,20 +423,12 @@ public class LeaveRequestsIntegrationTests : IAsyncLifetime
                 name,
                 code,
                 description = "integration fixture type",
-                category = "custom",
+                color = "#4F46E5",
                 isPaid = true,
-                requiresApproval,
-                requiresDocument = false,
-                documentRequiredAfterDays = (int?)null,
-                acceptedDocumentTypes = Array.Empty<string>(),
-                maxConsecutiveDays = (int?)null,
-                defaultDaysPerYear = 20m,
-                carryForwardAllowed = true,
-                maxCarryForwardDays = 5m,
-                carryForwardExpiryMonths = 3,
-                proRataForNewJoiners = true,
                 applicableGender = "all",
-                minimumNoticeDays = 0
+                requiresDocument = false,
+                documentRequiredAfterHours = (decimal?)null,
+                acceptedDocumentTypes = Array.Empty<string>()
             },
             cookie: _owner.SessionCookie,
             csrfToken: _owner.CsrfHeader);
@@ -292,48 +527,30 @@ public class LeaveRequestsIntegrationTests : IAsyncLifetime
         await db.SaveChangesAsync();
     }
 
+    /// <summary>One policy for one leave type, assigned to the legal entity. Amounts are hours (8 per day).</summary>
     private static object CreatePolicyBody(
         string name, Guid leaveTypeId, Guid legalEntityId, bool confirm, decimal annualEntitlementDays = 20m) => new
     {
+        leaveTypeId,
         name,
         description = "integration fixture policy",
-        country = "LK",
-        jobLevel = (string?)null,
-        accrualMethod = "annual",
-        accrualStart = "immediately",
-        accrualAfterNMonths = (int?)null,
-        prorationMethod = "calendar_days",
-        probationRestriction = false,
-        minimumTenureMonths = 0,
-        firstYearReducedPercent = (decimal?)null,
-        minimumNoticeDays = 7,
-        maxConsecutiveDays = 14,
-        minDaysPerRequest = 0.5m,
-        maxTeamAbsencePercent = 20m,
-        approvalMode = "any_one",
-        effectiveFrom = "2026-01-01",
-        leaveTypes = new[]
+        rules = new
         {
-            new
-            {
-                leaveTypeId,
-                annualEntitlementDays,
-                monthlyAccrualDays = (decimal?)null,
-                carryForwardMaxDays = 5m,
-                carryForwardExpiryMonths = 3
-            }
+            amountHours = annualEntitlementDays * 8m,
+            amountPeriod = "year",
+            carryForwardCapHours = 40m,
+            carryForwardExpiryMonths = 3,
+            eligibleFrom = "immediately",
+            eligibleAfterMonths = (int?)null,
+            minimumNoticeDays = 7,
+            minRequestHours = 4m,
+            maxRequestHours = 112m,
+            maxTeamAbsencePercent = 20m,
+            approvalMode = "any_one",
+            blackouts = new[] { new { startDate = "2026-12-24", endDate = "2026-12-26", reason = "Peak closure" } }
         },
-        blackoutPeriods = new[]
-        {
-            new
-            {
-                startDate = "2026-12-24",
-                endDate = "2026-12-26",
-                reason = "Peak closure"
-            }
-        },
-        legalEntityIds = new[] { legalEntityId },
-        confirmReplaceExistingLegalEntityAssignments = confirm
+        assignments = new[] { new { targetKind = "legal_entity", targetId = legalEntityId } },
+        replaceConflicts = confirm
     };
 
     private sealed record TenantSession(string Host, string SessionCookie, string CsrfHeader);
@@ -417,8 +634,8 @@ public class LeaveRequestsIntegrationTests : IAsyncLifetime
         exchangeResponse.StatusCode.Should().Be(HttpStatusCode.OK, exchangeJson.ToString());
         var cookies = ParseSetCookies(exchangeResponse);
 
-        var sessionCookie = $"onevo_session={cookies["onevo_session"]}; onevo_csrf={cookies["onevo_csrf"]}";
-        var csrfHeader = Uri.UnescapeDataString(cookies["onevo_csrf"]);
+        var sessionCookie = $"crownus_session={cookies["crownus_session"]}; crownus_csrf={cookies["crownus_csrf"]}";
+        var csrfHeader = Uri.UnescapeDataString(cookies["crownus_csrf"]);
         return new TenantSession(host, sessionCookie, csrfHeader);
     }
 

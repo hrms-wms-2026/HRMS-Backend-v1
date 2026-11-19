@@ -10,13 +10,18 @@ public class WorkTaskConfiguration : IEntityTypeConfiguration<WorkTask>
 {
     public void Configure(EntityTypeBuilder<WorkTask> builder)
     {
-        builder.ToTable("tasks");
+        builder.ToTable("tasks", table => table.HasTrigger("trg_tasks_module_hour_summary"));
         builder.HasKey(t => t.Id);
         builder.Property(t => t.ShortId).HasMaxLength(50).IsRequired();
         builder.Property(t => t.Title).HasMaxLength(500).IsRequired();
         builder.Property(t => t.Priority).HasMaxLength(20).IsRequired();
-        builder.Property(t => t.EstimatedHours).HasColumnType("numeric(18,2)");
-        builder.Property(t => t.CompletedHours).HasColumnType("numeric(18,2)");
+        builder.Property(t => t.TaskKind).HasMaxLength(40).HasDefaultValue(WorkTaskKinds.Standard).IsRequired();
+        // Fail-closed: no ordinary task query sees a meeting occurrence (Phase 2 spec 2.2). Named, so a meeting-aware
+        // query can ignore just this one; the tenant filter is then also registered by name (ApplicationDbContext).
+        builder.HasQueryFilter(WorkTaskQueryFilters.ExcludeMeetings, t => t.TaskKind != WorkTaskKinds.Meeting);
+        builder.Property(t => t.VisibilityScope).HasMaxLength(20).HasDefaultValue(WorkTaskVisibilityScopes.Module).IsRequired();
+        builder.Property(t => t.EstimatedHours).HasColumnType("decimal(18,2)");
+        builder.Property(t => t.CompletedHours).HasColumnType("decimal(18,2)");
 
         builder.HasIndex(t => new { t.TenantId, t.ObjectiveId, t.StatusId })
             .HasDatabaseName("ix_tasks_tenant_id_objective_id_status_id");
@@ -27,6 +32,8 @@ public class WorkTaskConfiguration : IEntityTypeConfiguration<WorkTask>
             .HasDatabaseName("ix_tasks_tenant_id_project_id_category_id");
         builder.HasIndex(t => new { t.TenantId, t.ParentTaskId })
             .HasDatabaseName("ix_tasks_tenant_id_parent_task_id");
+        builder.HasIndex(t => new { t.TenantId, t.ProjectId, t.VisibilityScope })
+            .HasDatabaseName("ix_tasks_tenant_id_project_id_visibility_scope");
 
         builder.HasOne<TaskStatusEntity>().WithMany().HasForeignKey(t => t.StatusId).OnDelete(DeleteBehavior.Restrict);
         builder.HasOne<Sprint>().WithMany().HasForeignKey(t => t.SprintId).OnDelete(DeleteBehavior.Restrict);

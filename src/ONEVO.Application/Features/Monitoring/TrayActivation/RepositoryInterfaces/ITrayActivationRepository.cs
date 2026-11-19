@@ -29,6 +29,14 @@ public interface ITrayActivationRepository
     Task AddRefreshTokenAsync(TrayDeviceRefreshToken token, CancellationToken ct);
 
     Task<TrayDeviceRefreshToken?> FindActiveRefreshTokenAsync(string tokenHash, CancellationToken ct);
+
+    /// <summary>
+    /// A refresh token rotated at or after <paramref name="rotatedSince"/> whose replacement has not
+    /// itself been used — i.e. the client most likely never received the rotation response. Null
+    /// when the token is unknown, expired, revoked for another reason, or a later rotation exists.
+    /// </summary>
+    Task<TrayDeviceRefreshToken?> FindUnconsumedRotatedRefreshTokenAsync(
+        string tokenHash, DateTimeOffset rotatedSince, CancellationToken ct);
     Task RevokeRefreshTokenAsync(TrayDeviceRefreshToken token, string reason, CancellationToken ct);
     Task RevokeAllRefreshTokensForDeviceAsync(Guid deviceRegistrationId, string reason, CancellationToken ct);
 
@@ -43,6 +51,12 @@ public interface ITrayActivationRepository
     Task<TrayDeviceRegistration?> FindActiveDeviceForUserAsync(Guid userId, Guid tenantId, CancellationToken ct);
     Task UpdateDeviceLastSeenAsync(Guid deviceRegistrationId, DateTimeOffset lastSeenAt, CancellationToken ct);
     Task DeactivateDeviceAsync(Guid deviceRegistrationId, DateTimeOffset deactivatedAt, CancellationToken ct);
+
+    /// <summary>Undoes DeactivateDeviceAsync (an undone device-change approval). The revoked refresh tokens stay
+    /// revoked: the old device signs in again.</summary>
+    Task ReactivateDeviceAsync(Guid deviceRegistrationId, CancellationToken ct);
+
+    Task<TrayDeviceRegistration?> FindDeviceAsync(Guid deviceRegistrationId, Guid tenantId, CancellationToken ct);
 
     /// <summary>HR profile for display purposes only — returns null if the user has no linked Employee row yet.</summary>
     Task<TrayEmployeeProfile?> FindEmployeeProfileAsync(

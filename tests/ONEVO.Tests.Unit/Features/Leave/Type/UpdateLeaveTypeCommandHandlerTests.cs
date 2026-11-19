@@ -30,7 +30,7 @@ public class UpdateLeaveTypeCommandHandlerTests
         var entity = new LeaveType
         {
             Id = _leaveTypeId, TenantId = _tenantId, Name = "Annual Leave", Code = "ANNUAL",
-            Category = LeaveTypeCategories.Annual, DefaultDaysPerYear = 20m,
+            Color = "#3B82F6",
             ApplicableGender = LeaveGenderRestrictions.All, IsActive = true
         };
         _repoMock.Setup(r => r.GetByIdAsync(_tenantId, _leaveTypeId, It.IsAny<CancellationToken>())).ReturnsAsync(entity);
@@ -38,14 +38,15 @@ public class UpdateLeaveTypeCommandHandlerTests
 
         var handler = new UpdateLeaveTypeCommandHandler(_repoMock.Object, _currentUserMock.Object, _dateTimeProviderMock.Object);
         var command = new UpdateLeaveTypeCommand(
-            _leaveTypeId, "Annual Leave (Updated)", "Updated description", LeaveTypeCategories.Annual,
-            true, true, false, null, [], null, 22m, true, 5m, 3, true, LeaveGenderRestrictions.All, 0);
+            _leaveTypeId, "Annual Leave (Updated)", "Updated description", "#EF4444",
+            true, LeaveGenderRestrictions.All, true, 16m, ["pdf"]);
 
         var result = await handler.Handle(command, CancellationToken.None);
 
         Assert.True(result.IsSuccess);
         Assert.Equal("Annual Leave (Updated)", result.Value!.Name);
-        Assert.Equal(22m, result.Value.DefaultDaysPerYear);
+        Assert.Equal("#EF4444", result.Value.Color);
+        Assert.Equal(16m, result.Value.DocumentRequiredAfterHours);
         Assert.Equal("ANNUAL", result.Value.Code);
         _repoMock.Verify(r => r.Update(entity), Times.Once);
         _repoMock.Verify(r => r.SaveChangesAsync(It.IsAny<CancellationToken>()), Times.Once);
@@ -57,7 +58,7 @@ public class UpdateLeaveTypeCommandHandlerTests
         _repoMock.Setup(r => r.GetByIdAsync(_tenantId, _leaveTypeId, It.IsAny<CancellationToken>())).ReturnsAsync((LeaveType?)null);
         var handler = new UpdateLeaveTypeCommandHandler(_repoMock.Object, _currentUserMock.Object, _dateTimeProviderMock.Object);
         var command = new UpdateLeaveTypeCommand(
-            _leaveTypeId, "X", null, LeaveTypeCategories.Custom, true, true, false, null, [], null, 5m, false, null, null, false, LeaveGenderRestrictions.All, 0);
+            _leaveTypeId, "X", null, "#3B82F6", true, LeaveGenderRestrictions.All, false, null, []);
 
         var result = await handler.Handle(command, CancellationToken.None);
 

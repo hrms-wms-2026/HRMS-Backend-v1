@@ -35,7 +35,7 @@ public class EfTrayActivationRepository : ITrayActivationRepository
     {
         var now = _clock.UtcNow;
         return await _db.TrayActivationCodes
-            .FromSqlInterpolated($"SELECT * FROM tray_activation_codes WHERE code_hash = {codeHash} AND used_at IS NULL AND expires_at > {now} FOR UPDATE")
+            .FromSqlInterpolated($"SELECT * FROM tray_activation_codes WITH (UPDLOCK, ROWLOCK) WHERE code_hash = {codeHash} AND used_at IS NULL AND expires_at > {now}")
             .AsTracking()
             .FirstOrDefaultAsync(ct);
     }
@@ -107,7 +107,7 @@ public class EfTrayActivationRepository : ITrayActivationRepository
         string deviceCodeHash, CancellationToken ct)
     {
         return await _db.TrayDeviceAuthorizations
-            .FromSqlInterpolated($"SELECT * FROM tray_device_authorizations WHERE device_code_hash = {deviceCodeHash} FOR UPDATE")
+            .FromSqlInterpolated($"SELECT * FROM tray_device_authorizations WITH (UPDLOCK, ROWLOCK) WHERE device_code_hash = {deviceCodeHash}")
             .AsTracking()
             .FirstOrDefaultAsync(ct);
     }
@@ -129,6 +129,30 @@ public class EfTrayActivationRepository : ITrayActivationRepository
             .FirstOrDefaultAsync(t => t.TokenHash == tokenHash
                 && !t.IsRevoked
                 && t.ExpiresAt > now, ct);
+    }
+
+    public async Task<TrayDeviceRefreshToken?> FindUnconsumedRotatedRefreshTokenAsync(
+        string tokenHash, DateTimeOffset rotatedSince, CancellationToken ct)
+    {
+        var now = _clock.UtcNow;
+        var candidate = await _db.TrayDeviceRefreshTokens
+            .FirstOrDefaultAsync(t => t.TokenHash == tokenHash
+                && t.IsRevoked
+                && t.RevokedReason == TrayDeviceRefreshToken.RotatedReason
+                && t.RevokedAt >= rotatedSince
+                && t.ExpiresAt > now, ct);
+        if (candidate is null)
+            return null;
+
+        // If any later token on this device has been rotated too, the client did receive (and
+        // use) the replacement — presenting this one again is reuse, not a lost response.
+        var replacementUsed = await _db.TrayDeviceRefreshTokens
+            .AnyAsync(t => t.DeviceRegistrationId == candidate.DeviceRegistrationId
+                && t.Id != candidate.Id
+                && t.RevokedReason == TrayDeviceRefreshToken.RotatedReason
+                && t.RevokedAt > candidate.RevokedAt, ct);
+
+        return replacementUsed ? null : candidate;
     }
 
     public async Task RevokeRefreshTokenAsync(TrayDeviceRefreshToken token, string reason, CancellationToken ct)
@@ -200,6 +224,19 @@ public class EfTrayActivationRepository : ITrayActivationRepository
                 .SetProperty(d => d.IsActive, false)
                 .SetProperty(d => d.DeactivatedAt, deactivatedAt), ct);
     }
+
+    public async Task ReactivateDeviceAsync(Guid deviceRegistrationId, CancellationToken ct)
+    {
+        await _db.TrayDeviceRegistrations
+            .Where(d => d.Id == deviceRegistrationId)
+            .ExecuteUpdateAsync(s => s
+                .SetProperty(d => d.IsActive, true)
+                .SetProperty(d => d.DeactivatedAt, (DateTimeOffset?)null), ct);
+    }
+
+    public async Task<TrayDeviceRegistration?> FindDeviceAsync(Guid deviceRegistrationId, Guid tenantId, CancellationToken ct)
+        => await _db.TrayDeviceRegistrations.AsNoTracking()
+            .FirstOrDefaultAsync(d => d.Id == deviceRegistrationId && d.TenantId == tenantId, ct);
 
     public async Task<TrayEmployeeProfile?> FindEmployeeProfileAsync(
         Guid userId, Guid tenantId, Guid? legalEntityId, CancellationToken ct)

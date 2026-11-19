@@ -128,6 +128,19 @@ public sealed class UpdateCalendarEventCommandHandlerTests
     }
 
     [Fact]
+    public async Task Handle_InvalidMeetingLink_ReturnsFailure()
+    {
+        var sut = BuildSut();
+
+        var result = await sut.Handle(
+            new UpdateCalendarEventCommand(EventId, "Title", null, Start, Start.AddHours(1), false, null, "not a url", null, CalendarRecurrences.None),
+            CancellationToken.None);
+
+        Assert.False(result.IsSuccess);
+        Assert.Equal(400, result.StatusCode);
+    }
+
+    [Fact]
     public async Task Handle_Owner_DoesNotChangeTimezone()
     {
         var sut = BuildSut();

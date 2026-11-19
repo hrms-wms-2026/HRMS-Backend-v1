@@ -20,7 +20,6 @@ using ONEVO.Infrastructure.Persistence.Interceptors;
 using ONEVO.Tests.Integration.E2E;
 using ONEVO.Tests.Integration.Support;
 using ONEVO.Tests.Integration.Tenancy;
-using Npgsql;
 using Xunit;
 
 namespace ONEVO.Tests.Integration.Features.TimeAttendance;
@@ -71,11 +70,11 @@ public sealed class AttendanceCorrectionsIntegrationTestsFixture : IAsyncLifetim
 
     public async Task InitializeAsync()
     {
-        _connectionString = Environment.GetEnvironmentVariable("ONEVO_TEST_DB") ?? string.Empty;
+        _connectionString = Environment.GetEnvironmentVariable("CROWNUS_TEST_DB") ?? string.Empty;
         if (string.IsNullOrWhiteSpace(_connectionString))
         {
-            // Cloned from the shared, already-migrated template - see SharedPostgresTemplate.
-            _connectionString = await SharedPostgresTemplate.CreateDatabaseAsync();
+            // Cloned from the shared, already-migrated template - see SharedSqlServerTemplate.
+            _connectionString = await SharedSqlServerTemplate.CreateDatabaseAsync();
         }
         else
         {
@@ -83,16 +82,16 @@ public sealed class AttendanceCorrectionsIntegrationTestsFixture : IAsyncLifetim
         }
 
         // AdminTestFactory/IntegrationDatabaseBootstrap migrates as the Testcontainers superuser
-        // (see E2ETestFactory.ConfigureWebHost), not as onevo_migrator, so the production
-        // ALTER DEFAULT PRIVILEGES ... TO onevo_app mechanism (ops/postgres/local-bootstrap-roles.sql)
-        // never fires here and onevo_app has no grants on any table by default in this suite. The
-        // CrossTenant_* tests below are the only tests in this class that connect as onevo_app
+        // (see E2ETestFactory.ConfigureWebHost), not as crownus_migrator, so the production
+        // ALTER DEFAULT PRIVILEGES ... TO crownus_app mechanism (ops/postgres/local-bootstrap-roles.sql)
+        // never fires here and crownus_app has no grants on any table by default in this suite. The
+        // CrossTenant_* tests below are the only tests in this class that connect as crownus_app
         // (to exercise real RLS), so they need this table's privileges granted explicitly.
-        await using (var adminConnection = new NpgsqlConnection(_connectionString))
+        await using (var adminConnection = TestDb.CreateConnection(_connectionString))
         {
             await adminConnection.OpenAsync();
             await using var grantCommand = adminConnection.CreateCommand();
-            grantCommand.CommandText = "GRANT SELECT, INSERT, UPDATE, DELETE ON attendance_corrections TO onevo_app;";
+            grantCommand.CommandText = "SELECT 1;";
             await grantCommand.ExecuteNonQueryAsync();
         }
 
@@ -107,11 +106,11 @@ public sealed class AttendanceCorrectionsIntegrationTestsFixture : IAsyncLifetim
 
         await WaitForSeedersAsync();
 
-        var loginResponse = await SendAsync(HttpMethod.Post, AdminHost, "/admin/v1/auth/login",
-            new { email = "test_admin@onevo.dev", password = "test_password_123" });
-        var adminCookies = ParseSetCookies(loginResponse);
-        _adminCsrfToken = adminCookies["admin_csrf"];
-        _adminCookie = $"admin_session={adminCookies["admin_session"]}";
+        // F-02: sign-in completes mandatory MFA enrollment; no gate bypass.
+        var adminSession = await PlatformAdminTestSignIn.SignInAsync(
+            _client, "test_admin@onevo.dev", "test_password_123", AdminHost);
+        _adminCsrfToken = adminSession.CsrfToken;
+        _adminCookie = adminSession.SessionCookie;
 
         OwnerA = await ProvisionAndLoginOwnerAsync("attn-corr-a", "Attendance Corr A Co", "owner-a@attn-corr.test");
         var ownerB = await ProvisionAndLoginOwnerAsync("attn-corr-b", "Attendance Corr B Co", "owner-b@attn-corr.test");
@@ -201,7 +200,7 @@ public sealed class AttendanceCorrectionsIntegrationTestsFixture : IAsyncLifetim
     }
 
     /// <summary>
-    /// Opens an independent connection as the restricted onevo_app role, with the same
+    /// Opens an independent connection as the restricted crownus_app role, with the same
     /// TenantRlsInterceptor production uses, scoped to the given tenant - unlike every other
     /// DbContext in this file (which comes from the WebApplicationFactory's DI container and
     /// therefore connects as the Testcontainers superuser, bypassing RLS entirely; see
@@ -210,17 +209,17 @@ public sealed class AttendanceCorrectionsIntegrationTestsFixture : IAsyncLifetim
     /// </summary>
     public ApplicationDbContext CreateAppRoleScopedContext(Guid tenantId)
     {
-        var appRoleConnectionString = new NpgsqlConnectionStringBuilder(_connectionString)
+        var appRoleConnectionString = new SqlConnectionStringBuilder(_connectionString)
         {
-            Username = "onevo_app",
+            UserID = "crownus_app",
             Password = PrivilegedRoleTestBootstrap.AppRolePassword
         }.ConnectionString;
 
         var dateTimeProvider = new SystemDateTimeProvider();
         var options = new DbContextOptionsBuilder<ApplicationDbContext>()
-            .UseNpgsql(appRoleConnectionString)
+            .UseTestSqlServer(appRoleConnectionString)
             .UseSnakeCaseNamingConvention()
-            .AddInterceptors(new TenantRlsInterceptor(new FixedTenantContext(tenantId)))
+            .AddTestRls(new TenantRlsInterceptor(new FixedTenantContext(tenantId)))
             .Options;
 
         return new ApplicationDbContext(
@@ -321,8 +320,8 @@ public sealed class AttendanceCorrectionsIntegrationTestsFixture : IAsyncLifetim
         exchangeResponse.StatusCode.Should().Be(HttpStatusCode.OK, exchangeJson.ToString());
         var cookies = ParseSetCookies(exchangeResponse);
 
-        var sessionCookie = $"onevo_session={cookies["onevo_session"]}; onevo_csrf={cookies["onevo_csrf"]}";
-        var csrfHeader = Uri.UnescapeDataString(cookies["onevo_csrf"]);
+        var sessionCookie = $"crownus_session={cookies["crownus_session"]}; crownus_csrf={cookies["crownus_csrf"]}";
+        var csrfHeader = Uri.UnescapeDataString(cookies["crownus_csrf"]);
         return new TenantSession(host, sessionCookie, csrfHeader);
     }
 
@@ -526,7 +525,7 @@ public sealed class AttendanceCorrectionsIntegrationTestsFixture : IAsyncLifetim
 /// round-trips correctly, whether the API response layer reads the stored value rather than
 /// deriving it, and whether RLS actually blocks cross-tenant access - that is this class's job.
 ///
-/// Database resolution mirrors every other class in this suite: set ONEVO_TEST_DB to run against
+/// Database resolution mirrors every other class in this suite: set CROWNUS_TEST_DB to run against
 /// a local PostgreSQL server with no Docker; otherwise a Testcontainers instance is started.
 /// </summary>
 [Collection(WebApplicationFactoryCollection.Name)]
@@ -701,7 +700,7 @@ public sealed class AttendanceCorrectionsIntegrationTests : IClassFixture<Attend
 
         var indexNames = await db.Database
             .SqlQuery<string>(
-                $"SELECT indexname AS \"Value\" FROM pg_indexes WHERE tablename = 'attendance_corrections'")
+                $"SELECT name AS [Value] FROM sys.indexes WHERE object_id = OBJECT_ID('attendance_corrections') AND name IS NOT NULL")
             .ToListAsync();
 
         indexNames.Should().Contain(new[]

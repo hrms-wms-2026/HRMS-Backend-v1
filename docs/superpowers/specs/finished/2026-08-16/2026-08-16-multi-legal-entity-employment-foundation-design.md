@@ -64,7 +64,7 @@ Self-Service Profile work is already merged into this base):
   `Application/Features/Auth/Permission/Helpers/DerivedPermissions.cs`'s role-derivation
   lists — not orphaned, not touched by this spec. Bank-detail read/write reusing
   `employees:write` is yesterday's deliberate, shipped decision
-  (`specs/next/2026-08-15-employee-self-service-profile-backend-design.md` §6) — not touched.
+  (`specs/finished/2026-08-15/2026-08-15-employee-self-service-profile-backend-design.md` §6) — not touched.
   `EmployeesController` invitation-adjacent actions (`Resend`) currently sit on
   `[RequirePermission("employees:write")]` — this **is** a real gap (§2).
 - No `invitations:*` permission exists anywhere in `PermissionSeeder.cs`.

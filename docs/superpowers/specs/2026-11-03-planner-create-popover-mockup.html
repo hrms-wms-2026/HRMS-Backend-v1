@@ -1,0 +1,112 @@
+<style>
+  .pc-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(330px, 1fr)); gap: 18px; margin-top: 12px; }
+  .pc { border: 1px solid #d9dde3; border-radius: 14px; background: #fff; color: #1f2933; box-shadow: 0 8px 24px rgba(15,23,42,.08); font-size: 13px; overflow: hidden; }
+  .pc-cap { font-size: 11px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: #64748b; margin: 0 0 6px 2px; }
+  .pc-tabs { display: flex; gap: 2px; padding: 8px 10px; background: #f7f8fa; border-bottom: 1px solid #eceff3; align-items: center; }
+  .pc-tab { padding: 5px 10px; border-radius: 8px; color: #7b8794; font-weight: 500; }
+  .pc-tab.on { background: #fff; color: #111827; box-shadow: 0 1px 2px rgba(0,0,0,.08); border: 1px solid #e5e7eb; }
+  .pc-x { margin-left: auto; width: 24px; height: 24px; border-radius: 50%; background: #eceff3; display: grid; place-items: center; color: #52606d; }
+  .pc-body { padding: 12px 14px 6px; display: flex; flex-direction: column; gap: 9px; }
+  .pc-title { border: 1.5px solid #1f2933; border-radius: 9px; padding: 8px 10px; color: #9aa5b1; }
+  .pc-when { display: flex; gap: 10px; align-items: baseline; }
+  .pc-when b { font-weight: 500; }
+  .pc-muted { color: #8a94a3; font-size: 12px; }
+  .pc-row { display: flex; gap: 10px; align-items: center; color: #7b8794; padding: 3px 0; }
+  .pc-ic { width: 18px; text-align: center; }
+  .pc-chip { display: inline-block; padding: 2px 8px; border-radius: 999px; font-size: 11px; font-weight: 600; }
+  .pc-btnrow { display: flex; justify-content: flex-end; gap: 8px; padding: 10px 14px; border-top: 1px solid #eceff3; margin-top: 6px; }
+  .pc-btn { padding: 6px 12px; border-radius: 8px; border: 1px solid #d9dde3; background: #fff; color: #334e68; font-weight: 500; }
+  .pc-btn.pri { background: #2563eb; border-color: #2563eb; color: #fff; }
+  .pc-note { background: #fff7e6; border: 1px solid #f5d38a; color: #7a5200; border-radius: 8px; padding: 6px 8px; font-size: 12px; }
+  .pc-warn { background: #eef4ff; border: 1px solid #c7d7fe; color: #1e3a8a; border-radius: 8px; padding: 6px 8px; font-size: 12px; }
+  .pc-field { border: 1px solid #e3e7ec; border-radius: 8px; padding: 6px 9px; color: #52606d; display: flex; justify-content: space-between; }
+  .pc-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+  .pc-video { background: #f1f3f6; border-radius: 9px; padding: 8px; text-align: center; color: #334e68; font-weight: 500; }
+</style>
+
+<h2>Planner: ஒரே create popover, tabs-ஓட</h2>
+<p class="subtitle">Planner-ல ஒரு நேரத்தை click அல்லது drag பண்ணினா இது திறக்கும் (உதாரணம்: Nov 4, 9:00–11:00). Tab-ஐ மாத்தினா form மாறும், நேரம் அப்படியே இருக்கும். நாலு tabs-உம் பக்கத்து பக்கத்துல காட்டியிருக்கேன்.</p>
+
+<div class="pc-grid">
+
+  <!-- EVENT -->
+  <div>
+    <p class="pc-cap">1 · Event (தனிப்பட்ட நேரம்)</p>
+    <div class="pc">
+      <div class="pc-tabs"><span class="pc-tab on">Event</span><span class="pc-tab">Meeting</span><span class="pc-tab">Task</span><span class="pc-tab">Time off</span><span class="pc-x">✕</span></div>
+      <div class="pc-body">
+        <div class="pc-title">Add title</div>
+        <div class="pc-when"><b>Nov 4, 2026</b><b>9:00 AM</b>→<b>11:00 AM</b><span class="pc-muted">2h</span></div>
+        <div class="pc-muted">All day · Timezone · Repeat</div>
+        <div class="pc-row"><span class="pc-ic">📍</span>Add location</div>
+        <div class="pc-row"><span class="pc-ic">≡</span>Add description</div>
+        <div class="pc-note">People அல்லது video call வேணுமா? → <b>Meeting</b> tab</div>
+      </div>
+      <div class="pc-btnrow"><span class="pc-btn">More options</span><span class="pc-btn pri">Save</span></div>
+    </div>
+  </div>
+
+  <!-- MEETING -->
+  <div>
+    <p class="pc-cap">2 · Meeting (work item, hours கழியும்)</p>
+    <div class="pc">
+      <div class="pc-tabs"><span class="pc-tab">Event</span><span class="pc-tab on">Meeting</span><span class="pc-tab">Task</span><span class="pc-tab">Time off</span><span class="pc-x">✕</span></div>
+      <div class="pc-body">
+        <div class="pc-title">Add meeting title</div>
+        <div class="pc-when"><b>Nov 4, 2026</b><b>9:00 AM</b>→<b>11:00 AM</b><span class="pc-muted">2h</span></div>
+        <div class="pc-muted">All day · Timezone · Repeat</div>
+        <div class="pc-field"><span>📁 Project / Module</span><span class="pc-muted">Office (default)</span></div>
+        <div class="pc-video">🎥 Add Teams / Zoom</div>
+        <div class="pc-row"><span class="pc-ic">👥</span>Add participants</div>
+        <div class="pc-warn">⚠ Priya: On leave · Arun: outside working hours</div>
+        <div class="pc-row"><span class="pc-ic">≡</span>Add agenda</div>
+      </div>
+      <div class="pc-btnrow"><span class="pc-btn">More options</span><span class="pc-btn pri">Create meeting</span></div>
+    </div>
+  </div>
+
+  <!-- TASK -->
+  <div>
+    <p class="pc-cap">3 · Task (உருவாக்கி, இதே நேரத்துல plan)</p>
+    <div class="pc">
+      <div class="pc-tabs"><span class="pc-tab">Event</span><span class="pc-tab">Meeting</span><span class="pc-tab on">Task</span><span class="pc-tab">Time off</span><span class="pc-x">✕</span></div>
+      <div class="pc-body">
+        <div class="pc-title">Add task title</div>
+        <div class="pc-when"><b>Nov 4, 2026</b><b>9:00 AM</b>→<b>11:00 AM</b><span class="pc-muted">plan 2h</span></div>
+        <div class="pc-field"><span>📁 Project / Module</span><span class="pc-muted">choose</span></div>
+        <div class="pc-2">
+          <div class="pc-field"><span>Type</span><span><span class="pc-chip" style="background:#fde2e1;color:#b42318">🐞 Bug</span></span></div>
+          <div class="pc-field"><span>Priority</span><span class="pc-muted">Medium</span></div>
+        </div>
+        <div class="pc-2">
+          <div class="pc-field"><span>Estimate</span><span class="pc-muted">2h</span></div>
+          <div class="pc-field"><span>Due</span><span class="pc-muted">—</span></div>
+        </div>
+        <div class="pc-field"><span>👤 Assignee</span><span class="pc-muted">Me</span></div>
+      </div>
+      <div class="pc-btnrow"><span class="pc-btn">More options</span><span class="pc-btn pri">Create &amp; plan</span></div>
+    </div>
+  </div>
+
+  <!-- TIME OFF -->
+  <div>
+    <p class="pc-cap">4 · Time off (leave request → approval)</p>
+    <div class="pc">
+      <div class="pc-tabs"><span class="pc-tab">Event</span><span class="pc-tab">Meeting</span><span class="pc-tab">Task</span><span class="pc-tab on">Time off</span><span class="pc-x">✕</span></div>
+      <div class="pc-body">
+        <div class="pc-field"><span>Leave type</span><span class="pc-muted">Annual – 64 hours remaining</span></div>
+        <div class="pc-2">
+          <div class="pc-field"><span>From</span><span class="pc-muted">Nov 4 · 9:00</span></div>
+          <div class="pc-field"><span>To</span><span class="pc-muted">Nov 4 · 11:00</span></div>
+        </div>
+        <div class="pc-row"><span class="pc-ic">≡</span>Reason</div>
+        <div class="pc-warn">Policy check: 2h · balance after 62h · your manager approves</div>
+        <div class="pc-muted">Approve ஆகுற வரை Planner-ல "Pending leave"-ஆ தெரியும்</div>
+      </div>
+      <div class="pc-btnrow"><span class="pc-btn">More options</span><span class="pc-btn pri">Submit request</span></div>
+    </div>
+  </div>
+
+</div>
+
+<p class="subtitle" style="margin-top:18px">"More options" = அந்த tab-ஓட முழு form (இப்போ இருக்கிற event form / meeting form / Create work item / leave form), popover-ல நிரப்பினது அப்படியே போகும்.</p>

@@ -11,7 +11,7 @@ namespace ONEVO.Api.Middleware;
 /// </summary>
 public sealed class AuthRateLimitingMiddleware
 {
-    private const string MfaCookieName = "onevo_mfa";
+    private const string MfaCookieName = "crownus_mfa";
     private const string AdminMfaCookieName = "admin_mfa";
 
     private static readonly JsonSerializerOptions JsonOptions = new()
@@ -44,6 +44,9 @@ public sealed class AuthRateLimitingMiddleware
 
         new("/admin/v1/auth/login", "ip", null, 20, TimeSpan.FromSeconds(300)),
         new("/admin/v1/auth/login", "email", "email", 5, TimeSpan.FromSeconds(300)),
+
+        new("/admin/v1/auth/google-callback", "ip", null, 20, TimeSpan.FromSeconds(300)),
+        new("/admin/v1/auth/google-callback", "token", "google_id_token", 5, TimeSpan.FromSeconds(300)),
 
         new("/admin/v1/auth/mfa/verify", "ip", null, 20, TimeSpan.FromMinutes(5)),
         new("/admin/v1/auth/mfa/verify", "mfa", null, 5, TimeSpan.FromMinutes(10), CookieName: AdminMfaCookieName),
@@ -141,7 +144,7 @@ public sealed class AuthRateLimitingMiddleware
         context.Response.Headers["Retry-After"] = ((int)rule.Window.TotalSeconds).ToString();
         await context.Response.WriteAsJsonAsync(new
         {
-            type = "https://onevo.com/errors/rate-limit",
+            type = ONEVO.Api.Errors.ProblemTypes.For("rate-limit"),
             title = "Too Many Requests",
             status = 429,
             detail = "Too many attempts. Please try again later."

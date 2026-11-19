@@ -1,0 +1,66 @@
+# Architecture test changes
+
+**Date:** 2026-11-07
+**Status:** Approved by the user on 2026-11-07 and applied. `ONEVO.Tests.Architecture` passes.
+
+| Group | Tests | Proposal | Covered by |
+|---|---|---|---|
+| RLS declared in one old migration | AttendanceCorrections, ClockInPolicy, CustomizableDashboard, DepartmentPart2A, FileStorage, LegalAcceptance, TenantSessionExchange, TimeTracking, WorkAreaChangeRequests | Retire | `EveryTable_BlocksCrossTenantAccess` (all 170 tables), `EveryCoveredTable_HasAFilterAndFourBlockPredicates` |
+| Exact columns, indexes or foreign keys of an old migration | FileStorage, StorageQuota, LegalAcceptance, TenantStatusHistory, PositionPart2A, DepartmentPart2A, LegalEntityGeneralSettings, SubscriptionBilling, ConfigurationTemplateManager | Retire | `SchemaParityTests` |
+| Migration history only (Down steps, prechecks, backfills, file pairs) | LegalAcceptance, NormalizedEmail precheck, LegalDocumentRichContent, Step1LoginBlocking, AttendanceCorrections backfill | Retire | Nothing: no longer meaningful with a baseline |
+| Setup scripts and login lookup rights | LocalDatabaseRuntime (5), BaseLogin grants, NormalizedEmail lookup (2) | Replace | `SqlServerOpsArchitectureTests` (added, passing) |
+| Tenant isolation | `EveryTenantOwnedEntityTable_HasRlsPolicyCoverage`, `Migrations_NeverDisableRowLevelSecurity_InTheUpDirection`, and the two other migration scans | Rewrite per spec section 9 | Same names, SQL Server rules |
+| Payment gateway | CredentialOwnershipCompletion (2) | Update the assertions | Same tests |
+
+## Tests retired
+
+- `AttendanceCorrectionsArchitectureTests.ApprovalSnapshotMigration_AddsNonNullColumnAndBackfillsExistingRows`
+- `AttendanceCorrectionsArchitectureTests.Migration_DeclaresAttendanceCorrectionsRlsAndPendingUniqueIndex`
+- `BaseLoginArchitectureTests.FunctionOwnerRoleGrants_AreColumnLevelOnly_NotBroadTableSelect`
+- `ClockInPolicyControllerArchitectureTests.Migration_Declares_Rls_TenantTables`
+- `ConfigurationTemplateManagerArchitectureTests.Migration_CreatesOnlyTheTwoCanonicalConfigurationTemplateTables`
+- `CustomizableDashboardArchitectureTests.Dashboard_tables_have_tenant_isolation_rls`
+- `DepartmentPart2AArchitectureTests.AddDepartmentsMigration_EnablesRowLevelSecurityWithTenantIsolationPolicy`
+- `DepartmentPart2AArchitectureTests.CodeUniqueIndexMigration_PrechecksDuplicatesAndCreatesCaseInsensitiveExpressionIndex`
+- `DepartmentPart2AArchitectureTests.CorrectiveMigration_AddsHeadPositionIdColumn_AsNullableWithRestrictForeignKey`
+- `FileStorageArchitectureTests.FileRecords_HasExactlyTheInventoryColumns`
+- `FileStorageArchitectureTests.FileStorageTables_HaveEnabledAndForcedTenantRlsPolicies`
+- `FileStorageArchitectureTests.FileUploadReservations_HasExactlyTheInventoryColumns`
+- `FileStorageArchitectureTests.Migration_CreatesOnly_FileRecordsAndFileUploadReservations`
+- `LegalAcceptanceMigrationIntegrityTests.Down_RestoresOriginalGdprConsentRecordsSchema`
+- `LegalAcceptanceMigrationIntegrityTests.LatestMigration_HasBothMigrationFileAndDesignerFile`
+- `LegalAcceptanceMigrationIntegrityTests.PublishedIndexName_IsConsistentAcrossConfigurationMigrationDesignerAndSnapshot`
+- `LegalAcceptanceMigrationIntegrityTests.Up_AppliesPartialUniquePublishedIndexOnDocumentType`
+- `LegalAcceptanceMigrationIntegrityTests.Up_CreatesLegalDocumentVersionsWithExactly13Columns`
+- `LegalAcceptanceMigrationIntegrityTests.Up_DropsOldConsentTypeIndexBeforeDroppingConsentTypeColumn`
+- `LegalAcceptanceMigrationIntegrityTests.Up_ReAppliesRlsPolicyToLegalAcceptanceRecordsOnly`
+- `LegalAcceptanceMigrationIntegrityTests.Up_ReconciliesLegalAcceptanceRecordsToExactly11CanonicalColumns`
+- `LegalDocumentRichContentArchitectureTests.RichContentMigration_IsSelfContained_DoesNotReferenceApplicationHelpers`
+- `LegalEntityGeneralSettingsArchitectureTests.ExpandMigration_AddsNoTables_AndDropsNoTables`
+- `LegalEntityGeneralSettingsArchitectureTests.ExpandMigration_EveryAddOrDropColumn_TargetsLegalEntitiesOnly`
+- `LegalEntityGeneralSettingsArchitectureTests.ExpandMigration_LogoForeignKey_IsNullableAndDoesNotCascade`
+- `LegalEntityGeneralSettingsArchitectureTests.ExpandMigration_NeverDisablesRowLevelSecurity`
+- `LegalEntityGeneralSettingsArchitectureTests.ExpandMigration_ParentLegalEntityForeignKey_IsNullableAndDoesNotCascade`
+- `LegalEntityGeneralSettingsArchitectureTests.ExpandMigration_TenantIdNameUniqueIndex_HasDuplicatePrecheck`
+- `LocalDatabaseRuntimeArchitectureTests.LocalBootstrapRolesSql_DoesNotReferenceUsersOrTenantsTables`
+- `LocalDatabaseRuntimeArchitectureTests.LocalSetupFiles_DoNotContainCommittedDatabasePasswordsOrFullEnvConnectionStrings`
+- `LocalDatabaseRuntimeArchitectureTests.LocalSetupScript_ExecutesCreateDatabaseBlockFromTemporarySqlFile`
+- `LocalDatabaseRuntimeArchitectureTests.LocalSetupScript_RestoresPackagesBeforeEfMigrationCommand`
+- `LocalDatabaseRuntimeArchitectureTests.LocalSetupScript_RunsPostMigrationGrantsOnlyAfterEfMigrationCommand`
+- `NormalizedEmailArchitectureTests.AuthLookupFunctionOwnerGrant_IncludesNormalizedEmail_NotBroadSelect`
+- `NormalizedEmailArchitectureTests.AuthLookupFunction_ComparesNormalizedEmail_NotEmail`
+- `NormalizedEmailArchitectureTests.MigrationContainsDuplicateEmailPrecheck`
+- `PositionPart2AArchitectureTests.Migration_AddPositionFoundationSchema_AddsLegalEntityId_And_DepartmentId_AsNullable`
+- `PositionPart2AArchitectureTests.Migration_AddPositionFoundationSchema_DoesNotUseGuidEmptyDefaults_OrFakeRows`
+- `Step1LoginBlockingNonEnforcementGuardTests.Migration_ReconcilesGdprConsentToLegalAcceptanceAndCreatesLegalDocumentVersions`
+- `StorageQuotaArchitectureTests.StorageQuotaMigration_AddsForeignKey_ToTenants`
+- `StorageQuotaArchitectureTests.StorageQuotaMigration_CreatesOnly_TenantStorageStats`
+- `StorageQuotaArchitectureTests.TenantStorageStats_HasExactlyTheInventoryColumns`
+- `SubscriptionBillingArchitectureTests.AddSubscriptionInvoicesAndBillingAuditLogsMigration_CreatesBothTables`
+- `TenantSessionExchangeArchitectureTests.TenantSessionExchangeMigration_EnablesRowLevelSecurityWithTenantIsolationPolicy`
+- `TenantStatusHistoryArchitectureTests.FkCorrectionMigration_AddsForeignKey_ToPlatformUsers_WithSetNull`
+- `TenantStatusHistoryArchitectureTests.FkCorrectionMigration_AddsForeignKey_ToTenants_WithRestrict`
+- `TenantStatusHistoryArchitectureTests.FkCorrectionMigration_AddsNoTables`
+- `TimeTrackingMutationArchitectureTests.AttendanceMigration_StillEnablesForcedTenantRls`
+- `TimeTrackingMutationArchitectureTests.BreakMigration_AddsOnlyTheFilteredUniqueOpenBreakIndex`
+- `WorkAreaChangeRequestsArchitectureTests.Migration_DeclaresRlsTenantPolicyIndexesAndActivePartialUniqueIndex`

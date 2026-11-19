@@ -21,7 +21,13 @@ public static class LeaveRequestMapper
             PendingAfterSubmitHours: currentPendingHours + paidHours,
             RemainingAfterSubmitHours: currentRemainingHours - paidHours);
 
-    public static LeaveRequestListItemResponse ToListItem(LeaveRequest request, string leaveTypeName, string leaveTypeCode) =>
+    public static LeaveRequestListItemResponse ToListItem(
+        LeaveRequest request,
+        string leaveTypeName,
+        string leaveTypeCode,
+        string? approvedByName = null,
+        int approvedApproverCount = 0,
+        int approverCount = 0) =>
         new(
             request.Id,
             request.EmployeeId,
@@ -35,8 +41,12 @@ public static class LeaveRequestMapper
             request.UnpaidHours,
             request.Status,
             request.NoticePeriodMissed,
+            approvedByName,
             request.CreatedAt,
-            request.UpdatedAt);
+            request.UpdatedAt,
+            request.ExceedsBalanceByHours,
+            approvedApproverCount,
+            approverCount);
 
     public static string ToConflictSnapshotJson(
         IReadOnlyList<LeaveRequestWarningResponse> warnings,
@@ -73,7 +83,8 @@ public static class LeaveRequestMapper
             request.SubmittedOnBehalfOfBy,
             balanceImpact,
             approvers.Select(a => new LeaveRequestApproverResponse(
-                a.ApproverEmployeeId, a.SequenceOrder, a.Status, a.DelegatedFromApproverId)).ToList(),
+                a.ApproverEmployeeId, string.Empty, a.SequenceOrder, a.Status, a.DelegatedFromApproverId)).ToList(),
             snapshot,
-            request.CreatedAt);
+            request.CreatedAt,
+            request.ExceedsBalanceByHours);
 }

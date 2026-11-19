@@ -38,7 +38,7 @@ public class GetMonitoringFeatureTogglesQueryHandlerTests
         result.IsSuccess.Should().BeTrue();
         result.Value!.ActivityMonitoring.Should().BeFalse();
         result.Value.Biometric.Should().BeFalse();
-        result.Value.IdleThresholdMinutes.Should().Be(2); // default when no row exists
+        result.Value.IdleThresholdMinutes.Should().Be(15); // default when no row exists
         result.Value.UpdatedAt.Should().BeNull();
     }
 

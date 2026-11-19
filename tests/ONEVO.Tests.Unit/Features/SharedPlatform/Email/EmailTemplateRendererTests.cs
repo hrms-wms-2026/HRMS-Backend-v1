@@ -348,4 +348,145 @@ public sealed class EmailTemplateRendererTests
         rendered.HtmlBody.Should().Contain("https://dapi.localhost:4200/people/approvals");
         rendered.TextBody.Should().Contain("https://dapi.localhost:4200/people/approvals");
     }
+
+    [Fact]
+    public void RenderCalendarEventInvite_FormatsTheStartTimeAsAReadableDate_NotRawIso()
+    {
+        // startDateUtc always arrives as an ISO 8601 string here (SendTemplateAsync round-trips its
+        // anonymous object through JSON before Render() ever sees it), so the raw "2026-10-05T09:30:00+00:00"
+        // that reached real recipients' inboxes must be parsed and reformatted, not passed through as-is.
+        var renderer = new EmailTemplateRenderer(Options.Create(new EmailOptions()));
+
+        var rendered = renderer.Render("calendar_event_invite", new
+        {
+            recipientName = "Dapi Owner",
+            eventTitle = "test 404",
+            startDateUtc = "2026-10-05T09:30:00+00:00",
+            location = (string?)null,
+            organizerName = "Dapi Owner"
+        });
+
+        rendered.HtmlBody.Should().NotContain("2026-10-05T09:30:00");
+        rendered.TextBody.Should().NotContain("2026-10-05T09:30:00");
+        rendered.HtmlBody.Should().Contain("Monday, October 5, 2026 at 9:30 AM UTC");
+        rendered.TextBody.Should().Contain("Monday, October 5, 2026 at 9:30 AM UTC");
+    }
+
+    [Fact]
+    public void RenderCalendarEvent_ShowsTheStartInTheEventsTimeZone()
+    {
+        var renderer = new EmailTemplateRenderer(Options.Create(new EmailOptions()));
+
+        var rendered = renderer.Render("calendar_event_invite", new
+        {
+            recipientName = "Guest",
+            eventTitle = "Sync",
+            startDateUtc = "2026-11-06T12:15:00+00:00",
+            timeZoneId = "Asia/Colombo",
+            organizerName = "Dapi Owner"
+        });
+
+        rendered.HtmlBody.Should().Contain("Friday, November 6, 2026 at 5:45 PM (Asia/Colombo)").And.NotContain("UTC");
+        rendered.TextBody.Should().Contain("Friday, November 6, 2026 at 5:45 PM (Asia/Colombo)").And.NotContain("UTC");
+    }
+
+    [Theory]
+    [InlineData(null)]
+    [InlineData("")]
+    [InlineData("Not/AZone")]
+    public void RenderCalendarEvent_WithoutAKnownTimeZone_StaysInUtc(string? timeZoneId)
+    {
+        var renderer = new EmailTemplateRenderer(Options.Create(new EmailOptions()));
+
+        var rendered = renderer.Render("calendar_event_invite", new
+        {
+            recipientName = "Guest",
+            eventTitle = "Sync",
+            startDateUtc = "2026-11-06T12:15:00+00:00",
+            timeZoneId,
+            organizerName = "Dapi Owner"
+        });
+
+        rendered.HtmlBody.Should().Contain("Friday, November 6, 2026 at 12:15 PM UTC");
+    }
+
+    [Fact]
+    public void RenderCalendarEventInvite_WithMeetingLink_IncludesJoinUrlInBothBodies()
+    {
+        var renderer = new EmailTemplateRenderer(Options.Create(new EmailOptions()));
+
+        var rendered = renderer.Render("calendar_event_invite", new
+        {
+            recipientName = "Ada Lovelace",
+            eventTitle = "Deployment Meeting",
+            startDateUtc = "2026-09-29T14:45:00Z",
+            location = (string?)null,
+            organizerName = "Dapi Owner",
+            meetingLink = "https://us05web.zoom.us/j/123456789"
+        });
+
+        rendered.HtmlBody.Should().Contain("https://us05web.zoom.us/j/123456789");
+        rendered.TextBody.Should().Contain("https://us05web.zoom.us/j/123456789");
+    }
+
+    [Fact]
+    public void RenderCalendarEventInvite_WithoutMeetingLink_OmitsJoinLinkLine()
+    {
+        var renderer = new EmailTemplateRenderer(Options.Create(new EmailOptions()));
+
+        var rendered = renderer.Render("calendar_event_invite", new
+        {
+            recipientName = "Ada Lovelace",
+            eventTitle = "Deployment Meeting",
+            startDateUtc = "2026-09-29T14:45:00Z",
+            location = (string?)null,
+            organizerName = "Dapi Owner"
+        });
+
+        rendered.HtmlBody.Should().NotContain("Join meeting");
+        rendered.TextBody.Should().NotContain("Join:");
+    }
+
+    [Theory]
+    [InlineData("calendar_event_updated", "Updated: Deployment Meeting", "has updated")]
+    [InlineData("calendar_event_cancelled", "Cancelled: Deployment Meeting", "has cancelled")]
+    [InlineData("calendar_event_removed", "Removed: Deployment Meeting", "removed you from")]
+    public void RenderCalendarEventChange_SaysWhatHappenedInSubjectAndBothBodies(string template, string subject, string phrase)
+    {
+        var renderer = new EmailTemplateRenderer(Options.Create(new EmailOptions()));
+
+        var rendered = renderer.Render(template, new
+        {
+            recipientName = "Ada Lovelace",
+            eventTitle = "Deployment Meeting",
+            startDateUtc = "2026-09-29T14:45:00Z",
+            location = "Room 4",
+            organizerName = "Dapi Owner",
+            meetingLink = "https://us05web.zoom.us/j/123456789"
+        });
+
+        rendered.Subject.Should().Be(subject);
+        rendered.HtmlBody.Should().Contain(phrase).And.Contain("Tuesday, September 29, 2026 at 2:45 PM UTC").And.Contain("Room 4");
+        rendered.TextBody.Should().Contain(phrase);
+        // A cancelled or removed event offers no join link.
+        if (template == "calendar_event_updated")
+            rendered.HtmlBody.Should().Contain("https://us05web.zoom.us/j/123456789");
+        else
+            rendered.HtmlBody.Should().NotContain("https://us05web.zoom.us/j/123456789");
+    }
+
+    [Fact]
+    public void RenderCalendarEventInvite_LinkRemoved_SaysSo_WithoutTheLink()
+    {
+        var renderer = new EmailTemplateRenderer(Options.Create(new EmailOptions()));
+
+        var rendered = renderer.Render("calendar_event_link_removed", new
+        {
+            recipientName = "Ada", eventTitle = "Standup", startDateUtc = "2026-09-29T14:45:00Z",
+            location = (string?)null, organizerName = "Owner", meetingLink = "https://zoom.us/j/1"
+        });
+
+        rendered.Subject.Should().Be("Meeting link removed: Standup");
+        rendered.HtmlBody.Should().NotContain("https://zoom.us/j/1");
+    }
 }

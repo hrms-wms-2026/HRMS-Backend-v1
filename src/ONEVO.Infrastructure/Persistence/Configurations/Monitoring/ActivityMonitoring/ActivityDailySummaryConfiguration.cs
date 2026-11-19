@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata.Builders;
 using ONEVO.Domain.Features.Monitoring.ActivityMonitoring.Entities;
+using ONEVO.Infrastructure.Persistence.SqlServer;
 
 namespace ONEVO.Infrastructure.Persistence.Configurations.Monitoring.ActivityMonitoring;
 
@@ -16,7 +17,7 @@ public class ActivityDailySummaryConfiguration : IEntityTypeConfiguration<Activi
         builder.Property(e => e.DataCoveragePercentage).HasPrecision(5, 2);
         builder.Property(e => e.IntensityAvg).HasPrecision(5, 2);
         builder.Property(e => e.TopAppsJson)
-            .HasColumnType("jsonb")
+            .IsJsonColumn()
             .HasDefaultValue("[]");
         builder.Property(e => e.DataSource).HasMaxLength(50);
 

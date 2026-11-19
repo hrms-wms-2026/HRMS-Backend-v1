@@ -1,0 +1,367 @@
+using ONEVO.Application.Features.WorkManagement.Monitoring.Services;
+using ONEVO.Domain.Features.WorkManagement.Sprints.Entities;
+using Xunit;
+
+namespace ONEVO.Tests.Unit.Features.WorkManagement.Monitoring;
+
+public class ProjectMonitorRulesTests
+{
+    // Mon 2026-10-05 .. Fri 2026-10-16 = 10 working days on the default 8h Mon-Fri calendar.
+    private static readonly DateOnly Mon5 = new(2026, 10, 5);
+    private static readonly DateOnly Wed7 = new(2026, 10, 7);
+    private static readonly DateOnly Fri9 = new(2026, 10, 9);
+    private static readonly DateOnly Mon12 = new(2026, 10, 12);
+    private static readonly DateOnly Fri16 = new(2026, 10, 16);
+    private static readonly DateOnly Fri2 = new(2026, 10, 2);
+    private static readonly WorkCalendar Cal = WorkCalendar.Default;
+    private static readonly Guid Emp = Guid.NewGuid();
+
+    private static MonitorModule Module(decimal allocated, decimal completed = 0m, int members = 5,
+        DateOnly? start = null, DateOnly? end = null, bool achieved = false, Guid? id = null, Guid? parentId = null, decimal? rate = null,
+        int? pool = null)
+        => new(id ?? Guid.NewGuid(), parentId, null, "Payments", start ?? Mon5, end ?? Fri16, allocated, completed, achieved, members, rate,
+            pool ?? members);
+
+    private static MonitorTask Task(DateOnly? due, decimal? estimate, Guid? moduleId = null, bool complete = false,
+        decimal completed = 0m, decimal clocked = 0m, Guid? sprintId = null, params Guid[] assignees)
+        => new(Guid.NewGuid(), moduleId ?? Guid.NewGuid(), null, sprintId, "Task", due, estimate, completed, complete, clocked,
+            assignees.Length == 0 ? [Emp] : assignees);
+
+    private static ProjectMonitorSnapshot Snapshot(IReadOnlyList<MonitorModule>? modules = null,
+        IReadOnlyList<MonitorSprint>? sprints = null, IReadOnlyList<MonitorTask>? tasks = null)
+        => new(Guid.NewGuid(), Cal, modules ?? [], sprints ?? [], tasks ?? []);
+
+    // --- conversion rate (last 4 weeks) ---
+
+    [Fact]
+    public void ModuleOverCapacity_WithARate_UsesCapacityTimesRate()
+    {
+        // 400h physical capacity x 50% = 200h predicted < 300h allocated.
+        var finding = ProjectMonitorRules.ModuleOverCapacity(Module(allocated: 300m, rate: 0.5m), Cal);
+
+        Assert.NotNull(finding);
+        Assert.Equal(400m, finding!.Details["capacityHours"]);
+        Assert.Equal(200m, finding.Details["predictedHours"]);
+        Assert.Equal(0.5m, finding.Details["conversionRate"]);
+        Assert.Equal(0.75m, finding.Details["requiredRate"]);
+        Assert.Equal(100m, finding.Details["overtimeHours"]);   // 300 - 200 task hours left over
+        Assert.Equal("history", finding.Details["rateSource"]);
+        Assert.Contains("50% task rate (last 4 weeks)", finding.Message);
+    }
+
+    [Fact]
+    public void ModuleOverCapacity_NoHistory_FallsBackToFullCapacity()
+    {
+        Assert.Null(ProjectMonitorRules.ModuleOverCapacity(Module(allocated: 300m, rate: null), Cal));
+        var finding = ProjectMonitorRules.ModuleOverCapacity(Module(allocated: 500m, rate: null), Cal)!;
+        Assert.Equal("none", finding.Details["rateSource"]);
+        Assert.Null(finding.Details["conversionRate"]);
+        // 500h on 400h needs 125% even at full rate: over the 90% limit, so it reads as overloaded.
+        Assert.Equal("Allocated 500 h between Oct 5 and Oct 16; overloaded: needs 125% task rate, above the 90% limit.", finding.Message);
+        Assert.Equal(true, finding.Details["overload"]);
+    }
+
+    [Fact]
+    public void ModuleRate_IsNotPrintedForPoolsUnderThree_ButStillDrivesTheRule()
+    {
+        // 2 x 5 x 8 = 80h x 40% = 32h; 60h left needs 75%, under the limit.
+        var finding = ProjectMonitorRules.ModuleCapacityShortfall(Module(allocated: 60m, members: 2, rate: 0.4m), Cal, Mon12)!;
+
+        Assert.DoesNotContain("40%", finding.Message);
+        Assert.Equal("60 h of work remain, more than the team is likely to complete before Oct 16 at its task rate of the last 4 weeks.", finding.Message);
+        Assert.Equal(32m, finding.Details["predictedHours"]);
+    }
+
+    [Fact]
+    public void Shortfall_NeedingMoreThanTheLimit_SaysOverloaded()
+    {
+        // Mon 12 -> Fri 16: 200h capacity; 190h left needs 95%, above the 90% limit.
+        var finding = ProjectMonitorRules.ModuleCapacityShortfall(Module(allocated: 190m, rate: 0.5m), Cal, Mon12, maxTaskRate: 0.9m)!;
+
+        Assert.Equal("190 h of work remain before Oct 16; overloaded: needs 95% task rate, above the 90% limit.", finding.Message);
+        Assert.Equal(true, finding.Details["overload"]);
+        Assert.Equal(0.9m, finding.Details["maxTaskRate"]);
+        Assert.Equal(90m, finding.Details["overtimeHours"]);   // 190 - 100 predicted
+
+        var under = ProjectMonitorRules.ModuleCapacityShortfall(Module(allocated: 190m, rate: 0.5m), Cal, Mon12, maxTaskRate: 1m)!;
+        Assert.Equal(false, under.Details["overload"]);
+        Assert.DoesNotContain("overloaded", under.Message);
+    }
+
+    [Fact]
+    public void Evaluate_UsesTheSnapshotsMaxTaskRate()
+    {
+        var module = Module(allocated: 190m, rate: 0.5m, start: Mon12);
+        var snapshot = new ProjectMonitorSnapshot(Guid.NewGuid(), Cal, [module], [], [], null, MaxTaskRate: 0.95m);
+
+        // Mon 12 -> Fri 16 is the module's whole span, so the planning rule reports it: 190h on 200h = 95%.
+        var finding = ProjectMonitorRules.Evaluate(snapshot, Mon12).Single(f => f.RuleCode == MonitorRuleCodes.ModuleOverCapacity);
+
+        Assert.Equal(false, finding.Details["overload"]);   // exactly at a 95% limit: not overload
+        Assert.Equal(0.95m, finding.Details["maxTaskRate"]);
+    }
+
+    [Fact]
+    public void Overload_EmployeeDetailsCarryTheLimit()
+    {
+        var finding = ProjectMonitorRules.EmployeeDeadlineOverload(Emp, [Task(Fri9, 39m)], Cal, Mon5, rate: 0.5m, maxTaskRate: 0.9m).Single();
+        Assert.Equal(true, finding.Details["overload"]);   // 39 / 40 = 97.5%
+        Assert.Equal(0.9m, finding.Details["maxTaskRate"]);
+    }
+
+    [Fact]
+    public void ModuleOverCapacity_RateZero_AnyAllocationFlags()
+        => Assert.NotNull(ProjectMonitorRules.ModuleOverCapacity(Module(allocated: 1m, rate: 0m), Cal));
+
+    [Fact]
+    public void ModuleOverCapacity_FullRate_SameAsTheOldRule()
+        => Assert.Null(ProjectMonitorRules.ModuleOverCapacity(Module(allocated: 400m, rate: 1m), Cal));
+
+    [Fact]
+    public void Shortfall_WithARate_PredictsFromTheRate_AndFinishesLater()
+    {
+        // Mon 12 -> Fri 16: 5 days x 5 people x 8h = 200h, x 40% = 80h predicted; 100h remain.
+        var finding = ProjectMonitorRules.ModuleCapacityShortfall(Module(allocated: 100m, rate: 0.4m), Cal, Mon12)!;
+
+        Assert.Equal(MonitorRuleCodes.ModuleCapacityShortfall, finding.RuleCode);
+        Assert.Equal(80m, finding.Details["predictedHours"]);
+        Assert.Equal(20m, finding.Details["shortfallHours"]);
+        Assert.Equal(0.5m, finding.Details["requiredRate"]);
+        Assert.Equal(20m, finding.Details["overtimeHours"]);
+        // 5 people x 8h x 40% = 16h a day -> 7 working days from Mon 12 -> Tue 20, 2 days late.
+        Assert.Equal("2026-10-20", finding.Details["expectedFinish"]);
+        Assert.Equal(2, finding.Details["lateDays"]);
+        Assert.Equal("100 h of work remain; at the team's 40% task rate (last 4 weeks) they will complete about 80 h before Oct 16.", finding.Message);
+    }
+
+    [Fact]
+    public void Shortfall_WithAHighEnoughRate_None()
+        => Assert.Null(ProjectMonitorRules.ModuleCapacityShortfall(Module(allocated: 100m, rate: 0.5m), Cal, Mon12));
+
+    [Fact]
+    public void Overload_WithARate_ShrinksTheWindowCapacity()
+    {
+        // Fri 9 window: 5 days x 8h = 40h x 50% = 20h; 30h due.
+        var findings = ProjectMonitorRules.EmployeeDeadlineOverload(Emp, [Task(Fri9, 30m)], Cal, Mon5, rate: 0.5m);
+
+        var finding = Assert.Single(findings);
+        Assert.Equal("history", finding.Details["rateSource"]);
+        Assert.Equal(0.75m, finding.Details["requiredRate"]);
+        // Task alerts are visible to the whole Module: no figure that reveals the individual's rate.
+        Assert.False(finding.Details.ContainsKey("conversionRate"));
+        Assert.False(finding.Details.ContainsKey("predictedHours"));
+        Assert.False(finding.Details.ContainsKey("overtimeHours"));
+        Assert.DoesNotContain("50%", finding.Message);
+        Assert.Contains("task rate of the last 4 weeks", finding.Message);
+        Assert.Empty(ProjectMonitorRules.EmployeeDeadlineOverload(Emp, [Task(Fri9, 30m)], Cal, Mon5));
+    }
+
+    [Fact]
+    public void Evaluate_UsesEachAssigneesRateFromTheSnapshot()
+    {
+        var other = Guid.NewGuid();
+        var rates = new ConversionRateSet(Mon5, Mon5.AddDays(-28), Mon5.AddDays(-1), new Dictionary<Guid, EmployeeConversionRate>
+        {
+            [Emp] = new(Emp, 600, 300, 0.5m, [], []),
+            [other] = new(other, 600, 600, 1m, [], []),
+        });
+        var snapshot = new ProjectMonitorSnapshot(Guid.NewGuid(), Cal, [], [], [Task(Fri9, 30m), Task(Fri9, 30m, assignees: other)], rates);
+
+        var overload = ProjectMonitorRules.Evaluate(snapshot, Mon5).Where(f => f.RuleCode == MonitorRuleCodes.EmployeeDeadlineOverload).ToList();
+
+        Assert.Equal(Emp, Assert.Single(overload).SubjectEmployeeId);
+    }
+
+    // --- module capacity ---
+
+    [Fact]
+    public void ModuleOverCapacity_AllocatedAboveMembersTimesDaysTimesHours()
+    {
+        var finding = ProjectMonitorRules.ModuleOverCapacity(Module(allocated: 500m), Cal);
+
+        Assert.NotNull(finding);
+        Assert.Equal(MonitorRuleCodes.ModuleOverCapacity, finding!.RuleCode);
+        Assert.Equal(400m, finding.Details["capacityHours"]);
+    }
+
+    [Fact]
+    public void ModuleOverCapacity_ExactlyAtCapacity_None()
+        => Assert.Null(ProjectMonitorRules.ModuleOverCapacity(Module(allocated: 400m), Cal));
+
+    [Fact]
+    public void ModuleOverCapacity_NoMembers_CountsOnePerson()
+        => Assert.NotNull(ProjectMonitorRules.ModuleOverCapacity(Module(allocated: 81m, members: 0), Cal));
+
+    [Fact]
+    public void Shortfall_HalfwayWithNothingDone_ExactlyEnoughCapacity_None()
+        // Mon 12 -> Fri 16 = 5 days x 5 people x 8h = 200h left; 200h still to do.
+        => Assert.Null(ProjectMonitorRules.ModuleCapacityShortfall(Module(allocated: 200m), Cal, Mon12));
+
+    [Fact]
+    public void Shortfall_MoreWorkLeftThanTheTeamCanProduce_Flags()
+    {
+        var finding = ProjectMonitorRules.ModuleCapacityShortfall(Module(allocated: 260m, completed: 40m), Cal, Mon12);
+
+        Assert.NotNull(finding);
+        Assert.Equal(220m, finding!.Details["remainingHours"]);
+        Assert.Equal(200m, finding.Details["capacityHours"]);
+        Assert.Equal(20m, finding.Details["shortfallHours"]);
+        Assert.Equal("2026-10-16", finding.Details["endDate"]);
+        // 220h at 40h a day = 6 working days from Mon 12: done Mon 19, one working day after the deadline.
+        Assert.Equal("2026-10-19", finding.Details["expectedFinish"]);
+        Assert.Equal(1, finding.Details["lateDays"]);
+    }
+
+    [Fact]
+    public void Shortfall_AchievedOrPastEnd_None()
+    {
+        Assert.Null(ProjectMonitorRules.ModuleCapacityShortfall(Module(allocated: 999m, achieved: true), Cal, Mon12));
+        Assert.Null(ProjectMonitorRules.ModuleCapacityShortfall(Module(allocated: 999m), Cal, Fri16.AddDays(1)));
+    }
+
+    [Fact]
+    public void Evaluate_ReportsOverCapacityInsteadOfShortfall_ForTheSameModule()
+    {
+        var findings = ProjectMonitorRules.Evaluate(Snapshot(modules: [Module(allocated: 500m)]), Mon5);
+
+        Assert.Contains(findings, f => f.RuleCode == MonitorRuleCodes.ModuleOverCapacity);
+        Assert.DoesNotContain(findings, f => f.RuleCode == MonitorRuleCodes.ModuleCapacityShortfall);
+    }
+
+    // --- employee deadline overload (EDF) ---
+
+    [Fact]
+    public void Overload_WorkFitsBeforeEachDeadline_None()
+        // Fri 9: 5 days x 8h = 40h capacity, 20h due.
+        => Assert.Empty(ProjectMonitorRules.EmployeeDeadlineOverload(Emp, [Task(Fri9, 20m)], Cal, Mon5));
+
+    [Fact]
+    public void Overload_EarlierDeadlineOverflows_FlagsThatTaskAndLaterOnesInTheOverflowingWindow()
+    {
+        var a = Task(Fri9, 20m);   // demand by Fri 9 = 50 > 40
+        var b = Task(Wed7, 30m);   // demand by Wed 7 = 30 > 24
+
+        var findings = ProjectMonitorRules.EmployeeDeadlineOverload(Emp, [a, b], Cal, Mon5);
+
+        Assert.Equal([b.Id, a.Id], findings.Select(f => f.TargetId));
+        var first = findings[0];
+        Assert.Equal(MonitorRuleCodes.EmployeeDeadlineOverload, first.RuleCode);
+        Assert.Equal(Emp, first.SubjectEmployeeId);
+        Assert.Equal(30m, first.Details["demandHours"]);
+        Assert.Equal(24m, first.Details["capacityHours"]);
+    }
+
+    [Fact]
+    public void Overload_SharedTaskSplitsItsHoursBetweenAssignees()
+    {
+        var other = Guid.NewGuid();
+        var a = Task(Fri9, 20m);
+        var b = Task(Wed7, 30m, assignees: [Emp, other]);   // 15h each -> 15 <= 24, 35 <= 40
+
+        Assert.Empty(ProjectMonitorRules.EmployeeDeadlineOverload(Emp, [a, b], Cal, Mon5));
+    }
+
+    [Fact]
+    public void Overload_UsesRemainingHours_AndIgnoresTasksThatCannotBePlanned()
+    {
+        var tasks = new[]
+        {
+            Task(Wed7, 30m, completed: 10m),       // 20 remaining <= 24
+            Task(null, 100m),                      // no due date
+            Task(Fri2, 100m),                      // already past due (task_overdue covers it)
+            Task(Wed7, 100m, complete: true),      // done
+            Task(Wed7, null),                      // no estimate
+            Task(Wed7, 100m, assignees: [Guid.NewGuid()]) // someone else's
+        };
+
+        Assert.Empty(ProjectMonitorRules.EmployeeDeadlineOverload(Emp, tasks, Cal, Mon5));
+    }
+
+    // --- clocked hours ---
+
+    [Fact]
+    public void ClockedOverEstimate_Flags_AndNoEstimateIsIgnored()
+    {
+        var over = Task(Fri9, 5m, clocked: 6m);
+        var noEstimate = Task(Fri9, null, clocked: 50m);
+
+        var findings = ProjectMonitorRules.Evaluate(Snapshot(tasks: [over, noEstimate]), Mon5);
+
+        Assert.Single(findings, f => f.RuleCode == MonitorRuleCodes.TaskClockedOverEstimate && f.TargetId == over.Id);
+        Assert.DoesNotContain(findings, f => f.RuleCode == MonitorRuleCodes.TaskClockedOverEstimate && f.TargetId == noEstimate.Id);
+    }
+
+    [Fact]
+    public void ModuleClockedOverAllocated_CountsTasksInChildModules()
+    {
+        var parent = Module(allocated: 10m, members: 5);
+        var child = Module(allocated: 5m, parentId: parent.Id);
+        var tasks = new[] { Task(Fri9, 4m, moduleId: parent.Id, clocked: 4m), Task(Fri9, 7m, moduleId: child.Id, clocked: 7m) };
+
+        var findings = ProjectMonitorRules.Evaluate(Snapshot(modules: [parent, child], tasks: tasks), Mon5);
+
+        Assert.Contains(findings, f => f.RuleCode == MonitorRuleCodes.ModuleClockedOverAllocated && f.TargetId == parent.Id);  // 11 > 10
+        Assert.Contains(findings, f => f.RuleCode == MonitorRuleCodes.ModuleClockedOverAllocated && f.TargetId == child.Id);   // 7 > 5
+    }
+
+    // --- overdue ---
+
+    [Fact]
+    public void SprintOverdue_ActivePastEndWithOpenTask_Flags()
+    {
+        var sprint = new MonitorSprint(Guid.NewGuid(), null, "Sprint 4", SprintStatuses.Active, Fri2);
+        var done = new MonitorSprint(Guid.NewGuid(), null, "Sprint 3", SprintStatuses.Complete, Fri2);
+        var tasks = new[] { Task(Fri9, 1m, sprintId: sprint.Id), Task(Fri9, 1m, sprintId: done.Id) };
+
+        var findings = ProjectMonitorRules.Evaluate(Snapshot(sprints: [sprint, done], tasks: tasks), Mon5);
+
+        Assert.Single(findings, f => f.RuleCode == MonitorRuleCodes.SprintOverdue);
+        Assert.Equal(sprint.Id, findings.Single(f => f.RuleCode == MonitorRuleCodes.SprintOverdue).TargetId);
+    }
+
+    [Fact]
+    public void SprintOverdue_AllTasksDone_None()
+    {
+        var sprint = new MonitorSprint(Guid.NewGuid(), null, "Sprint 4", SprintStatuses.Active, Fri2);
+        var findings = ProjectMonitorRules.Evaluate(Snapshot(sprints: [sprint], tasks: [Task(Fri2, 1m, sprintId: sprint.Id, complete: true)]), Mon5);
+
+        Assert.DoesNotContain(findings, f => f.RuleCode == MonitorRuleCodes.SprintOverdue);
+    }
+
+    [Fact]
+    public void TaskOverdue_PastDueAndOpen_Flags()
+    {
+        var late = Task(Fri2, 1m);
+        var lateButDone = Task(Fri2, 1m, complete: true);
+
+        var findings = ProjectMonitorRules.Evaluate(Snapshot(tasks: [late, lateButDone]), Mon5);
+
+        Assert.Single(findings, f => f.RuleCode == MonitorRuleCodes.TaskOverdue);
+        Assert.Equal(late.Id, findings.Single(f => f.RuleCode == MonitorRuleCodes.TaskOverdue).TargetId);
+    }
+
+    [Fact]
+    public void ModuleOverdue_PastEndWithAnOpenTaskInAChildModule_Flags()
+    {
+        var parent = Module(allocated: 0m, end: Fri2);
+        var child = Module(allocated: 0m, end: Fri2, parentId: parent.Id);
+        var tasks = new[] { Task(null, null, moduleId: child.Id) };
+
+        var findings = ProjectMonitorRules.Evaluate(Snapshot(modules: [parent, child], tasks: tasks), Mon5);
+
+        Assert.Contains(findings, f => f.RuleCode == MonitorRuleCodes.ModuleOverdue && f.TargetId == parent.Id);
+        Assert.Contains(findings, f => f.RuleCode == MonitorRuleCodes.ModuleOverdue && f.TargetId == child.Id);
+    }
+
+    [Fact]
+    public void ModuleOverdue_AchievedOrNoOpenTasks_None()
+    {
+        var achieved = Module(allocated: 0m, end: Fri2, achieved: true);
+        var empty = Module(allocated: 0m, end: Fri2);
+        var tasks = new[] { Task(null, null, moduleId: achieved.Id) };
+
+        var findings = ProjectMonitorRules.Evaluate(Snapshot(modules: [achieved, empty], tasks: tasks), Mon5);
+
+        Assert.DoesNotContain(findings, f => f.RuleCode == MonitorRuleCodes.ModuleOverdue);
+    }
+}

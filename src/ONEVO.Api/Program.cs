@@ -1,8 +1,8 @@
 using Microsoft.AspNetCore.Diagnostics.HealthChecks;
-using Microsoft.AspNetCore.HttpOverrides;
 using ONEVO.Api.Configuration;
 using ONEVO.Api.Extensions;
 using ONEVO.Api.Middleware;
+using ONEVO.Api.RateLimiting;
 using ONEVO.Application;
 using ONEVO.Application.Common.Json;
 using ONEVO.Infrastructure;
@@ -15,6 +15,9 @@ DotEnvLoader.LoadIfPresent();
 var builder = WebApplication.CreateBuilder(args);
 
 ConfigurationStartupValidator.ValidateRequiredLocalConfiguration(
+    builder.Configuration,
+    builder.Environment.EnvironmentName);
+ConfigurationStartupValidator.ValidateTrayJwtSigningKeys(
     builder.Configuration,
     builder.Environment.EnvironmentName);
 
@@ -34,6 +37,10 @@ await DatabaseConnectionStartupValidator.ValidateAndOpenAsync(
     DotEnvLoader.DefaultConnectionProcessOverrideActive
         || DotEnvLoader.MigrationConnectionProcessOverrideActive);
 
+await ONEVO.Infrastructure.Configuration.DatabaseSettingsStartupValidator.ValidateAsync(
+    builder.Configuration.GetConnectionString("DefaultConnection")!,
+    CancellationToken.None);
+
 // Development only: Test bootstraps its own Testcontainers database via
 // IntegrationDatabaseBootstrap before this process starts, and Production/Staging must apply
 // migrations through their own deployment pipeline, never automatically on process start.
@@ -47,8 +54,7 @@ builder.Host.UseSerilog((ctx, cfg) =>
        .Enrich.FromLogContext()
        .Enrich.WithProperty("Application", "ONEVO.Api"));
 
-builder.Services.Configure<ForwardedHeadersOptions>(options =>
-    options.ForwardedHeaders = ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedHost);
+builder.Services.AddApiForwardedHeaders(builder.Configuration);
 
 builder.Services.AddApplication();
 builder.Services.Configure<ONEVO.Application.Features.Monitoring.TrayActivation.Options.TrayPresenceOptions>(
@@ -57,6 +63,7 @@ builder.Services.Configure<ONEVO.Api.Configuration.TrayReleasesOptions>(
     builder.Configuration.GetSection(ONEVO.Api.Configuration.TrayReleasesOptions.SectionName));
 
 builder.Services.AddInfrastructure(builder.Configuration);
+ONEVO.Api.Dashboard.Widgets.WidgetDataProviderRegistration.AddDashboardWidgetDataProviders(builder.Services);
 builder.Services.AddMemoryCache();
 builder.Services.AddControllers()
     .AddJsonOptions(options => options.JsonSerializerOptions.Converters.Add(new TimeOnlyHhMmJsonConverter()));
@@ -67,31 +74,58 @@ builder.Services.AddSignalR();
 builder.Services.AddSingleton<
     ONEVO.Application.Features.Monitoring.Settings.ServiceInterfaces.ITrayPolicyRefreshNotifier,
     ONEVO.Api.Hubs.SignalRTrayPolicyRefreshNotifier>();
+// Inbox realtime: replaces Infrastructure's null publisher with the InboxHub-backed one.
+Microsoft.Extensions.DependencyInjection.Extensions.ServiceCollectionDescriptorExtensions.Replace(
+    builder.Services,
+    ServiceDescriptor.Scoped<
+        ONEVO.Application.Features.Conversations.Contracts.IInboxRealtimePublisher,
+        ONEVO.Api.Hubs.SignalRInboxRealtimePublisher>());
+builder.Services.AddSingleton<
+    ONEVO.Application.Features.Monitoring.TrayActivation.ServiceInterfaces.ITrayPushNotifier,
+    ONEVO.Api.Hubs.SignalRTrayPushNotifier>();
+builder.Services.AddSingleton<ONEVO.Api.Hubs.TrayConnectionTracker>();
+builder.Services.AddSingleton<
+    ONEVO.Application.Features.Monitoring.TrayActivation.ServiceInterfaces.ITrayConnectionPresence>(
+    sp => sp.GetRequiredService<ONEVO.Api.Hubs.TrayConnectionTracker>());
+builder.Services.AddSingleton<ONEVO.Api.Middleware.WebActivityTracker>();
+builder.Services.AddSingleton<
+    ONEVO.Application.Features.Monitoring.TrayActivation.ServiceInterfaces.IWebActivityPresence>(
+    sp => sp.GetRequiredService<ONEVO.Api.Middleware.WebActivityTracker>());
 builder.Services.AddApiSwagger();
 builder.Services.AddApiCors(builder.Configuration);
+builder.Services.AddApiRateLimiting(builder.Configuration);
 builder.Services.AddHealthChecks()
     .AddCheck("api", () => Microsoft.Extensions.Diagnostics.HealthChecks.HealthCheckResult.Healthy("API is running"))
-    .AddAsyncCheck("postgres", async () =>
+    .AddAsyncCheck("sqlserver", async () =>
     {
         // Readiness must fail when the database is unreachable; liveness (/health)
         // deliberately excludes this check so a brief DB outage does not restart the app.
         try
         {
             var cs = builder.Configuration.GetConnectionString("DefaultConnection");
-            await using var conn = new Npgsql.NpgsqlConnection(cs);
+            await using var conn = new Microsoft.Data.SqlClient.SqlConnection(cs);
             await conn.OpenAsync();
-            await using var cmd = new Npgsql.NpgsqlCommand("SELECT 1", conn);
+            await using var cmd = new Microsoft.Data.SqlClient.SqlCommand("SELECT 1", conn);
             await cmd.ExecuteScalarAsync();
-            return Microsoft.Extensions.Diagnostics.HealthChecks.HealthCheckResult.Healthy("PostgreSQL reachable");
+            return Microsoft.Extensions.Diagnostics.HealthChecks.HealthCheckResult.Healthy("SQL Server reachable");
         }
         catch (Exception ex)
         {
-            return Microsoft.Extensions.Diagnostics.HealthChecks.HealthCheckResult.Unhealthy("PostgreSQL unreachable", ex);
+            return Microsoft.Extensions.Diagnostics.HealthChecks.HealthCheckResult.Unhealthy("SQL Server unreachable", ex);
         }
     }, ["ready"]);
 
 var app = builder.Build();
 
+if (ONEVO.Application.Common.Tenancy.TenancyModeReader.Read(app.Configuration)
+    == ONEVO.Application.Common.Tenancy.TenancyMode.SingleHost)
+{
+    app.Logger.LogWarning("Tenancy:Mode is SingleHost - test mode only; tenant comes from the X-Crownus-Tenant header.");
+}
+
+// First, so scheme, host and client IP are the real client's for everything below
+// (HTTPS redirect, HSTS, logging, CORS, rate limiting, tenant resolution).
+app.UseForwardedHeaders();
 app.UseMiddleware<ExceptionHandlerMiddleware>();
 app.UseMiddleware<CorrelationIdMiddleware>();
 app.UseMiddleware<SecurityHeadersMiddleware>();
@@ -107,16 +141,24 @@ app.UseSerilogRequestLogging(opts =>
 
 if (!app.Environment.IsDevelopment())
     app.UseHttpsRedirection();
+// Optional (Hosting:ServeSpas): SPA static files are served here, after the security headers,
+// HSTS and HTTPS redirect, but before routing, tenant resolution, auth, rate limiting and CSRF.
+// The index.html fallback is mapped below as an anonymous endpoint.
+app.UseSpaHosting();
 app.UseCors("AllowFrontend");
-app.UseForwardedHeaders();
 app.UseRouting();
-app.UseMiddleware<PublicApiRateLimitingMiddleware>();
+// Task 07: coarse per-IP flood guard before any credential is validated.
+app.UseApiPreAuthenticationRateLimiting();
 app.UseMiddleware<HostTenantResolutionMiddleware>();
 app.UseMiddleware<AuthRateLimitingMiddleware>();
 app.UseAuthentication();
+// Task 07: global limiter after authentication, so signed-in requests are partitioned by user,
+// tray device and tenant instead of by IP. Limits: docs/deployment/rate-limits.md.
+app.UseApiRateLimiting();
 // Middleware removed as part of cookie auth migration
 app.UseMiddleware<CsrfProtectionMiddleware>();
 app.UseMiddleware<TenantEnforcementMiddleware>();
+app.UseMiddleware<ONEVO.Api.Middleware.WebActivityTrackingMiddleware>();
 app.UseMiddleware<TrayPresenceEnforcementMiddleware>();
 
 app.UseMiddleware<PermissionVersionMiddleware>();
@@ -124,7 +166,10 @@ app.UseMiddleware<PermissionVersionMiddleware>();
 app.UseAuthorization();
 
 app.MapControllers();
-app.MapHub<ONEVO.Api.Hubs.AgentCommandsHub>("/hubs/agent-commands");
+// Close a tray connection when its device JWT expires — the live connection counts as presence.
+app.MapHub<ONEVO.Api.Hubs.AgentCommandsHub>("/hubs/agent-commands",
+    options => options.CloseOnAuthenticationExpiration = true);
+app.MapHub<ONEVO.Api.Hubs.InboxHub>("/hubs/inbox");
 // Liveness: process-only checks. Must NOT include dependency checks — a brief
 // DB outage should fail readiness, not liveness.
 app.MapHealthChecks("/health", new HealthCheckOptions
@@ -135,6 +180,7 @@ app.MapHealthChecks("/health/ready", new HealthCheckOptions
 {
     Predicate = check => check.Tags.Contains("ready")
 });
+app.MapSpaHostingFallbacks();
 
 app.Run();
 

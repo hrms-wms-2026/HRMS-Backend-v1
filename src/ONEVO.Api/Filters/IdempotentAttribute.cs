@@ -114,7 +114,7 @@ public sealed class IdempotentAttribute : Attribute, IAsyncActionFilter
     private static ObjectResult Problem(ActionExecutingContext context, int status, string detail) =>
         new(new
         {
-            type = "https://onevo.com/errors/idempotency",
+            type = ONEVO.Api.Errors.ProblemTypes.For("idempotency"),
             title = status == 409 ? "Conflict" : "Bad Request",
             status,
             detail,

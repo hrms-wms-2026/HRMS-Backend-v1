@@ -286,6 +286,34 @@ public sealed class EfPositionAssignmentRepositoryTests
     }
 
     [Fact]
+    public async Task GetOccupancyPreviewsAsync_CountsPlannedSeatsAsReserved_NotAsOccupants()
+    {
+        await using var db = BuildInMemoryDb();
+        var tenantId = Guid.NewGuid();
+        var positionId = Guid.NewGuid();
+
+        var invited = CreateEmployee(tenantId, "Invited", "Person", null);
+        var revoked = CreateEmployee(tenantId, "Revoked", "Person", null);
+        var active = CreateEmployee(tenantId, "Active", "Primary", null);
+        db.Employees.AddRange(invited, revoked, active);
+        db.PositionAssignments.AddRange(
+            CreateAssignment(tenantId, invited.Id, positionId, PositionAssignmentKind.PrimaryEmployment, PositionAssignmentStatus.Planned),
+            CreateAssignment(tenantId, revoked.Id, positionId, PositionAssignmentKind.PrimaryEmployment, PositionAssignmentStatus.Cancelled),
+            CreateAssignment(tenantId, active.Id, positionId, PositionAssignmentKind.PrimaryEmployment, PositionAssignmentStatus.Active));
+        await db.SaveChangesAsync();
+        db.ChangeTracker.Clear();
+
+        var repository = CreateRepository(db);
+        var result = await repository.GetOccupancyPreviewsAsync(tenantId, [positionId], 4, CancellationToken.None);
+
+        var preview = result[positionId];
+        Assert.Equal(1, preview.AssignedCount);
+        // A pending invite holds a seat; a revoked one (cancelled) gives it back.
+        Assert.Equal(1, preview.ReservedCount);
+        Assert.Equal(active.Id, Assert.Single(preview.OccupantPreview).EmployeeId);
+    }
+
+    [Fact]
     public async Task GetOccupancyPreviewsAsync_CapsOccupantPreviewAtPreviewLimit_ButKeepsFullAssignedCount()
     {
         await using var db = BuildInMemoryDb();

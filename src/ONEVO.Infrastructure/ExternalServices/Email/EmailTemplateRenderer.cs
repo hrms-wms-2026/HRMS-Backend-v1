@@ -1,6 +1,8 @@
 using System.Globalization;
 using System.Text.Json;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Options;
+using ONEVO.Application.Common.Tenancy;
 
 namespace ONEVO.Infrastructure.ExternalServices.Email;
 
@@ -20,7 +22,21 @@ public class EmailTemplateRenderer : IEmailTemplateRenderer
 {
     private readonly EmailOptions _options;
 
-    public EmailTemplateRenderer(IOptions<EmailOptions> options) => _options = options.Value;
+    private readonly TenancyMode _tenancyMode;
+
+    /// <summary>Subdomain tenancy (the default).</summary>
+    public EmailTemplateRenderer(IOptions<EmailOptions> options)
+    {
+        _options = options.Value;
+        _tenancyMode = TenancyMode.Subdomain;
+    }
+
+    /// <summary>Preferred by DI: reads Tenancy:Mode so SingleHost links carry ?tenant=.</summary>
+    public EmailTemplateRenderer(IOptions<EmailOptions> options, IConfiguration configuration)
+    {
+        _options = options.Value;
+        _tenancyMode = TenancyModeReader.Read(configuration);
+    }
 
     public RenderedEmail Render(string templateId, object data)
     {
@@ -35,7 +51,11 @@ public class EmailTemplateRenderer : IEmailTemplateRenderer
             "employee_onboarding_invite" => RenderEmployeeOnboardingInvite(fields),
             "position_change_approval_request" => RenderPositionChangeApprovalRequest(fields),
             "invoice_email" => RenderInvoiceEmail(fields),
-            "calendar_event_invite" => RenderCalendarEventInvite(fields),
+            "calendar_event_invite" => RenderCalendarEvent(fields, "invite"),
+            "calendar_event_updated" => RenderCalendarEvent(fields, "updated"),
+            "calendar_event_cancelled" => RenderCalendarEvent(fields, "cancelled"),
+            "calendar_event_removed" => RenderCalendarEvent(fields, "removed"),
+            "calendar_event_link_removed" => RenderCalendarEvent(fields, "link_removed"),
             _ => throw new InvalidOperationException(
                 $"Unknown email template '{templateId}'. Add a case in EmailTemplateRenderer.")
         };
@@ -54,15 +74,15 @@ public class EmailTemplateRenderer : IEmailTemplateRenderer
             ? $"[invite_url placeholder - set Email:AppBaseUrl] token={token}"
             : $"{appBaseUrl.TrimEnd('/')}/auth/invitations/{Uri.EscapeDataString(token)}";
 
-        var subject = $"You're invited to manage {company} on ONEVO";
+        var subject = $"You're invited to manage {company} on CROWNUS";
 
         var html = $"""
             <!doctype html>
             <html>
               <body style="font-family: -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif; line-height:1.5; color:#0f172a;">
-                <h2 style="margin:0 0 12px;">Welcome to ONEVO</h2>
+                <h2 style="margin:0 0 12px;">Welcome to CROWNUS</h2>
                 <p>Hi {Escape(firstName)},</p>
-                <p>You've been invited to manage <strong>{Escape(company)}</strong> on the ONEVO platform.</p>
+                <p>You've been invited to manage <strong>{Escape(company)}</strong> on the CROWNUS platform.</p>
                 <p>To finish setting up your account, click the link below before <em>{Escape(expires)}</em>:</p>
                 <p><a href="{Escape(inviteUrl)}" style="display:inline-block; padding:10px 16px; background:#0f172a; color:#fff; text-decoration:none; border-radius:6px;">Accept your invitation</a></p>
                 <p>If the button doesn't work, copy this link into your browser:</p>
@@ -76,7 +96,7 @@ public class EmailTemplateRenderer : IEmailTemplateRenderer
         var text = $"""
             Hi {firstName},
 
-            You've been invited to manage {company} on ONEVO.
+            You've been invited to manage {company} on CROWNUS.
 
             Accept your invitation before {expires}:
             {inviteUrl}
@@ -97,17 +117,17 @@ public class EmailTemplateRenderer : IEmailTemplateRenderer
         appBaseUrl = ApplyTenantSlug(appBaseUrl, tenantSlug);
         var resetUrl = string.IsNullOrWhiteSpace(appBaseUrl)
             ? $"[reset_url placeholder - set Email:AppBaseUrl] token={token}"
-            : $"{appBaseUrl.TrimEnd('/')}/auth/reset-password?token={Uri.EscapeDataString(token)}";
+            : WithTenantQuery($"{appBaseUrl.TrimEnd('/')}/auth/reset-password?token={Uri.EscapeDataString(token)}", tenantSlug);
 
-        var subject = "Reset your ONEVO password";
+        var subject = "Reset your CROWNUS password";
         var html = $"""
             <!doctype html><html><body>
-              <p>We received a request to reset your ONEVO password.</p>
+              <p>We received a request to reset your CROWNUS password.</p>
               <p><a href="{Escape(resetUrl)}">Reset password</a></p>
               <p>If you didn't request this, you can ignore this email.</p>
             </body></html>
             """;
-        var text = $"Reset your ONEVO password: {resetUrl}";
+        var text = $"Reset your CROWNUS password: {resetUrl}";
         return new RenderedEmail(subject, html, text);
     }
 
@@ -118,7 +138,7 @@ public class EmailTemplateRenderer : IEmailTemplateRenderer
             ? $"[reset_url placeholder - set Email:AdminConsoleBaseUrl] token={token}"
             : $"{_options.AdminConsoleBaseUrl.TrimEnd('/')}/auth/reset-password?token={Uri.EscapeDataString(token)}";
 
-        var subject = "Reset your ONEXSO Platform Administration password";
+        var subject = "Reset your CROWNUS Platform Administration password";
         var html = $"""
             <!doctype html><html><body>
               <p>A password reset was requested for your Platform Administration account.</p>
@@ -132,7 +152,7 @@ public class EmailTemplateRenderer : IEmailTemplateRenderer
 
     private RenderedEmail RenderAdminPasswordChanged()
     {
-        const string subject = "Your ONEXSO Platform Administration password was changed";
+        const string subject = "Your CROWNUS Platform Administration password was changed";
         const string html = """
             <!doctype html><html><body>
               <p>Your Platform Administration password was changed.</p>
@@ -152,16 +172,16 @@ public class EmailTemplateRenderer : IEmailTemplateRenderer
             ? $"[invite_url placeholder - set Email:AdminConsoleBaseUrl] token={token}"
             : $"{_options.AdminConsoleBaseUrl.TrimEnd('/')}/auth/accept-invite?token={Uri.EscapeDataString(token)}";
 
-        var subject = "You've been invited to ONEXSO Platform Administration";
+        var subject = "You've been invited to CROWNUS Platform Administration";
         var html = $"""
             <!doctype html><html><body>
               <p>Hi {Escape(fullName)},</p>
-              <p>You've been invited to join ONEXSO Platform Administration.</p>
+              <p>You've been invited to join CROWNUS Platform Administration.</p>
               <p><a href="{Escape(inviteUrl)}">Accept invitation</a></p>
               <p>This link expires in 72 hours.</p>
             </body></html>
             """;
-        var text = $"Hi {fullName},\n\nYou've been invited to join ONEXSO Platform Administration.\nAccept: {inviteUrl}\nThis link expires in 72 hours.";
+        var text = $"Hi {fullName},\n\nYou've been invited to join CROWNUS Platform Administration.\nAccept: {inviteUrl}\nThis link expires in 72 hours.";
         return new RenderedEmail(subject, html, text);
     }
 
@@ -176,15 +196,15 @@ public class EmailTemplateRenderer : IEmailTemplateRenderer
         appBaseUrl = ApplyTenantSlug(appBaseUrl, tenantSlug);
         var inviteUrl = string.IsNullOrWhiteSpace(appBaseUrl)
             ? $"[invite_url placeholder - set Email:AppBaseUrl] token={token}"
-            : $"{appBaseUrl.TrimEnd('/')}/auth/invitations/{Uri.EscapeDataString(token)}";
+            : WithTenantQuery($"{appBaseUrl.TrimEnd('/')}/auth/invitations/{Uri.EscapeDataString(token)}", tenantSlug);
 
-        var subject = "You're invited to ONEVO — set up your account";
+        var subject = "You're invited to CROWNUS — set up your account";
 
         var html = $"""
             <!doctype html>
             <html>
               <body style="font-family: -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif; line-height:1.5; color:#0f172a;">
-                <h2 style="margin:0 0 12px;">Welcome to ONEVO</h2>
+                <h2 style="margin:0 0 12px;">Welcome to CROWNUS</h2>
                 <p>Hi {Escape(firstName)},</p>
                 <p>An account has been set up for you. Click the link below to finish setting up your account and sign in:</p>
                 <p><a href="{Escape(inviteUrl)}" style="display:inline-block; padding:10px 16px; background:#0f172a; color:#fff; text-decoration:none; border-radius:6px;">Set up your account</a></p>
@@ -199,7 +219,7 @@ public class EmailTemplateRenderer : IEmailTemplateRenderer
         var text = $"""
             Hi {firstName},
 
-            An account has been set up for you on ONEVO.
+            An account has been set up for you on CROWNUS.
 
             Set up your account and sign in:
             {inviteUrl}
@@ -220,7 +240,7 @@ public class EmailTemplateRenderer : IEmailTemplateRenderer
         appBaseUrl = ApplyTenantSlug(appBaseUrl, tenantSlug);
         var approvalsUrl = string.IsNullOrWhiteSpace(appBaseUrl)
             ? "[approvals_url placeholder - set Email:AppBaseUrl]"
-            : $"{appBaseUrl.TrimEnd('/')}/people/approvals";
+            : WithTenantQuery($"{appBaseUrl.TrimEnd('/')}/people/approvals", tenantSlug);
 
         var subject = $"Approval needed: {Escape(employeeName)}'s {Escape(changeReason)} to {Escape(positionName)}";
         var html = $"""
@@ -310,8 +330,11 @@ public class EmailTemplateRenderer : IEmailTemplateRenderer
     /// the token was issued for. Reuses the app's own host shape (subdomain-of-root, same
     /// scheme/port as configured) rather than inventing a second convention.
     /// </summary>
-    private static string ApplyTenantSlug(string appBaseUrl, string tenantSlug)
+    private string ApplyTenantSlug(string appBaseUrl, string tenantSlug)
     {
+        if (_tenancyMode == TenancyMode.SingleHost)
+            return appBaseUrl; // one host: the tenant travels as ?tenant= (see WithTenantQuery)
+
         if (string.IsNullOrWhiteSpace(appBaseUrl) || string.IsNullOrWhiteSpace(tenantSlug))
             return appBaseUrl;
 
@@ -322,25 +345,86 @@ public class EmailTemplateRenderer : IEmailTemplateRenderer
         return builder.Uri.ToString();
     }
 
-    private RenderedEmail RenderCalendarEventInvite(IReadOnlyDictionary<string, object?> f)
+    /// <summary>SingleHost only: appends tenant=&lt;slug&gt; to the final URL's query (merging with an existing one).</summary>
+    private string WithTenantQuery(string url, string tenantSlug)
+    {
+        if (_tenancyMode != TenancyMode.SingleHost || string.IsNullOrWhiteSpace(tenantSlug))
+            return url;
+
+        var separator = url.Contains('?') ? '&' : '?';
+        return $"{url}{separator}tenant={Uri.EscapeDataString(tenantSlug)}";
+    }
+
+    /// <summary>The calendar emails (plan C1 P1-3): an invite, or an update / cancellation / removal of an event the recipient
+    /// was invited to. A cancelled or removed event offers no join link.</summary>
+    private RenderedEmail RenderCalendarEvent(IReadOnlyDictionary<string, object?> f, string kind)
     {
         var recipientName = Get(f, "recipientName");
         var eventTitle = Get(f, "eventTitle");
-        var startDateUtc = Get(f, "startDateUtc");
+        var startDateUtc = FormatCalendarEventStart(Get(f, "startDateUtc"), Get(f, "timeZoneId"));
         var location = Get(f, "location");
         var organizerName = Get(f, "organizerName");
+        var meetingLink = kind is "cancelled" or "removed" or "link_removed" ? "" : Get(f, "meetingLink");
 
-        var subject = $"You're invited: {eventTitle}";
-        var locationLine = string.IsNullOrWhiteSpace(location) ? "" : $"<p>Location: {Escape(location)}</p>";
+        var (subject, heading, intro, textIntro) = kind switch
+        {
+            "updated" => ($"Updated: {eventTitle}", "Event updated", $"{Escape(organizerName)} has updated the following event:", $"{organizerName} has updated \"{eventTitle}\"."),
+            "cancelled" => ($"Cancelled: {eventTitle}", "Event cancelled", $"{Escape(organizerName)} has cancelled the following event:", $"{organizerName} has cancelled \"{eventTitle}\"."),
+            "removed" => ($"Removed: {eventTitle}", "Removed from an event", $"{Escape(organizerName)} removed you from the following event:", $"{organizerName} removed you from \"{eventTitle}\"."),
+            "link_removed" => ($"Meeting link removed: {eventTitle}", "Online meeting removed", $"{Escape(organizerName)} removed the online meeting link from this event. The event itself is unchanged:", $"{organizerName} removed the online meeting link from \"{eventTitle}\". The event itself is unchanged."),
+            _ => ($"You're invited: {eventTitle}", "Meeting invitation", $"{Escape(organizerName)} has invited you to the following event:", $"{organizerName} has invited you to \"{eventTitle}\"."),
+        };
+        var whenRow = $"""<tr><td style="padding:4px 8px 4px 0; color:#64748b;">When</td><td style="padding:4px 0;">{Escape(startDateUtc)}</td></tr>""";
+        var whereRow = string.IsNullOrWhiteSpace(location)
+            ? ""
+            : $"""<tr><td style="padding:4px 8px 4px 0; color:#64748b;">Where</td><td style="padding:4px 0;">{Escape(location)}</td></tr>""";
+        var meetingLinkLine = string.IsNullOrWhiteSpace(meetingLink)
+            ? ""
+            : $"""<p><a href="{Escape(meetingLink)}" style="display:inline-block; padding:10px 16px; background:#0f172a; color:#fff; text-decoration:none; border-radius:6px;">Join meeting</a></p>""";
         var html = $"""
-            <!doctype html><html><body>
-              <p>Hi {Escape(recipientName)},</p>
-              <p>{Escape(organizerName)} added you to <strong>{Escape(eventTitle)}</strong>, starting {Escape(startDateUtc)}.</p>
-              {locationLine}
-            </body></html>
+            <!doctype html>
+            <html>
+              <body style="font-family: -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif; line-height:1.5; color:#0f172a;">
+                <h2 style="margin:0 0 12px;">{Escape(heading)}</h2>
+                <p>Hi {Escape(recipientName)},</p>
+                <p>{intro}</p>
+                <p style="font-size:16px; font-weight:600; margin:16px 0 8px;">{Escape(eventTitle)}</p>
+                <table style="border-collapse:collapse; margin:0 0 16px;">
+                  {whenRow}
+                  {whereRow}
+                </table>
+                {meetingLinkLine}
+                <hr style="border:none; border-top:1px solid #e2e8f0; margin:20px 0;" />
+                <p style="font-size:12px; color:#64748b;">If you weren't expecting this invitation, you can disregard this email.</p>
+              </body>
+            </html>
             """;
-        var text = $"Hi {recipientName},\n{organizerName} added you to \"{eventTitle}\", starting {startDateUtc}.{(string.IsNullOrWhiteSpace(location) ? "" : $"\nLocation: {location}")}";
+        var text = $"""
+            Hi {recipientName},
+
+            {textIntro}
+
+            When: {startDateUtc}
+            {(string.IsNullOrWhiteSpace(location) ? "" : $"Where: {location}\n")}{(string.IsNullOrWhiteSpace(meetingLink) ? "" : $"Join: {meetingLink}\n")}
+            If you weren't expecting this invitation, you can disregard this email.
+            """;
         return new RenderedEmail(subject, html, text);
+    }
+
+    /// <summary>Renders a calendar event's start time in its zone, e.g. "Friday, November 6, 2026 at 5:45 PM (Asia/Colombo)",
+    /// or "Monday, October 5, 2026 at 9:30 AM UTC" without a zone this machine knows.
+    /// The value always arrives here as an ISO 8601 string (SendTemplateAsync's anonymous object is
+    /// JSON-round-tripped before Render() sees it, which turns a DateTimeOffset into its default JSON
+    /// string form before Get()'s DateTimeOffset-formatting branch ever gets a chance to run) - falls
+    /// back to the raw string only if it somehow isn't parseable, rather than showing nothing.</summary>
+    private static string FormatCalendarEventStart(string startDateUtc, string timeZoneId)
+    {
+        if (!DateTimeOffset.TryParse(startDateUtc, CultureInfo.InvariantCulture, DateTimeStyles.RoundtripKind, out var parsed))
+            return startDateUtc;
+        if (string.IsNullOrWhiteSpace(timeZoneId) || !TimeZoneInfo.TryFindSystemTimeZoneById(timeZoneId, out var zone))
+            return string.Create(CultureInfo.InvariantCulture, $"{parsed.UtcDateTime:dddd, MMMM d, yyyy} at {parsed.UtcDateTime:h:mm tt} UTC");
+        var local = TimeZoneInfo.ConvertTime(parsed, zone);
+        return string.Create(CultureInfo.InvariantCulture, $"{local:dddd, MMMM d, yyyy} at {local:h:mm tt} ({timeZoneId})");
     }
 
     private static string Get(

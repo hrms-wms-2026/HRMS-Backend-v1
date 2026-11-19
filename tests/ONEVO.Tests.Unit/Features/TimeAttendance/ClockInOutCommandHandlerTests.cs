@@ -312,7 +312,7 @@ public sealed class ClockInOutCommandHandlerTests
         Assert.Equal(UtcNow, record.ActualEnd);
         Assert.Equal(30, record.BreakMinutes);
         Assert.Equal(480, record.WorkedMinutes);
-        Assert.Equal(AttendanceRecord.StatusShortHours, record.Status);
+        Assert.Equal(AttendanceRecord.StatusClockedOut, record.Status); // short hours is retired
         fixture.Attendance.Verify(x => x.HasOpenBreakAsync(
             TenantId, EmployeeId, LocalDayWindow.Start, LocalDayWindow.End, It.IsAny<CancellationToken>()), Times.Once);
         fixture.Attendance.Verify(x => x.SumCompletedBreakMinutesAsync(

@@ -13,9 +13,10 @@ public static class WorkTaskViewModelMapper
         (dto.Attachments ?? Array.Empty<TaskAttachmentDto>())
             .Select(a => new TaskAttachmentViewModel(a.FileId, a.FileName, a.FileSizeBytes, a.ContentType)).ToList(),
         (dto.Assignees ?? Array.Empty<TaskAssigneeIdentityDto>())
-            .Select(a => new TaskAssigneeIdentityViewModel(a.EmployeeId, a.Name, a.AvatarUrl)).ToList(),
+            .Select(a => new TaskAssigneeIdentityViewModel(
+                a.EmployeeId, a.Name, a.AvatarFileId, a.AvatarUrl)).ToList(),
         dto.ParentTaskId, dto.SubtaskTotalCount, dto.SubtaskCompletedCount,
-        dto.SubtaskAssigneeEmployeeIds ?? Array.Empty<Guid>(), dto.CreatedAt);
+        dto.SubtaskAssigneeEmployeeIds ?? Array.Empty<Guid>(), dto.CreatedAt, dto.HasPendingApproval);
 
     public static TaskStatusViewModel ToViewModel(this TaskStatusResponse dto) => new(
         dto.Id, dto.Name, dto.DisplayOrder, dto.RequiresApproval,
@@ -25,7 +26,8 @@ public static class WorkTaskViewModelMapper
         dto.MovedToStatus is null ? null : new TaskStatusMoveInfoViewModel(
             dto.MovedToStatus.Id, dto.MovedToStatus.Name, dto.MovedToStatus.Color));
 
-    public static TaskCategoryViewModel ToViewModel(this TaskCategoryResponse dto) => new(dto.Id, dto.Name, dto.DisplayOrder);
+    public static TaskCategoryViewModel ToViewModel(this TaskCategoryResponse dto) =>
+        new(dto.Id, dto.Name, dto.DisplayOrder, dto.SystemKey, dto.IsSystem, dto.Kind, dto.Icon);
 
     public static MyDeadlinesViewModel ToViewModel(this MyDeadlinesResponse dto) => new(
         dto.ObjectiveDeadlines.Select(o => new ObjectiveDeadlineViewModel(o.ObjectiveId, o.Title, o.EndDate)).ToList(),

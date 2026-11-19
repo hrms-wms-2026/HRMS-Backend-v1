@@ -71,6 +71,8 @@ public class DuplicateTaskCommandHandler : IRequestHandler<DuplicateTaskCommand,
         var source = await _tasks.GetByIdForTenantAsync(tenantId, request.TaskId, ct);
         if (source is null)
             return Result<WorkTaskResponse>.NotFound("Task not found.");
+        if (source.TaskKind == WorkTaskKinds.EmployeeChecklist)
+            return Result<WorkTaskResponse>.Conflict("Checklist tasks cannot be duplicated.");
 
         var destinationObjective = await _objectives.GetByIdForTenantAsync(tenantId, request.DestinationObjectiveId, ct);
         if (destinationObjective is null || !destinationObjective.IsActive)
@@ -138,6 +140,7 @@ public class DuplicateTaskCommandHandler : IRequestHandler<DuplicateTaskCommand,
             var copy = new WorkTask
             {
                 Id = Guid.NewGuid(), TenantId = tenantId, ProjectId = project.Id, ObjectiveId = destinationObjective.Id,
+                CreatorPositionObjectiveId = destinationObjective.Id,
                 ShortId = $"{project.Identifier}-{taskNumber}",
                 StatusId = defaultStatus.Id,
                 Title = request.Title.Trim(), Description = source.Description,
@@ -158,7 +161,7 @@ public class DuplicateTaskCommandHandler : IRequestHandler<DuplicateTaskCommand,
             if (request.CopyAssignees)
             {
                 var sourceAssignments = await _assignments.GetByTaskIdAsync(source.Id, innerCt);
-                foreach (var sourceAssignment in sourceAssignments)
+                foreach (var sourceAssignment in sourceAssignments.Take(1))
                 {
                     // Re-resolve through the coordinator rather than trusting the stored row: the
                     // employee may have gone inactive since, and UserId must come from the fresh

@@ -3,7 +3,7 @@ using FluentAssertions;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
-using Npgsql;
+using Microsoft.Extensions.Logging.Abstractions;
 using ONEVO.Application.Common.RepositoryInterfaces;
 using ONEVO.Application.Common.ServiceInterfaces;
 using ONEVO.Application.Features.Auth.Login.RepositoryInterfaces;
@@ -23,7 +23,7 @@ using ONEVO.Tests.Integration.Support;
 
 /// <summary>
 /// Shared, one-time-per-class setup for TenantSessionRlsIntegrationTests: clones the database and
-/// grants onevo_app its table privileges ONCE. xUnit's IClassFixture constructs this ONCE and
+/// grants crownus_app its table privileges ONCE. xUnit's IClassFixture constructs this ONCE and
 /// disposes it once after every fact in the class has run, instead of IAsyncLifetime's default of
 /// once PER fact - previously this class's own InitializeAsync ran 6 times, once per [Fact]. Every
 /// fact seeds its own fresh Guid.NewGuid()-keyed tenant/user via SeedActiveTenantAndUserAsync
@@ -42,27 +42,25 @@ public sealed class TenantSessionRlsIntegrationTestsFixture : IAsyncLifetime
 
     public async Task InitializeAsync()
     {
-        _adminConnectionString = await SharedPostgresTemplate.CreateDatabaseAsync();
+        _adminConnectionString = await SharedSqlServerTemplate.CreateDatabaseAsync();
 
         // Also sets/restores process env vars for the shared WebApplicationFactoryCollection; harmless
         // here since nothing in this class boots a WebApplicationFactory, but DefaultConnectionString is
-        // exactly the onevo_app-authenticated connection string this test needs.
+        // exactly the crownus_app-authenticated connection string this test needs.
         _environmentScope = new IntegrationTestEnvironmentScope(_adminConnectionString);
         _appConnectionString = _environmentScope.DefaultConnectionString;
 
-        await GrantOnevoAppTablePrivilegesAsync();
+        await GrantCrownusAppTablePrivilegesAsync();
     }
 
-    private async Task GrantOnevoAppTablePrivilegesAsync()
+    private async Task GrantCrownusAppTablePrivilegesAsync()
     {
-        await using var connection = new NpgsqlConnection(_adminConnectionString);
+        await using var connection = TestDb.CreateConnection(_adminConnectionString);
         await connection.OpenAsync();
 
         await using var command = connection.CreateCommand();
         command.CommandText = """
-            GRANT USAGE ON SCHEMA public TO onevo_app;
-            GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO onevo_app;
-            GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO onevo_app;
+            SELECT 1;
             """;
         await command.ExecuteNonQueryAsync();
     }
@@ -96,9 +94,9 @@ public sealed class TenantSessionRlsIntegrationTestsFixture : IAsyncLifetime
 
         services.AddDbContext<ApplicationDbContext>((sp, options) =>
         {
-            options.UseNpgsql(_appConnectionString)
+            options.UseTestSqlServer(_appConnectionString)
                    .UseSnakeCaseNamingConvention()
-                   .AddInterceptors(sp.GetRequiredService<TenantRlsInterceptor>());
+                   .AddTestRls(sp.GetRequiredService<TenantRlsInterceptor>());
         });
 
         services.AddScoped<IUnitOfWork, UnitOfWork>();
@@ -117,7 +115,7 @@ public sealed class TenantSessionRlsIntegrationTestsFixture : IAsyncLifetime
     public ApplicationDbContext BuildAdminDbContext()
     {
         var options = new DbContextOptionsBuilder<ApplicationDbContext>()
-            .UseNpgsql(_adminConnectionString)
+            .UseTestSqlServer(_adminConnectionString)
             .UseSnakeCaseNamingConvention()
             .Options;
         return new ApplicationDbContext(
@@ -181,7 +179,7 @@ public sealed class TenantSessionRlsIntegrationTestsFixture : IAsyncLifetime
 
 /// <summary>
 /// Proves TenantDatabaseTicketStore.StoreAsync can insert into "sessions" while the ApplicationDbContext
-/// connects as the real onevo_app role (NOBYPASSRLS, subject to the tenant_isolation RLS policy) with
+/// connects as the real crownus_app role (NOBYPASSRLS, subject to the tenant_isolation RLS policy) with
 /// TenantRlsInterceptor wired. This is deliberately NOT built on BaseDomainLoginTestFactory/E2ETestFactory:
 /// both of those bind ApplicationDbContext to the Testcontainers superuser connection and omit
 /// AddInterceptors(TenantRlsInterceptor), so RLS is invisible there - a session insert succeeds or fails
@@ -204,7 +202,7 @@ public sealed class TenantSessionRlsIntegrationTests : IClassFixture<TenantSessi
         var (tenantId, userId) = await _fixture.SeedActiveTenantAndUserAsync();
 
         var scopeFactory = _fixture.BuildProductionLikeScopeFactory();
-        var sut = new TenantDatabaseTicketStore(scopeFactory, _fixture.Clock);
+        var sut = new TenantDatabaseTicketStore(scopeFactory, _fixture.Clock, DisabledTicketCache(), NullLogger<TenantDatabaseTicketStore>.Instance);
         var ticket = TenantSessionRlsIntegrationTestsFixture.BuildTicket(tenantId, userId);
 
         var act = () => sut.StoreAsync(ticket, httpContext: null, CancellationToken.None);
@@ -226,7 +224,7 @@ public sealed class TenantSessionRlsIntegrationTests : IClassFixture<TenantSessi
         await _fixture.SetTenantStatusAsync(tenantId, TenantStatus.Cancelled);
 
         var scopeFactory = _fixture.BuildProductionLikeScopeFactory();
-        var sut = new TenantDatabaseTicketStore(scopeFactory, _fixture.Clock);
+        var sut = new TenantDatabaseTicketStore(scopeFactory, _fixture.Clock, DisabledTicketCache(), NullLogger<TenantDatabaseTicketStore>.Instance);
         var ticket = TenantSessionRlsIntegrationTestsFixture.BuildTicket(tenantId, userId);
 
         var act = () => sut.StoreAsync(ticket, httpContext: null, CancellationToken.None);
@@ -248,7 +246,7 @@ public sealed class TenantSessionRlsIntegrationTests : IClassFixture<TenantSessi
         await _fixture.SetTenantStatusAsync(tenantId, TenantStatus.Provisioning);
 
         var scopeFactory = _fixture.BuildProductionLikeScopeFactory();
-        var sut = new TenantDatabaseTicketStore(scopeFactory, _fixture.Clock);
+        var sut = new TenantDatabaseTicketStore(scopeFactory, _fixture.Clock, DisabledTicketCache(), NullLogger<TenantDatabaseTicketStore>.Instance);
         var ticket = TenantSessionRlsIntegrationTestsFixture.BuildTicket(tenantId, userId);
 
         var act = () => sut.StoreAsync(ticket, httpContext: null, CancellationToken.None);
@@ -265,7 +263,7 @@ public sealed class TenantSessionRlsIntegrationTests : IClassFixture<TenantSessi
         var (tenantId, userId) = await _fixture.SeedActiveTenantAndUserAsync();
 
         var scopeFactory = _fixture.BuildProductionLikeScopeFactory();
-        var sut = new TenantDatabaseTicketStore(scopeFactory, _fixture.Clock);
+        var sut = new TenantDatabaseTicketStore(scopeFactory, _fixture.Clock, DisabledTicketCache(), NullLogger<TenantDatabaseTicketStore>.Instance);
         var storeTicket = TenantSessionRlsIntegrationTestsFixture.BuildTicket(tenantId, userId);
         var rawKey = await sut.StoreAsync(storeTicket, httpContext: null, CancellationToken.None);
 
@@ -290,7 +288,7 @@ public sealed class TenantSessionRlsIntegrationTests : IClassFixture<TenantSessi
         var (tenantId, userId) = await _fixture.SeedActiveTenantAndUserAsync();
 
         var scopeFactory = _fixture.BuildProductionLikeScopeFactory();
-        var sut = new TenantDatabaseTicketStore(scopeFactory, _fixture.Clock);
+        var sut = new TenantDatabaseTicketStore(scopeFactory, _fixture.Clock, DisabledTicketCache(), NullLogger<TenantDatabaseTicketStore>.Instance);
         var storeTicket = TenantSessionRlsIntegrationTestsFixture.BuildTicket(tenantId, userId);
         var rawKey = await sut.StoreAsync(storeTicket, httpContext: null, CancellationToken.None);
 
@@ -317,7 +315,7 @@ public sealed class TenantSessionRlsIntegrationTests : IClassFixture<TenantSessi
         var (tenantId, userId) = await _fixture.SeedActiveTenantAndUserAsync();
 
         var scopeFactory = _fixture.BuildProductionLikeScopeFactory();
-        var sut = new TenantDatabaseTicketStore(scopeFactory, _fixture.Clock);
+        var sut = new TenantDatabaseTicketStore(scopeFactory, _fixture.Clock, DisabledTicketCache(), NullLogger<TenantDatabaseTicketStore>.Instance);
         var storeTicket = TenantSessionRlsIntegrationTestsFixture.BuildTicket(tenantId, userId);
         var rawKey = await sut.StoreAsync(storeTicket, httpContext: null, CancellationToken.None);
 
@@ -332,4 +330,9 @@ public sealed class TenantSessionRlsIntegrationTests : IClassFixture<TenantSessi
         session.IsRevoked.Should().BeTrue();
     }
 
+    // These tests exercise the database path; the ticket cache is covered by unit tests.
+    private SessionTicketCache DisabledTicketCache() =>
+        new(new Microsoft.Extensions.Caching.Memory.MemoryCache(new Microsoft.Extensions.Caching.Memory.MemoryCacheOptions()),
+            _fixture.Clock,
+            Microsoft.Extensions.Options.Options.Create(new SessionTicketCacheOptions { LifetimeSeconds = 0, RenewWriteIntervalSeconds = 0 }));
 }

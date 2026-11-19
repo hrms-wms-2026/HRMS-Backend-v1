@@ -1,3 +1,4 @@
+using ONEVO.Tests.Integration.TestDoubles;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
 using ONEVO.Application.Common.ServiceInterfaces;
@@ -99,7 +100,7 @@ public sealed class SensitivePositionChangeApprovalIntegrationTestsFixture : IAs
 
     public async Task InitializeAsync()
     {
-        _connectionString = await SharedPostgresTemplate.CreateDatabaseAsync();
+        _connectionString = await SharedSqlServerTemplate.CreateDatabaseAsync();
 
         await using var db = CreateContext();
 
@@ -202,7 +203,8 @@ public sealed class SensitivePositionChangeApprovalIntegrationTestsFixture : IAs
             new OutboxWriter(db, _encryption, _clock),
             new EfUserRepository(db),
             new EfTenantRepository(db),
-            new EmployeeOffboardingLockGuard(employees));
+            new EmployeeOffboardingLockGuard(employees),
+            new AllowAllManageScopeGuard());
     }
 
     public ApproveAccessGrantRequestCommandHandler BuildApproveHandler(Guid userId)
@@ -352,9 +354,9 @@ public sealed class SensitivePositionChangeApprovalIntegrationTestsFixture : IAs
         }
 
         var options = new DbContextOptionsBuilder<ApplicationDbContext>()
-            .UseNpgsql(_connectionString)
+            .UseTestSqlServer(_connectionString)
             .UseSnakeCaseNamingConvention()
-            .AddInterceptors(new TenantRlsInterceptor(tenantContext))
+            .AddTestRls(new TenantRlsInterceptor(tenantContext))
             .Options;
 
         return new ApplicationDbContext(

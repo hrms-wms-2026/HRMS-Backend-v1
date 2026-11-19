@@ -33,6 +33,28 @@ public interface ICalendarEventRepository
 
     Task AddParticipantsAsync(IReadOnlyList<CalendarEventParticipant> participants, CancellationToken ct = default);
 
+    /// <summary>Stages one RSVP change (saved with the caller's unit of work).</summary>
+    Task AddRsvpHistoryAsync(CalendarEventParticipantRsvpHistory entry, CancellationToken ct = default);
+
+    /// <summary>Single events (not recurring masters, not cancelled occurrences) with at least one participant whose start is in [from, to).</summary>
+    Task<IReadOnlyList<CalendarEvent>> ListWithParticipantsStartingBetweenAsync(Guid tenantId, DateTimeOffset from, DateTimeOffset to, CancellationToken ct = default);
+
+    /// <summary>Recurring masters with at least one participant whose series started before <paramref name="to"/>.</summary>
+    Task<IReadOnlyList<CalendarEvent>> ListRecurringMastersWithParticipantsAsync(Guid tenantId, DateTimeOffset to, CancellationToken ct = default);
+
+    /// <summary>The (event, occurrence, employee) start reminders already sent for occurrences in [from, to).</summary>
+    Task<IReadOnlySet<(Guid EventId, DateTimeOffset OccurrenceStart, Guid EmployeeId)>> ListSentRemindersAsync(
+        Guid tenantId, DateTimeOffset from, DateTimeOffset to, CancellationToken ct = default);
+
+    Task AddReminderLogsAsync(IReadOnlyList<CalendarEventReminderLog> logs, CancellationToken ct = default);
+
+    /// <summary>One employee's RSVP changes on the given events, oldest first (meeting-exception rules, plan C2).</summary>
+    Task<IReadOnlyList<CalendarEventParticipantRsvpHistory>> ListRsvpHistoryAsync(
+        Guid tenantId, Guid employeeId, IReadOnlyCollection<Guid> eventIds, CancellationToken ct = default);
+
+    /// <summary>Employees invited to a meeting in [from, to], or to a recurring series running by then (the nightly evaluation set).</summary>
+    Task<IReadOnlyList<Guid>> ListParticipantEmployeeIdsInRangeAsync(Guid tenantId, DateTimeOffset from, DateTimeOffset to, CancellationToken ct = default);
+
     /// <summary>Every participant row for the given events, grouped by EventId - used to attach
     /// participant summaries to items returned from GetCalendarEventsQueryHandler.</summary>
     Task<IReadOnlyDictionary<Guid, IReadOnlyList<CalendarEventParticipant>>> GetParticipantsForEventsAsync(
@@ -42,6 +64,26 @@ public interface ICalendarEventRepository
     /// employee isn't a participant on this event.</summary>
     Task<CalendarEventParticipant?> GetTrackedParticipantAsync(
         Guid tenantId, Guid eventId, Guid employeeId, CancellationToken ct = default);
+
+    void RemoveParticipant(CalendarEventParticipant participant);
+
+    /// <summary>Tracked soft-deleted (removed) rows for these employees on the event. The unique
+    /// (tenant, event, employee) index still counts them, so re-adding someone must revive their
+    /// row rather than insert a second one.</summary>
+    Task<IReadOnlyList<CalendarEventParticipant>> GetRemovedParticipantsAsync(
+        Guid tenantId, Guid eventId, IReadOnlyList<Guid> employeeIds, CancellationToken ct = default);
+
+    Task AddGuestsAsync(IReadOnlyList<CalendarEventGuest> guests, CancellationToken ct = default);
+
+    /// <summary>Every guest row for the given events, grouped by EventId.</summary>
+    Task<IReadOnlyDictionary<Guid, IReadOnlyList<CalendarEventGuest>>> GetGuestsForEventsAsync(
+        Guid tenantId, IReadOnlyList<Guid> eventIds, CancellationToken ct = default);
+
+    /// <summary>The tracked guest row for one (event, normalized email) pair, or null.</summary>
+    Task<CalendarEventGuest?> GetTrackedGuestAsync(
+        Guid tenantId, Guid eventId, string email, CancellationToken ct = default);
+
+    void RemoveGuest(CalendarEventGuest guest);
 
     /// <summary>Same shape as GetInDateRangeForCallerAsync, but scoped to one specific employee
     /// (as owner OR participant) rather than the current caller - used for conflict-checking a
@@ -68,4 +110,10 @@ public interface ICalendarEventRepository
     /// make holiday re-sync idempotent (delete-then-reinsert) instead of accumulating
     /// duplicates on every sync.</summary>
     Task RemoveHolidayEventsForYearAsync(Guid tenantId, int year, CancellationToken ct = default);
+
+    Task<IReadOnlyList<CalendarEvent>> ListBySourceTypeInRangeAsync(
+        Guid tenantId, string sourceType, DateTimeOffset from, DateTimeOffset to, CancellationToken ct = default);
+
+    /// <summary>Distinct dates of synced holiday events (SourceType == holiday) whose StartDate falls in [from, to].</summary>
+    Task<IReadOnlyList<DateOnly>> ListHolidayDatesAsync(Guid tenantId, DateOnly from, DateOnly to, CancellationToken ct = default);
 }

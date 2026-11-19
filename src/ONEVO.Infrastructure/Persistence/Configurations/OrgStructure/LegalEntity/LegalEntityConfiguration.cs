@@ -2,6 +2,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata.Builders;
 using ONEVO.Domain.Features.OrgStructure.Entities;
 using ONEVO.Domain.Features.Storage.File.Entities;
+using ONEVO.Infrastructure.Persistence.SqlServer;
 
 // Namespace deliberately stops at the feature segment: a ".LegalEntity" segment would
 // collide with the LegalEntity entity type and force using-aliases everywhere (same
@@ -66,7 +67,7 @@ public class LegalEntityConfiguration : IEntityTypeConfiguration<LegalEntity>
         // comparer, to keep the entity consistent with how the codebase
         // already stores flexible JSON settings.
         builder.Property(l => l.StandardWorkingDays)
-            .HasColumnType("jsonb")
+            .IsJsonColumn()
             .IsRequired()
             .HasDefaultValue("[1,2,3,4,5]");
 

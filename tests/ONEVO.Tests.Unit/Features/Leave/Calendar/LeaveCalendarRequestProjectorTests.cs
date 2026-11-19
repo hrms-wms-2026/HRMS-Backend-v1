@@ -106,6 +106,6 @@ public class LeaveCalendarRequestProjectorTests
             "Acme Lanka",
             "Annual Leave",
             "AL",
-            LeaveTypeCategories.Annual);
+            "#2563EB");
     }
 }

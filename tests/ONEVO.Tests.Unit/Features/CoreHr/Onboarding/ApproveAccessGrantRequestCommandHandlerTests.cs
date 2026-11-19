@@ -1,3 +1,4 @@
+using ONEVO.Application.Features.CoreHr.PositionAssignment.Models;
 using Moq;
 using ONEVO.Application.Common.Exceptions;
 using ONEVO.Application.Common.ServiceInterfaces;
@@ -9,6 +10,7 @@ using ONEVO.Application.Features.Auth.Permission.RepositoryInterfaces;
 using ONEVO.Application.Features.CoreHr.Employee.RepositoryInterfaces;
 using ONEVO.Application.Features.CoreHr.Onboarding.Commands.ApproveAccessGrantRequest;
 using ONEVO.Application.Features.CoreHr.Onboarding.RepositoryInterfaces;
+using ONEVO.Application.Features.CoreHr.Onboarding.Services;
 using ONEVO.Application.Features.CoreHr.OnboardingDraft.OutboxHandlers;
 using ONEVO.Application.Features.CoreHr.OnboardingDrafts.RepositoryInterfaces;
 using ONEVO.Application.Features.CoreHr.PositionAssignment.RepositoryInterfaces;
@@ -49,6 +51,7 @@ public sealed class ApproveAccessGrantRequestCommandHandlerTests
     private readonly Mock<ICurrentUser> _currentUser = new();
     private readonly Mock<IDateTimeProvider> _clock = new();
     private readonly TrackingUnitOfWork _unitOfWork = new();
+    private readonly Mock<IOfficeProjectReconciler> _officeReconciler = new();
 
     private readonly Guid _tenantId = Guid.NewGuid();
     private readonly Guid _userId = Guid.NewGuid();
@@ -122,7 +125,8 @@ public sealed class ApproveAccessGrantRequestCommandHandlerTests
         _legalEntityRepository.Object, _departmentRepository.Object, _employmentTypeRepository.Object,
         _workModeRepository.Object, _seatEntitlementService.Object, _checklistTemplateRepository.Object,
         _checklistTaskRepository.Object, _invitationTokenRepository.Object, _tenantRepository.Object, _outboxWriter.Object,
-        _tokenGenerator.Object, _currentUser.Object, _clock.Object, _unitOfWork);
+        _tokenGenerator.Object, _currentUser.Object, _clock.Object, _unitOfWork,
+        officeReconciler: _officeReconciler.Object);
 
     private OnboardingDraftEntity ValidDraft(Guid draftId, string status = OnboardingDraftStatus.WaitingForPositionApproval) => new()
     {
@@ -389,6 +393,83 @@ public sealed class ApproveAccessGrantRequestCommandHandlerTests
         Assert.Equal(draftId, result.Value!.OnboardingDraftId);
         Assert.Equal("Approved", result.Value.PositionApprovalStatus);
         Assert.True(result.Value.InvitationQueued);
+    }
+
+    [Theory]
+    [InlineData("holder")]
+    [InlineData("cross_line")]
+    [InlineData("left_company")]
+    public async Task Handle_ReservesAssignment_WithTheWizardsReportingManager(string chosenState)
+    {
+        var reportsToPositionId = Guid.NewGuid();
+        var firstHolder = Guid.NewGuid();
+        var chosen = Guid.NewGuid();
+        var requestId = Guid.NewGuid();
+        var draftId = Guid.NewGuid();
+        var draft = ValidDraft(draftId);
+        draft.ReportsToEmployeeId = chosen;
+        _accessGrantRequestRepository.Setup(r => r.GetTrackedByIdAsync(_tenantId, requestId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(ValidGrantRequest(requestId, draftId));
+        _draftRepository.Setup(r => r.GetTrackedAsync(_tenantId, draftId, It.IsAny<CancellationToken>())).ReturnsAsync(draft);
+        _positionRepository
+            .Setup(r => r.GetByIdForLegalEntityAsync(It.IsAny<Guid>(), It.IsAny<Guid>(), It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new Position
+            {
+                Id = _positionId, TenantId = _tenantId, DepartmentId = _departmentId, IsActive = true, MaxOccupancy = 5,
+                ReportsToPositionId = reportsToPositionId
+            });
+        var holders = new List<PositionActiveHolder> { new(firstHolder, "A", "One", "a@test.dev", null), new(Guid.NewGuid(), "C", "Three", "c@test.dev", null) };
+        if (chosenState == "holder")
+            holders.Add(new(chosen, "B", "Two", "b@test.dev", null));
+        _positionAssignmentRepository
+            .Setup(r => r.GetActiveHoldersAsync(_tenantId, reportsToPositionId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync((IReadOnlyList<PositionActiveHolder>)holders);
+        if (chosenState != "left_company")
+        {
+            // Still employed in this company with an active seat - whether or not in the line above.
+            _employeeRepository.Setup(r => r.GetByIdAsync(_tenantId, chosen, It.IsAny<CancellationToken>()))
+                .ReturnsAsync(new EmployeeEntity { Id = chosen, TenantId = _tenantId, LegalEntityId = _legalEntityId });
+            _positionAssignmentRepository.Setup(r => r.GetActivePrimaryAsync(_tenantId, chosen, It.IsAny<CancellationToken>()))
+                .ReturnsAsync(new ONEVO.Domain.Features.CoreHr.Entities.PositionAssignment { Id = Guid.NewGuid(), EmployeeId = chosen, PositionId = Guid.NewGuid() });
+        }
+
+        var result = await CreateHandler().Handle(new ApproveAccessGrantRequestCommand(requestId), CancellationToken.None);
+
+        Assert.True(result.IsSuccess, result.Error);
+        // Kept while they're still employed (in or out of the line above); otherwise the wizard's
+        // own default - the first current holder of the position above.
+        var expected = chosenState == "left_company" ? firstHolder : chosen;
+        _positionAssignmentRepository.Verify(r => r.TryReservePositionAssignmentAsync(
+            _tenantId, It.IsAny<Guid>(), _positionId, It.IsAny<DateOnly>(), _userId, expected, It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Fact]
+    public async Task Handle_SeatApproved_ReconcilesTheOfficeProjectAfterTheEmployeeIsSaved()
+    {
+        SetupHappyPath(out var requestId, out _);
+        var calls = new List<string>();
+        _draftRepository.Setup(r => r.SaveChangesAsync(It.IsAny<CancellationToken>()))
+            .Callback(() => calls.Add("save")).ReturnsAsync(1);
+        _officeReconciler.Setup(r => r.TryReconcileAsync(_tenantId, It.IsAny<CancellationToken>()))
+            .Callback(() => calls.Add("reconcile")).ReturnsAsync(OfficeProjectReconcileOutcome.Created);
+
+        var result = await CreateHandler().Handle(new ApproveAccessGrantRequestCommand(requestId), CancellationToken.None);
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal(new[] { "save", "reconcile" }, calls);
+    }
+
+    [Fact]
+    public async Task Handle_SaveConflict_DoesNotReconcile()
+    {
+        SetupHappyPath(out var requestId, out _);
+        _draftRepository.Setup(r => r.SaveChangesAsync(It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new UniqueConstraintConflictException(new Exception("dup")));
+
+        var result = await CreateHandler().Handle(new ApproveAccessGrantRequestCommand(requestId), CancellationToken.None);
+
+        Assert.Equal(409, result.StatusCode);
+        _officeReconciler.Verify(r => r.TryReconcileAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>()), Times.Never);
     }
 
     [Fact]
@@ -681,5 +762,7 @@ public sealed class ApproveAccessGrantRequestCommandHandlerTests
                 throw;
             }
         }
+
+        public void ClearTracking() { }
     }
 }

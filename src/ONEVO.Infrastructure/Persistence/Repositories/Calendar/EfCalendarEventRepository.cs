@@ -59,19 +59,100 @@ public class EfCalendarEventRepository : ICalendarEventRepository
     public async Task AddParticipantsAsync(IReadOnlyList<CalendarEventParticipant> participants, CancellationToken ct = default)
         => await _db.CalendarEventParticipants.AddRangeAsync(participants, ct);
 
+    public async Task AddRsvpHistoryAsync(CalendarEventParticipantRsvpHistory entry, CancellationToken ct = default)
+        => await _db.CalendarEventParticipantRsvpHistory.AddAsync(entry, ct);
+
+    public async Task<IReadOnlyList<CalendarEvent>> ListWithParticipantsStartingBetweenAsync(
+        Guid tenantId, DateTimeOffset from, DateTimeOffset to, CancellationToken ct = default) =>
+        await _db.PersonalCalendarEvents.AsNoTracking()
+            .Where(e => e.TenantId == tenantId && e.StartDate >= from && e.StartDate < to && !e.IsRecurrenceCancelled
+                        && (e.Recurrence == CalendarRecurrences.None || e.RecurrenceParentId != null)
+                        // A moved occurrence keeps its series' participants.
+                        && _db.CalendarEventParticipants.Any(p => p.EventId == e.Id || p.EventId == e.RecurrenceParentId))
+            .ToListAsync(ct);
+
+    public async Task<IReadOnlyList<CalendarEvent>> ListRecurringMastersWithParticipantsAsync(
+        Guid tenantId, DateTimeOffset to, CancellationToken ct = default) =>
+        await _db.PersonalCalendarEvents.AsNoTracking()
+            .Where(e => e.TenantId == tenantId && e.Recurrence != CalendarRecurrences.None && e.RecurrenceParentId == null
+                        && e.RecurrenceRule != null && e.StartDate < to
+                        && _db.CalendarEventParticipants.Any(p => p.EventId == e.Id))
+            .ToListAsync(ct);
+
+    public async Task<IReadOnlySet<(Guid EventId, DateTimeOffset OccurrenceStart, Guid EmployeeId)>> ListSentRemindersAsync(
+        Guid tenantId, DateTimeOffset from, DateTimeOffset to, CancellationToken ct = default)
+    {
+        var rows = await _db.CalendarEventRemindersSent.AsNoTracking()
+            .Where(r => r.TenantId == tenantId && r.OccurrenceStart >= from && r.OccurrenceStart < to)
+            .Select(r => new { r.EventId, r.OccurrenceStart, r.EmployeeId })
+            .ToListAsync(ct);
+        return rows.Select(r => (r.EventId, r.OccurrenceStart, r.EmployeeId)).ToHashSet();
+    }
+
+    public async Task AddReminderLogsAsync(IReadOnlyList<CalendarEventReminderLog> logs, CancellationToken ct = default)
+        => await _db.CalendarEventRemindersSent.AddRangeAsync(logs, ct);
+
+    public async Task<IReadOnlyList<CalendarEventParticipantRsvpHistory>> ListRsvpHistoryAsync(
+        Guid tenantId, Guid employeeId, IReadOnlyCollection<Guid> eventIds, CancellationToken ct = default) =>
+        eventIds.Count == 0
+            ? []
+            : await _db.CalendarEventParticipantRsvpHistory.AsNoTracking()
+                .Where(h => h.TenantId == tenantId && h.EmployeeId == employeeId && eventIds.Contains(h.EventId))
+                .OrderBy(h => h.ChangedAt)
+                .ToListAsync(ct);
+
+    public async Task<IReadOnlyList<Guid>> ListParticipantEmployeeIdsInRangeAsync(
+        Guid tenantId, DateTimeOffset from, DateTimeOffset to, CancellationToken ct = default) =>
+        await (from p in _db.CalendarEventParticipants.AsNoTracking()
+               join e in _db.PersonalCalendarEvents.AsNoTracking() on p.EventId equals e.Id
+               where p.TenantId == tenantId
+                     && ((e.StartDate <= to && e.EndDate >= @from)
+                         || (e.Recurrence != CalendarRecurrences.None && e.RecurrenceParentId == null && e.StartDate <= to))
+               select p.EmployeeId).Distinct().ToListAsync(ct);
+
     public async Task<IReadOnlyDictionary<Guid, IReadOnlyList<CalendarEventParticipant>>> GetParticipantsForEventsAsync(
         Guid tenantId, IReadOnlyList<Guid> eventIds, CancellationToken ct = default)
     {
         var rows = await _db.CalendarEventParticipants.AsNoTracking()
-            .Where(p => p.TenantId == tenantId && eventIds.Contains(p.EventId))
+            .Where(p => p.TenantId == tenantId && eventIds.Contains(p.EventId!.Value))
             .ToListAsync(ct);
-        return rows.GroupBy(p => p.EventId).ToDictionary(g => g.Key, g => (IReadOnlyList<CalendarEventParticipant>)g.ToList());
+        return rows.GroupBy(p => p.EventId!.Value).ToDictionary(g => g.Key, g => (IReadOnlyList<CalendarEventParticipant>)g.ToList());
     }
 
     public async Task<CalendarEventParticipant?> GetTrackedParticipantAsync(
         Guid tenantId, Guid eventId, Guid employeeId, CancellationToken ct = default)
         => await _db.CalendarEventParticipants.FirstOrDefaultAsync(
             p => p.TenantId == tenantId && p.EventId == eventId && p.EmployeeId == employeeId, ct);
+
+    public void RemoveParticipant(CalendarEventParticipant participant) => _db.CalendarEventParticipants.Remove(participant);
+
+    // IgnoreQueryFilters() drops the soft-delete half of the composed filter on purpose (we want the
+    // removed rows); tenant scoping is kept by the explicit TenantId predicate.
+    public async Task<IReadOnlyList<CalendarEventParticipant>> GetRemovedParticipantsAsync(
+        Guid tenantId, Guid eventId, IReadOnlyList<Guid> employeeIds, CancellationToken ct = default)
+        => await _db.CalendarEventParticipants.IgnoreQueryFilters()
+            .Where(p => p.TenantId == tenantId && p.EventId == eventId && p.IsDeleted && employeeIds.Contains(p.EmployeeId))
+            .ToListAsync(ct);
+
+    public async Task AddGuestsAsync(IReadOnlyList<CalendarEventGuest> guests, CancellationToken ct = default)
+        => await _db.CalendarEventGuests.AddRangeAsync(guests, ct);
+
+    public async Task<IReadOnlyDictionary<Guid, IReadOnlyList<CalendarEventGuest>>> GetGuestsForEventsAsync(
+        Guid tenantId, IReadOnlyList<Guid> eventIds, CancellationToken ct = default)
+    {
+        var rows = await _db.CalendarEventGuests.AsNoTracking()
+            .Where(g => g.TenantId == tenantId && eventIds.Contains(g.EventId!.Value))
+            .OrderBy(g => g.CreatedAt)
+            .ToListAsync(ct);
+        return rows.GroupBy(g => g.EventId!.Value).ToDictionary(g => g.Key, g => (IReadOnlyList<CalendarEventGuest>)g.ToList());
+    }
+
+    public async Task<CalendarEventGuest?> GetTrackedGuestAsync(
+        Guid tenantId, Guid eventId, string email, CancellationToken ct = default)
+        => await _db.CalendarEventGuests.FirstOrDefaultAsync(
+            g => g.TenantId == tenantId && g.EventId == eventId && g.Email == email, ct);
+
+    public void RemoveGuest(CalendarEventGuest guest) => _db.CalendarEventGuests.Remove(guest);
 
     public async Task<IReadOnlyList<CalendarEvent>> GetInDateRangeForEmployeeAsync(
         Guid tenantId, Guid employeeId, DateTimeOffset from, DateTimeOffset to, CancellationToken ct = default)
@@ -136,4 +217,30 @@ public class EfCalendarEventRepository : ICalendarEventRepository
                         && e.ExternalSource == CalendarExternalSources.CountryHoliday
                         && e.StartDate.Year == year)
             .ExecuteDeleteAsync(ct);
+
+    public async Task<IReadOnlyList<CalendarEvent>> ListBySourceTypeInRangeAsync(
+        Guid tenantId, string sourceType, DateTimeOffset from, DateTimeOffset to, CancellationToken ct = default)
+        => await _db.PersonalCalendarEvents.AsNoTracking()
+            .Where(e => e.TenantId == tenantId
+                        && e.SourceType == sourceType
+                        && !e.IsDeleted
+                        && !e.IsRecurrenceCancelled
+                        && e.EventStatus != CalendarEventStatuses.Cancelled
+                        && e.StartDate < to
+                        && e.EndDate > from)
+            .OrderBy(e => e.StartDate)
+            .ToListAsync(ct);
+
+    public async Task<IReadOnlyList<DateOnly>> ListHolidayDatesAsync(Guid tenantId, DateOnly from, DateOnly to, CancellationToken ct = default)
+    {
+        var start = new DateTimeOffset(from.ToDateTime(TimeOnly.MinValue), TimeSpan.Zero);
+        var end = new DateTimeOffset(to.AddDays(1).ToDateTime(TimeOnly.MinValue), TimeSpan.Zero);
+        var starts = await _db.PersonalCalendarEvents.AsNoTracking()
+            .Where(e => e.TenantId == tenantId
+                        && e.SourceType == CalendarEventSourceTypes.Holiday
+                        && e.StartDate >= start && e.StartDate < end)
+            .Select(e => e.StartDate)
+            .ToListAsync(ct);
+        return starts.Select(s => DateOnly.FromDateTime(s.UtcDateTime)).Distinct().ToList();
+    }
 }

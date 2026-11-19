@@ -33,8 +33,8 @@ namespace ONEVO.Tests.Integration.CoreHr.OnboardingDraft;
 /// </summary>
 public sealed class OnboardingDraftsIntegrationTests : IAsyncLifetime
 {
-    private const string RestrictedRoleName = "onboarding_drafts_rls_test_role";
-    private const string RestrictedRolePassword = "onboarding-drafts-rls-test-role-password";
+    private const string RestrictedRoleName = "crownus_app";
+    private const string RestrictedRolePassword = PrivilegedRoleTestBootstrap.AppRolePassword;
 
 
     private readonly SystemDateTimeProvider _clock = new();
@@ -47,7 +47,7 @@ public sealed class OnboardingDraftsIntegrationTests : IAsyncLifetime
 
     public async Task InitializeAsync()
     {
-        _connectionString = await SharedPostgresTemplate.CreateDatabaseAsync();
+        _connectionString = await SharedSqlServerTemplate.CreateDatabaseAsync();
 
         await using var db = CreateContext();
 
@@ -140,7 +140,65 @@ public sealed class OnboardingDraftsIntegrationTests : IAsyncLifetime
         secondResult.StatusCode.Should().Be(409);
     }
 
-    private SaveOnboardingDraftCommandHandler BuildHandler(ApplicationDbContext db)
+    [Fact]
+    public async Task SavingWithOnlyCompanyAndStep_PersistsBlanksAndNullStartDate()
+    {
+        var partial = new SaveOnboardingDraftCommand(
+            null, null, null, null, _legalEntityId, null, null, null, null, null, null, null, null,
+            "employee_details", null, null);
+
+        await using var createDb = CreateContext(useRestrictedRole: true);
+        var result = await BuildHandler(createDb).Handle(partial, CancellationToken.None);
+        result.IsSuccess.Should().BeTrue();
+
+        await using var readDb = CreateContext(useRestrictedRole: true);
+        var stored = await readDb.OnboardingDrafts.AsNoTracking().SingleAsync(d => d.Id == result.Value!.Id);
+        stored.StartDate.Should().BeNull();
+        stored.FirstName.Should().BeEmpty();
+        stored.WorkEmail.Should().BeEmpty();
+    }
+
+    [Fact]
+    public async Task ListMine_ExcludesCancelledAndOtherUsersDrafts()
+    {
+        var otherUserId = Guid.NewGuid();
+        await using (var seed = CreateContext())
+        {
+            seed.Users.Add(new User { Id = otherUserId, TenantId = _tenantId, Email = $"{otherUserId:N}@onboarding-drafts-rls.onevo.dev", PasswordHash = "x", FirstName = "Other", LastName = "User", IsActive = true });
+            await seed.SaveChangesAsync();
+        }
+
+        Guid Mine1, Mine2, Theirs;
+        await using (var db = CreateContext(useRestrictedRole: true))
+        {
+            Mine1 = (await BuildHandler(db).Handle(NewCommand(), CancellationToken.None)).Value!.Id;
+        }
+        await using (var db = CreateContext(useRestrictedRole: true))
+        {
+            Mine2 = (await BuildHandler(db).Handle(NewCommand(), CancellationToken.None)).Value!.Id;
+        }
+        await using (var db = CreateContext(useRestrictedRole: true))
+        {
+            Theirs = (await BuildHandler(db, otherUserId).Handle(NewCommand(), CancellationToken.None)).Value!.Id;
+        }
+
+        await using (var db = CreateContext(useRestrictedRole: true))
+        {
+            var draft = await db.OnboardingDrafts.SingleAsync(d => d.Id == Mine2);
+            draft.Status = ONEVO.Domain.Features.CoreHr.Entities.OnboardingDraftStatus.Cancelled;
+            await db.SaveChangesAsync();
+        }
+
+        await using var readDb = CreateContext(useRestrictedRole: true);
+        var (items, total) = await new EfOnboardingDraftRepository(readDb)
+            .ListWithNamesAsync(_tenantId, _userId, 1, 25, CancellationToken.None, openOnly: true);
+
+        total.Should().Be(1);
+        items.Select(i => i.Id).Should().Equal(Mine1);
+        items.Select(i => i.Id).Should().NotContain(Theirs);
+    }
+
+    private SaveOnboardingDraftCommandHandler BuildHandler(ApplicationDbContext db, Guid? actingUserId = null)
     {
         var draftRepository = new EfOnboardingDraftRepository(db);
         var employeeRepository = new EfEmployeeRepository(db);
@@ -149,7 +207,7 @@ public sealed class OnboardingDraftsIntegrationTests : IAsyncLifetime
         var departmentRepository = new EfDepartmentRepository(db);
         var seatEntitlementService = new SeatEntitlementService(db);
         var workModeRepository = new EfWorkModeRepository(db);
-        var currentUser = new StubCurrentUser(_tenantId, _userId);
+        var currentUser = new StubCurrentUser(_tenantId, actingUserId ?? _userId);
         var writeService = new OnboardingDraftWriteService(
             draftRepository, employeeRepository,
             null!, null!,
@@ -172,44 +230,30 @@ public sealed class OnboardingDraftsIntegrationTests : IAsyncLifetime
 
     private async Task CreateRestrictedRoleAsync()
     {
-        await using var connection = new Npgsql.NpgsqlConnection(_connectionString);
+        await using var connection = TestDb.CreateConnection(_connectionString);
         await connection.OpenAsync();
 
         await using (var createRole = connection.CreateCommand())
         {
-            createRole.CommandText = $@"
-                DO $$
-                BEGIN
-                    IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = '{RestrictedRoleName}') THEN
-                        CREATE ROLE {RestrictedRoleName}
-                            LOGIN PASSWORD '{RestrictedRolePassword}' NOSUPERUSER NOBYPASSRLS;
-                    END IF;
-                END
-                $$;
-            ";
+            createRole.CommandText = "SELECT 1;";
             await createRole.ExecuteNonQueryAsync();
         }
 
         await using (var grantSchema = connection.CreateCommand())
         {
-            grantSchema.CommandText = $"GRANT USAGE ON SCHEMA public TO {RestrictedRoleName};";
+            grantSchema.CommandText = "SELECT 1;";
             await grantSchema.ExecuteNonQueryAsync();
         }
 
         await using (var grantTables = connection.CreateCommand())
         {
-            grantTables.CommandText = $@"
-                GRANT SELECT, INSERT, UPDATE, DELETE ON onboarding_drafts TO {RestrictedRoleName};
-                GRANT SELECT ON tenants, legal_entities, departments, positions, employees,
-                    users, employment_types, employment_statuses, position_access_templates,
-                    tenant_subscriptions, tenant_work_modes TO {RestrictedRoleName};
-            ";
+            grantTables.CommandText = "SELECT 1;";
             await grantTables.ExecuteNonQueryAsync();
         }
 
-        var restrictedBuilder = new Npgsql.NpgsqlConnectionStringBuilder(_connectionString)
+        var restrictedBuilder = new SqlConnectionStringBuilder(_connectionString)
         {
-            Username = RestrictedRoleName,
+            UserID = RestrictedRoleName,
             Password = RestrictedRolePassword
         };
         _restrictedConnectionString = restrictedBuilder.ConnectionString;
@@ -225,9 +269,9 @@ public sealed class OnboardingDraftsIntegrationTests : IAsyncLifetime
 
         var connectionString = useRestrictedRole ? _restrictedConnectionString : _connectionString;
         var options = new DbContextOptionsBuilder<ApplicationDbContext>()
-            .UseNpgsql(connectionString)
+            .UseTestSqlServer(connectionString)
             .UseSnakeCaseNamingConvention()
-            .AddInterceptors(new TenantRlsInterceptor(tenantContext))
+            .AddTestRls(new TenantRlsInterceptor(tenantContext))
             .Options;
 
         return new ApplicationDbContext(

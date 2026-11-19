@@ -1,3 +1,4 @@
+using ONEVO.Application.Features.Monitoring.TrayActivation.ServiceInterfaces;
 using MediatR;
 using ONEVO.Application.Common.Exceptions;
 using ONEVO.Application.Common.Models;
@@ -12,7 +13,8 @@ namespace ONEVO.Application.Features.TimeAttendance.Commands.StartBreak;
 public sealed class StartBreakCommandHandler(
     IAttendanceTodayStateService todayState,
     IAttendanceReadRepository attendance,
-    IUnitOfWork unitOfWork)
+    IUnitOfWork unitOfWork,
+    ITrayPushNotifier? trayPush = null)
     : IRequestHandler<StartBreakCommand, Result<AttendanceTodayResponse>>
 {
     public async Task<Result<AttendanceTodayResponse>> Handle(
@@ -58,6 +60,11 @@ public sealed class StartBreakCommandHandler(
             return Result<AttendanceTodayResponse>.Conflict(
                 "Break state was updated by another request. Please refresh and try again.");
         }
+
+        // After commit, so the tray re-reads the committed state.
+        if (trayPush is not null)
+            await trayPush.NotifyUserAsync(
+                context.Employee.TenantId, context.Employee.UserId, TrayPushMessages.AttendanceChanged, ct);
 
         return await todayState.GetTodayAsync(context.Employee.TenantId, context.Employee.UserId, ct);
     }

@@ -17,8 +17,10 @@ public sealed class EfGlobalEmailDirectoryRepository : IGlobalEmailDirectoryRepo
         var upsertTask = _db.Database.ExecuteSqlInterpolatedAsync(
             $"""
             INSERT INTO global_email_directory (email, tenant_id)
-            VALUES ({email}, {tenantId})
-            ON CONFLICT (email, tenant_id) DO NOTHING
+            SELECT {email}, {tenantId}
+            WHERE NOT EXISTS (
+                SELECT 1 FROM global_email_directory WITH (UPDLOCK, HOLDLOCK)
+                WHERE email = {email} AND tenant_id = {tenantId})
             """, ct);
 
         await upsertTask;

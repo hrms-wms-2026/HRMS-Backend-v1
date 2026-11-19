@@ -1,5 +1,6 @@
 using Moq;
 using ONEVO.Application.Common.ServiceInterfaces;
+using ONEVO.Application.Features.WorkManagement.Approvals.RepositoryInterfaces;
 using ONEVO.Application.Features.WorkManagement.Common.Services;
 using ONEVO.Application.Features.WorkManagement.Projects.RepositoryInterfaces;
 using ONEVO.Application.Features.WorkManagement.Tasks.Queries.GetMyProjectTasks;
@@ -46,7 +47,8 @@ public class GetMyProjectTasksQueryHandlerTests
         IReadOnlyList<TaskFixtureData> fixtures,
         IReadOnlyDictionary<Guid, OpenTaskClockingSessionSummary>? openSessionsByTaskId = null,
         bool projectExists = true, bool projectActive = true,
-        IReadOnlyDictionary<Guid, int>? totalLoggedMinutesByTaskId = null)
+        IReadOnlyDictionary<Guid, int>? totalLoggedMinutesByTaskId = null,
+        IReadOnlySet<Guid>? pendingTaskIds = null)
     {
         var currentUser = new Mock<ICurrentUser>();
         currentUser.SetupGet(x => x.IsAuthenticated).Returns(true);
@@ -83,9 +85,14 @@ public class GetMyProjectTasksQueryHandlerTests
                 TenantId, It.IsAny<IReadOnlyList<Guid>>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(totalLoggedMinutesByTaskId ?? new Dictionary<Guid, int>());
 
+        var approvalRequests = new Mock<IWorkApprovalRequestRepository>();
+        approvalRequests.Setup(x => x.GetPendingTargetIdsAsync(
+                TenantId, It.IsAny<string>(), It.IsAny<IReadOnlyCollection<Guid>>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(pendingTaskIds ?? new HashSet<Guid>());
+
         var handler = new GetMyProjectTasksQueryHandler(
             currentUser.Object, identity.Object, projects.Object, tasks.Object, assignmentRepository.Object,
-            sessionRepository.Object);
+            sessionRepository.Object, approvalRequests.Object);
         return (handler, CallerEmployeeIdConst, project);
     }
 
@@ -237,6 +244,19 @@ public class GetMyProjectTasksQueryHandlerTests
 
         Assert.True(result.IsSuccess);
         Assert.Empty(result.Value!);
+    }
+
+    [Fact]
+    public async Task Handle_FlagsTasksWithAPendingApprovalRequest()
+    {
+        var fixture = TaskFixture("Mine", assigneeEmployeeIds: new[] { CallerEmployeeIdConst });
+        var (handler, _, project) = ArrangeMyTasksHandler(
+            new[] { fixture }, pendingTaskIds: new HashSet<Guid> { fixture.Task.Id });
+
+        var result = await handler.Handle(new GetMyProjectTasksQuery(project.Id, null), CancellationToken.None);
+
+        Assert.True(result.IsSuccess);
+        Assert.True(result.Value![0].HasPendingApproval);
     }
 
     [Fact]

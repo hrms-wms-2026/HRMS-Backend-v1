@@ -4,11 +4,13 @@ using ONEVO.Application.Common.RepositoryInterfaces;
 using ONEVO.Application.Common.ServiceInterfaces;
 using ONEVO.Application.Features.WorkManagement.Common.Services;
 using ONEVO.Application.Features.WorkManagement.Objectives.RepositoryInterfaces;
-using ONEVO.Application.Features.WorkManagement.Objectives.Services;
 using ONEVO.Application.Features.WorkManagement.Projects.RepositoryInterfaces;
 using ONEVO.Application.Features.WorkManagement.Tasks.DTOs.Responses;
+using ONEVO.Application.Features.WorkManagement.Tasks.DTOs;
 using ONEVO.Application.Features.WorkManagement.Tasks.RepositoryInterfaces;
+using ONEVO.Application.Features.WorkManagement.Tasks.Services;
 using ONEVO.Domain.Features.WorkManagement.Tasks.Entities;
+using ONEVO.Domain.Features.WorkManagement.Projects.Entities;
 
 namespace ONEVO.Application.Features.WorkManagement.Tasks.Commands.ReorderTaskStatuses;
 
@@ -20,12 +22,12 @@ public class ReorderTaskStatusesCommandHandler : IRequestHandler<ReorderTaskStat
     private readonly IProjectRepository _projects;
     private readonly ITaskStatusRepository _statuses;
     private readonly IUnitOfWork _unitOfWork;
-    private readonly IMilestoneMembershipCoordinator _membership;
+    private readonly ITaskStatusChangeRequestConflictSweeper _sweeper;
 
     public ReorderTaskStatusesCommandHandler(
         ICurrentUser currentUser, ICallerIdentityResolver identity, IObjectiveRepository objectives,
         IProjectRepository projects, ITaskStatusRepository statuses, IUnitOfWork unitOfWork,
-        IMilestoneMembershipCoordinator membership)
+        ITaskStatusChangeRequestConflictSweeper sweeper)
     {
         _currentUser = currentUser;
         _identity = identity;
@@ -33,7 +35,7 @@ public class ReorderTaskStatusesCommandHandler : IRequestHandler<ReorderTaskStat
         _projects = projects;
         _statuses = statuses;
         _unitOfWork = unitOfWork;
-        _membership = membership;
+        _sweeper = sweeper;
     }
 
     public async Task<Result<IReadOnlyList<TaskStatusResponse>>> Handle(ReorderTaskStatusesCommand request, CancellationToken ct)
@@ -49,13 +51,15 @@ public class ReorderTaskStatusesCommandHandler : IRequestHandler<ReorderTaskStat
         var project = await _projects.GetByIdForTenantAsync(tenantId, request.ProjectId, ct);
         if (project is null || !project.IsActive)
             return Result<IReadOnlyList<TaskStatusResponse>>.NotFound("Project not found.");
+        if (project.SystemPurpose == ProjectSystemPurposes.Office)
+            return Result<IReadOnlyList<TaskStatusResponse>>.Conflict("The Office project workflow is system-managed.");
 
         var defaultObjective = await _objectives.GetDefaultByProjectIdAsync(tenantId, project.Id, ct);
         if (defaultObjective is null)
             return Result<IReadOnlyList<TaskStatusResponse>>.NotFound("Project has no default milestone.");
 
-        if (!await _membership.IsEffectiveManagerAsync(tenantId, defaultObjective.Id, callerEmployeeId.Value, ct))
-            return Result<IReadOnlyList<TaskStatusResponse>>.Forbidden("Only an owner or member of this project can restructure the board.");
+        if (defaultObjective.OwnerId != callerEmployeeId.Value)
+            return Result<IReadOnlyList<TaskStatusResponse>>.Forbidden("Only the project's top module owner can change task statuses directly. Others can send a change request.");
 
         // Defense in depth beyond the validator (which runs in the MediatR pipeline in production,
         // but not when a test calls Handle directly).
@@ -84,6 +88,20 @@ public class ReorderTaskStatusesCommandHandler : IRequestHandler<ReorderTaskStat
         if (!categories.Contains(TaskStatusCategories.Active))
             return Result<IReadOnlyList<TaskStatusResponse>>.Failure("A project must always have at least one Active status.", 422);
 
+        // The editor always sends every status here, so only statuses whose fields actually change,
+        // and an actual change in relative order, count against pending change requests.
+        var touched = request.Updates
+            .Where(u => byId[u.StatusId] is var s && (s.Visibility != u.Visibility || s.Category != u.Category || s.Color != u.Color))
+            .Select(u => u.StatusId)
+            .ToHashSet();
+        var oldOrder = existing.OrderBy(s => s.DisplayOrder).Select(s => s.Id).ToList();
+        var newOrder = existing
+            .OrderBy(s => updatesById.TryGetValue(s.Id, out var u) ? u.DisplayOrder : s.DisplayOrder)
+            .ThenBy(s => oldOrder.IndexOf(s.Id))
+            .Select(s => s.Id)
+            .ToList();
+        var footprint = new TaskStatusChangeFootprint(touched, !oldOrder.SequenceEqual(newOrder));
+
         return await _unitOfWork.ExecuteInTransactionAsync(async innerCt =>
         {
             foreach (var update in request.Updates)
@@ -98,6 +116,7 @@ public class ReorderTaskStatusesCommandHandler : IRequestHandler<ReorderTaskStat
                 _statuses.Update(status);
             }
 
+            await _sweeper.MarkConflictingStaleAsync(tenantId, project.Id, callerEmployeeId.Value, footprint, null, innerCt);
             await _unitOfWork.SaveChangesAsync(innerCt);
 
             return Result<IReadOnlyList<TaskStatusResponse>>.Success(

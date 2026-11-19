@@ -31,6 +31,18 @@ public interface IMonitoringToggleResolver
         CancellationToken ct = default);
 
     /// <summary>
+    /// Same resolution chain as <see cref="IsEnabledAsync(Guid, Guid, MonitoringCapability, CancellationToken)"/>,
+    /// but keyed by a real CoreHR Employee.Id (e.g. the {id} of an /employees/{id}/... route)
+    /// instead of a User.Id. Use this from employee-detail reads; the other overloads match on
+    /// Employee.UserId and resolve to false when handed an Employee.Id.
+    /// </summary>
+    Task<bool> IsEnabledForEmployeeAsync(
+        Guid tenantId,
+        Guid employeeId,
+        MonitoringCapability capability,
+        CancellationToken ct = default);
+
+    /// <summary>
     /// Resolves the effective idle-inactivity threshold, in minutes, for the given employee -
     /// same employee → work mode → role → position → department → tenant → default(2) chain as
     /// <see cref="IsEnabledAsync"/>.
@@ -79,4 +91,16 @@ public interface IMonitoringToggleResolver
         Guid userId,
         Guid legalEntityId,
         CancellationToken ct = default);
+
+    /// <summary>
+    /// The employee's own clock-in photo override (EmployeeMonitoringOverride.PhotoRequired),
+    /// or null when they inherit from whichever work mode applies. Lets callers that resolve a
+    /// work mode other than the employee's base one (e.g. today's approved work-area change)
+    /// still honor the per-employee setting.
+    /// </summary>
+    Task<bool?> GetPhotoRequiredOverrideAsync(
+        Guid tenantId,
+        Guid userId,
+        Guid legalEntityId,
+        CancellationToken ct = default) => Task.FromResult<bool?>(null);
 }

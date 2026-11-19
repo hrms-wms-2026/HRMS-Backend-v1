@@ -50,7 +50,7 @@ public sealed class OnboardingPersistenceRepositoryTests
         xmin.Should().NotBeNull();
         xmin!.IsConcurrencyToken.Should().BeTrue();
         xmin.ValueGenerated.Should().Be(Microsoft.EntityFrameworkCore.Metadata.ValueGenerated.OnAddOrUpdate);
-        xmin.ClrType.Should().Be(typeof(uint?));
+        xmin.ClrType.Should().Be(typeof(ulong?));
     }
 
     [Fact]

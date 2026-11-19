@@ -1,13 +1,17 @@
-using ONEVO.Application.Features.WorkManagement.Tasks.DTOs;
+using ONEVO.Domain.Features.WorkManagement.Tasks.Entities;
 
 namespace ONEVO.Application.Features.WorkManagement.Tasks.DTOs.Responses;
 
 public sealed record TaskAttachmentDto(Guid FileId, string FileName, long FileSizeBytes, string ContentType);
 
-/// <summary>An assignee's coverage-free display identity (name + optional signed avatar URL), resolved
+/// <summary>An assignee's coverage-free display identity (name + optional avatar file id), resolved
 /// via ICallerIdentityResolver the same way objective member names are - unrelated to the
 /// management-coverage-scoped GET /employees/{id}, which 403s for most task assignees.</summary>
-public sealed record TaskAssigneeIdentityDto(Guid EmployeeId, string Name, string? AvatarUrl);
+public sealed record TaskAssigneeIdentityDto(
+    Guid EmployeeId,
+    string Name,
+    Guid? AvatarFileId,
+    string? AvatarUrl = null);
 
 public sealed record WorkTaskResponse(
     Guid Id, Guid ObjectiveId, string ShortId, string Title, string? Description,
@@ -20,13 +24,10 @@ public sealed record WorkTaskResponse(
     IReadOnlyList<TaskAssigneeIdentityDto>? Assignees = null,
     Guid? ParentTaskId = null, int SubtaskTotalCount = 0, int SubtaskCompletedCount = 0,
     IReadOnlyList<Guid>? SubtaskAssigneeEmployeeIds = null,
-    DateTimeOffset CreatedAt = default);
-
-public sealed record TaskCreationRequestResponse(
-    Guid Id, Guid ObjectiveId, string Status, TaskCreationRequestPayload Payload, DateTimeOffset CreatedAt);
-
-public sealed record TaskEditRequestResponse(
-    Guid Id, Guid TaskId, Guid ObjectiveId, string Status, TaskEditRequestPayload Payload, string RequestedByName, DateTimeOffset CreatedAt);
+    DateTimeOffset CreatedAt = default,
+    bool HasPendingApproval = false,
+    string TaskKind = WorkTaskKinds.Standard,
+    string VisibilityScope = WorkTaskVisibilityScopes.Module);
 
 /// <summary>Returned alongside a 409 slack-conflict so the frontend can offer the extend-allocation flow (spec §3.2).</summary>
 public sealed record InsufficientAllocationResponse(decimal AvailableSlackHours, string SuggestedAction = "extend_allocation");

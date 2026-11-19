@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata.Builders;
 using ONEVO.Domain.Features.Auth.Entities;
+using ONEVO.Infrastructure.Persistence.SqlServer;
 
 namespace ONEVO.Infrastructure.Persistence.Configurations.Auth.Login;
 
@@ -13,7 +14,7 @@ public class LoginWorkspaceSelectionChallengeConfiguration : IEntityTypeConfigur
 
         builder.Property(c => c.ChallengeHash).HasMaxLength(128).IsRequired();
         builder.Property(c => c.NormalizedEmail).HasMaxLength(320).IsRequired();
-        builder.Property(c => c.CandidateWorkspacesJson).HasColumnType("jsonb").IsRequired();
+        builder.Property(c => c.CandidateWorkspacesJson).IsJsonColumn().IsRequired();
         builder.Property(c => c.Purpose).HasMaxLength(40).IsRequired().HasDefaultValue("workspace_selection");
         builder.Property(c => c.FailedAttemptCount).HasDefaultValue(0);
         builder.Property(c => c.IpAddress).HasMaxLength(45);

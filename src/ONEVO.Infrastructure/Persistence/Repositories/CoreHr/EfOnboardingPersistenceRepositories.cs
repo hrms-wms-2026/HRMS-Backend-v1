@@ -1,5 +1,5 @@
 using Microsoft.EntityFrameworkCore;
-using Npgsql;
+using ONEVO.Infrastructure.Persistence.SqlServer;
 using ONEVO.Application.Common.Exceptions;
 using ONEVO.Application.Features.CoreHr.Onboarding.DTOs.Responses;
 using ONEVO.Application.Features.CoreHr.Onboarding.Models;
@@ -193,7 +193,7 @@ public sealed class EfAccessGrantRequestRepository(ApplicationDbContext db) : IA
         {
             throw new ConcurrencyConflictException(ex);
         }
-        catch (DbUpdateException ex) when (ex.InnerException is PostgresException { SqlState: PostgresErrorCodes.UniqueViolation })
+        catch (DbUpdateException ex) when (SqlServerErrors.IsUniqueViolation(ex))
         {
             throw new UniqueConstraintConflictException(ex);
         }
@@ -312,15 +312,71 @@ public sealed class EfEmployeeChecklistTaskRepository(ApplicationDbContext db) :
 
     public async Task<IReadOnlyList<EmployeeChecklistTask>> ListByEmployeeAsync(Guid tenantId, Guid employeeId, CancellationToken ct = default)
         => await db.EmployeeChecklistTasks.AsNoTracking().Where(x => x.TenantId == tenantId && x.EmployeeId == employeeId)
-            .OrderBy(x => x.Sequence).ThenBy(x => x.Id).ToListAsync(ct);
+            .OrderByNullsLast(x => x.Sequence).ThenBy(x => x.Id).ToListAsync(ct);
+
+    public async Task<IReadOnlyList<EmployeeChecklistTaskEffectiveState>> ListEffectiveByEmployeeAsync(
+        Guid tenantId, Guid employeeId, CancellationToken ct = default)
+    {
+        var rows = await (
+            from checklist in db.EmployeeChecklistTasks.AsNoTracking()
+            where checklist.TenantId == tenantId && checklist.EmployeeId == employeeId
+            join workTask in db.WorkTasks.AsNoTracking() on checklist.WorkTaskId equals workTask.Id into workTasks
+            from workTask in workTasks.DefaultIfEmpty()
+            join status in db.TaskStatuses.AsNoTracking() on workTask.StatusId equals status.Id into statuses
+            from status in statuses.DefaultIfEmpty()
+            orderby checklist.Sequence, checklist.Id
+            select new
+            {
+                Checklist = checklist,
+                WorkTask = workTask,
+                Status = status
+            }).ToListAsync(ct);
+
+        return rows.Select(row => new EmployeeChecklistTaskEffectiveState(
+            row.Checklist,
+            row.WorkTask is not null
+                ? (row.Status != null && row.Status.MarksTaskComplete) || row.WorkTask.ProgressPercent == 100
+                : row.Checklist.Status == EmployeeChecklistTaskStatuses.Completed,
+            row.WorkTask is not null ? row.WorkTask.CompletedAt : row.Checklist.CompletedAt,
+            row.Status?.Name,
+            row.WorkTask?.ShortId,
+            row.WorkTask?.ProjectId)).ToList();
+    }
+
+    public async Task<IReadOnlyList<EmployeeChecklistTaskEffectiveState>> ListEffectiveByOffboardingRecordAsync(
+        Guid tenantId, Guid offboardingRecordId, CancellationToken ct = default)
+    {
+        var rows = await (
+            from checklist in db.EmployeeChecklistTasks.AsNoTracking()
+            where checklist.TenantId == tenantId && checklist.OffboardingRecordId == offboardingRecordId
+            join workTask in db.WorkTasks.AsNoTracking() on checklist.WorkTaskId equals workTask.Id into workTasks
+            from workTask in workTasks.DefaultIfEmpty()
+            join status in db.TaskStatuses.AsNoTracking() on workTask.StatusId equals status.Id into statuses
+            from status in statuses.DefaultIfEmpty()
+            orderby checklist.Sequence, checklist.Id
+            select new { Checklist = checklist, WorkTask = workTask, Status = status }).ToListAsync(ct);
+
+        return rows.Select(row => new EmployeeChecklistTaskEffectiveState(
+            row.Checklist,
+            row.WorkTask is not null
+                ? (row.Status != null && row.Status.MarksTaskComplete) || row.WorkTask.ProgressPercent == 100
+                : row.Checklist.Status == EmployeeChecklistTaskStatuses.Completed,
+            row.WorkTask is not null ? row.WorkTask.CompletedAt : row.Checklist.CompletedAt,
+            row.Status?.Name,
+            row.WorkTask?.ShortId,
+            row.WorkTask?.ProjectId)).ToList();
+    }
 
     public Task<EmployeeChecklistTask?> GetTrackedByIdAsync(Guid tenantId, Guid taskId, CancellationToken ct = default)
         => db.EmployeeChecklistTasks.FirstOrDefaultAsync(x => x.TenantId == tenantId && x.Id == taskId, ct);
 
+    public Task<EmployeeChecklistTask?> GetTrackedByWorkTaskIdAsync(Guid tenantId, Guid workTaskId, CancellationToken ct = default)
+        => db.EmployeeChecklistTasks.FirstOrDefaultAsync(x => x.TenantId == tenantId && x.WorkTaskId == workTaskId, ct);
+
     public Task<IReadOnlyList<EmployeeChecklistTask>> ListByOffboardingRecordAsync(Guid tenantId, Guid offboardingRecordId, CancellationToken ct = default)
         => db.EmployeeChecklistTasks.AsNoTracking()
             .Where(x => x.TenantId == tenantId && x.OffboardingRecordId == offboardingRecordId)
-            .OrderBy(x => x.Sequence).ThenBy(x => x.Id)
+            .OrderByNullsLast(x => x.Sequence).ThenBy(x => x.Id)
             .ToListAsync(ct)
             .ContinueWith(t => (IReadOnlyList<EmployeeChecklistTask>)t.Result, ct);
 

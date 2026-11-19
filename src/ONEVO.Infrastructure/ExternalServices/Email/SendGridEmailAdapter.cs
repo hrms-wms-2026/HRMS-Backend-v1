@@ -14,6 +14,12 @@ namespace ONEVO.Infrastructure.ExternalServices.Email;
 /// SECURITY: the Authorization header is built locally from the resolver-provided key,
 /// is never logged, and provider error bodies are never stored - only the HTTP status
 /// code is surfaced as a safe error.
+///
+/// IDEMPOTENCY: none. SendGrid's v3 Mail Send API documents no idempotency key header or field
+/// (https://www.twilio.com/docs/sendgrid/api-reference/mail-send/mail-send), so
+/// TransactionalEmailRequest.IdempotencyKey is deliberately not sent. If the API instance crashes
+/// after SendGrid accepted a message but before the outbox row is marked Published, the outbox
+/// retries it after the lease expires and the recipient may receive a duplicate (at-least-once).
 /// </summary>
 public sealed class SendGridEmailAdapter : IEmailProviderAdapter
 {
@@ -64,7 +70,10 @@ public sealed class SendGridEmailAdapter : IEmailProviderAdapter
                 ? null
                 : new { email = options.ReplyToEmail },
             subject = request.Subject,
-            content
+            content,
+            attachments = request.Attachments is { Count: > 0 } files
+                ? files.Select(a => new { content = Convert.ToBase64String(a.Content), filename = a.FileName, type = MediaType(a.ContentType), disposition = "attachment" }).ToArray()
+                : null
         };
 
         using var httpRequest = new HttpRequestMessage(HttpMethod.Post, MailSendUrl);
@@ -108,4 +117,8 @@ public sealed class SendGridEmailAdapter : IEmailProviderAdapter
             return TransactionalEmailResult.Sent(Provider, providerMessageId, _clock.UtcNow);
         }
     }
+
+    /// <summary>SendGrid rejects an attachment type holding ';' with a 400, so parameters such as an .ics
+    /// "method=REQUEST" are dropped. The calendar file itself still carries its METHOD.</summary>
+    private static string MediaType(string contentType) => contentType.Split(';', 2)[0].Trim();
 }

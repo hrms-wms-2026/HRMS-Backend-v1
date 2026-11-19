@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Build the `projects:access`/`projects:read` permission retrofit, `Objective.ReportingManagerId` + `objective_change_requests` schema, the fully-hardcoded tree-authorization rule, and 8 endpoints (create/edit/delete/transfer a sub-milestone, approve/reject/list change requests, get the full Objective tree) per `docs/superpowers/specs/2026-08-04-work-management-milestone-hierarchy-design.md`.
+**Goal:** Build the `projects:access`/`projects:read` permission retrofit, `Objective.ReportingManagerId` + `objective_change_requests` schema, the fully-hardcoded tree-authorization rule, and 8 endpoints (create/edit/delete/transfer a sub-milestone, approve/reject/list change requests, get the full Objective tree) per `docs/superpowers/specs/finished/2026-08-04/2026-08-04-work-management-milestone-hierarchy-design.md`.
 
 **Architecture:** Same ASP.NET Core / CQRS-via-MediatR / EF Core (Npgsql/PostgreSQL) stack as Foundation and Slice 2. One new migration (new table + one new column). New `IObjectiveChangeRequestRepository`; `IObjectiveRepository` gains read/update methods. Authorization is entirely tree-position checks in handlers — no new permission codes beyond the two retrofitted ones.
 
@@ -20,7 +20,7 @@
 - **Creation is validated against the same conflict rule** (implementation-level decision, not previously stated in the design — a sub-milestone must not be created already out of its parent's bounds; `400` if so, not silently allowed then requiring an edit-approval to fix later).
 - Raw SQL is forbidden except migration RLS-policy SQL and the one `role_permissions` data-migration SQL in Task 1, following the exact pattern in `20260729082336_AddTenantSessionExchangeChallenges.cs`.
 - Permission codes: `projects:access` (module base gate, all 8 endpoints require it) and `projects:read` (unused by this plan — no cross-user "view others" concept for Objectives; the tree-visibility endpoint, #8/Task 12, uses membership fallback like `GetById` in Slice 2, not `projects:read`).
-- **Dependency: `docs/superpowers/plans/2026-08-04-work-management-projects-edit-delete-view.md` (Slice 2) must be executed before this plan.** Task 11 (`GetObjectiveTreeQueryHandler`) consumes `IProjectRepository.GetByIdForTenantAsync` and `IProjectMemberRepository.HasActiveMembershipAsync`, both added by Slice 2's Task 1 — they do not exist in the currently-shipped Foundation code. Task 13's integration tests also assume Slice 2's Edit/Delete/GetById/List `[Fact]`s and their private HTTP helpers already exist in `CreateProjectEndpointTests.cs` by the time this plan's tests are added to the same file.
+- **Dependency: `docs/superpowers/plans/finished/2026-08-04/2026-08-04-work-management-projects-edit-delete-view.md` (Slice 2) must be executed before this plan.** Task 11 (`GetObjectiveTreeQueryHandler`) consumes `IProjectRepository.GetByIdForTenantAsync` and `IProjectMemberRepository.HasActiveMembershipAsync`, both added by Slice 2's Task 1 — they do not exist in the currently-shipped Foundation code. Task 13's integration tests also assume Slice 2's Edit/Delete/GetById/List `[Fact]`s and their private HTTP helpers already exist in `CreateProjectEndpointTests.cs` by the time this plan's tests are added to the same file.
 
 ---
 
@@ -176,7 +176,7 @@ public static class ObjectiveChangeRequestStatuses
 
 /// <summary>
 /// One pending/decided Delete, conflicting-Edit, or Transfer request on an Objective a non-creator
-/// Head cannot apply unilaterally - see docs/superpowers/specs/2026-08-04-work-management-milestone-hierarchy-design.md.
+/// Head cannot apply unilaterally - see docs/superpowers/specs/finished/2026-08-04/2026-08-04-work-management-milestone-hierarchy-design.md.
 /// </summary>
 public class ObjectiveChangeRequest : BaseEntity
 {
@@ -257,7 +257,7 @@ Add `using ONEVO.Domain.Features.WorkManagement.ObjectiveChangeRequests.Entities
 
 Run: `dotnet ef migrations add AddObjectiveHierarchyAndChangeRequests --project src/ONEVO.Infrastructure --startup-project src/ONEVO.Api`
 
-Expected: creates `objective_change_requests` and adds `reporting_manager_id` to `objectives`. Add the RLS block to the bottom of `Up` and top of `Down`, following the exact pattern in Foundation's Task 3 (`docs/superpowers/plans/2026-08-03-work-management-foundation.md` Task 3 Step 2) but scoped to just the one new table:
+Expected: creates `objective_change_requests` and adds `reporting_manager_id` to `objectives`. Add the RLS block to the bottom of `Up` and top of `Down`, following the exact pattern in Foundation's Task 3 (`docs/superpowers/plans/finished/2026-08-03/2026-08-03-work-management-foundation.md` Task 3 Step 2) but scoped to just the one new table:
 
 ```csharp
 migrationBuilder.Sql(@"
@@ -325,7 +325,7 @@ git commit -m "feat(work-management): add Objective.ReportingManagerId and objec
 - Consumes: `Objective`/`ObjectiveChangeRequest` entities (Task 2).
 - Produces: every method Tasks 6-11's handlers call. `IObjectiveRepository` already has `GetDefaultByProjectIdAsync`/`Update`/`AddAsync` from Slice 2's plan and Foundation — this task adds `GetByIdForTenantAsync` and `GetTreeByProjectIdAsync`.
 
-Same precedent as Slice 2's Task 1 (`docs/superpowers/plans/2026-08-04-work-management-projects-edit-delete-view.md`) — plain data-access methods, no independent logic to unit-test; verified by `dotnet build` here and exercised for real by Task 13's integration tests.
+Same precedent as Slice 2's Task 1 (`docs/superpowers/plans/finished/2026-08-04/2026-08-04-work-management-projects-edit-delete-view.md`) — plain data-access methods, no independent logic to unit-test; verified by `dotnet build` here and exercised for real by Task 13's integration tests.
 
 - [ ] **Step 1: `IObjectiveRepository` additions**
 
@@ -3043,7 +3043,7 @@ Creates a sub-milestone under an existing Objective. `headUserId` (optional) ass
 
 Controller: `src/ONEVO.Api/Controllers/Tenant/WorkManagement/ObjectivesController.cs` (`Create`)
 Handler: `src/ONEVO.Application/Features/WorkManagement/Objectives/Commands/CreateObjective/CreateObjectiveCommandHandler.cs`
-Plan: `docs/superpowers/plans/2026-08-04-work-management-milestone-hierarchy.md`
+Plan: `docs/superpowers/plans/finished/2026-08-04/2026-08-04-work-management-milestone-hierarchy.md`
 ```
 
 - [ ] **Step 2: `Edit Objective.md`**
@@ -3083,7 +3083,7 @@ Edits a milestone. A non-conflicting edit (within the parent's date/hours bounds
 
 Controller: `src/ONEVO.Api/Controllers/Tenant/WorkManagement/ObjectivesController.cs` (`Edit`)
 Handler: `src/ONEVO.Application/Features/WorkManagement/Objectives/Commands/EditObjective/EditObjectiveCommandHandler.cs`
-Plan: `docs/superpowers/plans/2026-08-04-work-management-milestone-hierarchy.md`
+Plan: `docs/superpowers/plans/finished/2026-08-04/2026-08-04-work-management-milestone-hierarchy.md`
 ```
 
 - [ ] **Step 3: `Delete Objective.md`**
@@ -3116,7 +3116,7 @@ Soft-deletes a milestone (no cascade to descendants — design §4). Applies imm
 
 Controller: `src/ONEVO.Api/Controllers/Tenant/WorkManagement/ObjectivesController.cs` (`Delete`)
 Handler: `src/ONEVO.Application/Features/WorkManagement/Objectives/Commands/DeleteObjective/DeleteObjectiveCommandHandler.cs`
-Plan: `docs/superpowers/plans/2026-08-04-work-management-milestone-hierarchy.md`
+Plan: `docs/superpowers/plans/finished/2026-08-04/2026-08-04-work-management-milestone-hierarchy.md`
 ```
 
 - [ ] **Step 4: `Transfer Objective Head.md`**
@@ -3155,7 +3155,7 @@ Reassigns a milestone's Head. Same immediate-vs-pending split as Delete: applies
 
 Controller: `src/ONEVO.Api/Controllers/Tenant/WorkManagement/ObjectivesController.cs` (`Transfer`)
 Handler: `src/ONEVO.Application/Features/WorkManagement/Objectives/Commands/TransferObjectiveHead/TransferObjectiveHeadCommandHandler.cs`
-Plan: `docs/superpowers/plans/2026-08-04-work-management-milestone-hierarchy.md`
+Plan: `docs/superpowers/plans/finished/2026-08-04/2026-08-04-work-management-milestone-hierarchy.md`
 ```
 
 - [ ] **Step 5: `Approve Objective Change Request.md`** and **Step 6: `Reject Objective Change Request.md`**
@@ -3187,7 +3187,7 @@ Approves a pending Delete/Edit/Transfer request. Applies the underlying action (
 
 Controller: `src/ONEVO.Api/Controllers/Tenant/WorkManagement/ObjectivesController.cs` (`ApproveChangeRequest`)
 Handler: `src/ONEVO.Application/Features/WorkManagement/ObjectiveChangeRequests/Commands/ApproveObjectiveChangeRequest/ApproveObjectiveChangeRequestCommandHandler.cs`
-Plan: `docs/superpowers/plans/2026-08-04-work-management-milestone-hierarchy.md`
+Plan: `docs/superpowers/plans/finished/2026-08-04/2026-08-04-work-management-milestone-hierarchy.md`
 ```
 
 ```markdown
@@ -3217,7 +3217,7 @@ Rejects a pending request. The target Objective is left unchanged; the request r
 
 Controller: `src/ONEVO.Api/Controllers/Tenant/WorkManagement/ObjectivesController.cs` (`RejectChangeRequest`)
 Handler: `src/ONEVO.Application/Features/WorkManagement/ObjectiveChangeRequests/Commands/RejectObjectiveChangeRequest/RejectObjectiveChangeRequestCommandHandler.cs`
-Plan: `docs/superpowers/plans/2026-08-04-work-management-milestone-hierarchy.md`
+Plan: `docs/superpowers/plans/finished/2026-08-04/2026-08-04-work-management-milestone-hierarchy.md`
 ```
 
 - [ ] **Step 7: `List My Objective Change Requests.md`**
@@ -3241,7 +3241,7 @@ The caller's approval queue — every `pending` change request where the caller 
 
 Controller: `src/ONEVO.Api/Controllers/Tenant/WorkManagement/ObjectivesController.cs` (`ListMyChangeRequests`)
 Handler: `src/ONEVO.Application/Features/WorkManagement/ObjectiveChangeRequests/Queries/ListMyObjectiveChangeRequests/ListMyObjectiveChangeRequestsQueryHandler.cs`
-Plan: `docs/superpowers/plans/2026-08-04-work-management-milestone-hierarchy.md`
+Plan: `docs/superpowers/plans/finished/2026-08-04/2026-08-04-work-management-milestone-hierarchy.md`
 ```
 
 - [ ] **Step 8: `Get Objective Tree.md`**
@@ -3272,7 +3272,7 @@ Every active Objective for a Project, flat (client builds the tree from `parentO
 
 Controller: `src/ONEVO.Api/Controllers/Tenant/WorkManagement/ObjectivesController.cs` (`GetTree`)
 Handler: `src/ONEVO.Application/Features/WorkManagement/Objectives/Queries/GetObjectiveTree/GetObjectiveTreeQueryHandler.cs`
-Plan: `docs/superpowers/plans/2026-08-04-work-management-milestone-hierarchy.md`
+Plan: `docs/superpowers/plans/finished/2026-08-04/2026-08-04-work-management-milestone-hierarchy.md`
 ```
 
 - [ ] **Step 9: Commit**
@@ -3286,7 +3286,7 @@ git commit -m "docs(work-management): add postman-request docs for the milestone
 
 ## Self-review
 
-**Spec coverage** (against `docs/superpowers/specs/2026-08-04-work-management-milestone-hierarchy-design.md`): §2 permissions → Task 1. §3 schema → Task 2. §4 tree-authorization rule (free control over descendants, approval-on-own-node, creator exception, root exception, no-cascade) → Tasks 5-9. §5 creation + Default-Objective carve-out → Tasks 5-8, enforced in every handler that checks `IsDefault`. §6 all 8 endpoints → Tasks 5-12. §8 conflict rule → Task 4's `ObjectiveParentConstraintChecker`, consumed by Tasks 5/6.
+**Spec coverage** (against `docs/superpowers/specs/finished/2026-08-04/2026-08-04-work-management-milestone-hierarchy-design.md`): §2 permissions → Task 1. §3 schema → Task 2. §4 tree-authorization rule (free control over descendants, approval-on-own-node, creator exception, root exception, no-cascade) → Tasks 5-9. §5 creation + Default-Objective carve-out → Tasks 5-8, enforced in every handler that checks `IsDefault`. §6 all 8 endpoints → Tasks 5-12. §8 conflict rule → Task 4's `ObjectiveParentConstraintChecker`, consumed by Tasks 5/6.
 
 **Placeholder scan:** no "TBD"/unshown code — every step has runnable C# or an exact command.
 

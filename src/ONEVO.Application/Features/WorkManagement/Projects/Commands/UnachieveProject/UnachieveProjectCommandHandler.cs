@@ -4,6 +4,7 @@ using ONEVO.Application.Common.RepositoryInterfaces;
 using ONEVO.Application.Common.ServiceInterfaces;
 using ONEVO.Application.Features.WorkManagement.Common.Services;
 using ONEVO.Application.Features.WorkManagement.Projects.RepositoryInterfaces;
+using ONEVO.Domain.Features.WorkManagement.Projects.Entities;
 
 namespace ONEVO.Application.Features.WorkManagement.Projects.Commands.UnachieveProject;
 
@@ -40,6 +41,8 @@ public class UnachieveProjectCommandHandler : IRequestHandler<UnachieveProjectCo
         var project = await _projects.GetByIdForTenantAsync(tenantId, request.ProjectId, ct);
         if (project is null)
             return Result.NotFound("Project not found.");
+        if (project.SystemPurpose == ProjectSystemPurposes.Office)
+            return Result.Conflict("The system-managed Office project cannot be un-achieved.");
 
         if (project.LeadId != callerEmployeeId.Value)
             return Result.Forbidden("Only the project lead can un-achieve this project.");

@@ -85,21 +85,6 @@ public class SubscriptionBillingArchitectureTests
         Assert.Contains("ix_billing_audit_logs_tenant_id_created_at", indexNames);
     }
 
-    [Fact]
-    public void AddSubscriptionInvoicesAndBillingAuditLogsMigration_CreatesBothTables()
-    {
-        var source = ReadMigrationSource("*AddSubscriptionInvoicesAndBillingAuditLogs.cs");
-
-        Assert.Contains("name: \"subscription_invoices\"", source);
-        Assert.Contains("name: \"billing_audit_logs\"", source);
-        Assert.Contains("ix_subscription_invoices_invoice_number", source);
-        Assert.Contains("ix_subscription_invoices_external_invoice_id", source);
-        Assert.Contains("ix_subscription_invoices_tenant_id_status", source);
-        Assert.Contains("ix_subscription_invoices_tenant_id_due_at", source);
-        Assert.Contains("ix_billing_audit_logs_invoice_id_created_at", source);
-        Assert.Contains("ix_billing_audit_logs_tenant_id_created_at", source);
-    }
-
     private static string ReadMigrationSource(string pattern)
     {
         var migrationsDir = FindMigrationsDirectory();

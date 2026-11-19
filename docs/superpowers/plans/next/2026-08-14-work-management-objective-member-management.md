@@ -2941,7 +2941,7 @@ namespace ONEVO.Application.Features.WorkManagement.Objectives.Services;
 
 /// <summary>
 /// Encapsulates the membership-lifecycle rules from
-/// docs/superpowers/specs/2026-08-06-work-management-milestone-membership-and-achieve-design.md
+/// docs/superpowers/specs/finished/2026-08-08/2026-08-06-work-management-milestone-membership-and-achieve-design.md
 /// §3, shared across Create/Transfer/Achieve/member-management. Never calls SaveChangesAsync -
 /// callers wrap the whole operation in IUnitOfWork.ExecuteInTransactionAsync. EmployeeId-keyed
 /// throughout (Phase 2, 2026-08-14) - callers resolve the caller's own EmployeeId via

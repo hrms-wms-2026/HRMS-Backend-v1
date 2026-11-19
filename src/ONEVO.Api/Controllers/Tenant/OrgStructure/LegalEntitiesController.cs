@@ -36,7 +36,7 @@ public class LegalEntitiesController : ControllerBase
 
     /// <summary>General Settings for one company. 404 if missing or belongs to another tenant.</summary>
     [HttpGet("{id:guid}/general-settings")]
-    [RequirePermission("legal_entity:update")]
+    [RequireAnyPermission("legal_entity:read", "legal_entity:update")]
     public async Task<IActionResult> GetGeneralSettings(Guid id, CancellationToken ct)
     {
         var result = await _mediator.Send(new GetLegalEntityGeneralSettingsQuery(id), ct);

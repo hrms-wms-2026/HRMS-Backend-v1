@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata.Builders;
 using ONEVO.Domain.Features.TimeAttendance.Entities;
+using ONEVO.Infrastructure.Persistence.SqlServer;
 
 namespace ONEVO.Infrastructure.Persistence.Configurations.TimeAttendance;
 
@@ -15,10 +16,10 @@ public sealed class AttendanceCorrectionConfiguration : IEntityTypeConfiguration
         builder.Property(x => x.Reason).HasMaxLength(255).IsRequired();
         builder.Property(x => x.Status).HasMaxLength(20).IsRequired();
         builder.Property(x => x.ApprovalRequired).HasColumnName("approval_required").IsRequired();
-        builder.Property(x => x.Notes).HasColumnType("text");
-        builder.Property(x => x.OriginalBreakJson).HasColumnType("jsonb");
-        builder.Property(x => x.RequestedBreakJson).HasColumnType("jsonb");
-        builder.Property(x => x.ReviewComment).HasColumnType("text");
+        builder.Property(x => x.Notes);
+        builder.Property(x => x.OriginalBreakJson).IsJsonColumn();
+        builder.Property(x => x.RequestedBreakJson).IsJsonColumn();
+        builder.Property(x => x.ReviewComment);
 
         builder.HasIndex(x => new { x.TenantId, x.LegalEntityId, x.EmployeeId, x.CreatedAt })
             .HasDatabaseName("ix_attendance_corrections_tenant_legal_entity_employee_created_at");

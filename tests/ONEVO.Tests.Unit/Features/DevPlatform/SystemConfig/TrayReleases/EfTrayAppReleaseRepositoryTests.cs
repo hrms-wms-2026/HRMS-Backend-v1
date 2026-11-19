@@ -37,7 +37,7 @@ public sealed class EfTrayAppReleaseRepositoryTests
         DownloadUrl = $"https://dl.example.com/onevo-{version}.msix",
         Sha256 = new string('a', 64),
         FileSizeBytes = 1234,
-        Publisher = "CN=ONEVO",
+        Publisher = "CN=Crownus",
         MinimumWindowsVersion = "10.0.19041.0",
         IsActive = active,
         Source = "admin"

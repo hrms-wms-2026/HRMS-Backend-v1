@@ -3,6 +3,7 @@ using ONEVO.Application.Common.Models;
 using ONEVO.Application.Common.ServiceInterfaces;
 using ONEVO.Application.Features.CoreHr.Offboarding.RepositoryInterfaces;
 using ONEVO.Application.Features.CoreHr.Onboarding.RepositoryInterfaces;
+using ONEVO.Domain.Features.CoreHr.Entities;
 
 namespace ONEVO.Application.Features.CoreHr.Offboarding.Queries.ListEmployeeChecklistTasks;
 
@@ -19,9 +20,11 @@ public class ListEmployeeChecklistTasksQueryHandler(
         if (record is null)
             return Result<IReadOnlyList<EmployeeChecklistTaskResponse>>.Success(new List<EmployeeChecklistTaskResponse>());
 
-        var tasks = await taskRepository.ListByOffboardingRecordAsync(tenantId, record.Id, ct);
-        return Result<IReadOnlyList<EmployeeChecklistTaskResponse>>.Success(tasks.Select(t => new EmployeeChecklistTaskResponse(
-            t.Id, t.TaskTitle, t.OwnerType, t.AssignedToId, t.DueDate, t.IsRequired,
-            t.IsBypassable, t.BypassPenaltyDescription, t.Category, t.Status, t.CompletedAt)).ToList());
+        var tasks = await taskRepository.ListEffectiveByOffboardingRecordAsync(tenantId, record.Id, ct);
+        return Result<IReadOnlyList<EmployeeChecklistTaskResponse>>.Success(tasks.Select(row => new EmployeeChecklistTaskResponse(
+            row.Task.Id, row.Task.TaskTitle, row.Task.OwnerType, row.Task.AssignedToId, row.Task.DueDate, row.Task.IsRequired,
+            row.Task.IsBypassable, row.Task.BypassPenaltyDescription, row.Task.Category,
+            row.IsCompleted ? EmployeeChecklistTaskStatuses.Completed : row.Task.Status,
+            row.CompletedAt)).ToList());
     }
 }

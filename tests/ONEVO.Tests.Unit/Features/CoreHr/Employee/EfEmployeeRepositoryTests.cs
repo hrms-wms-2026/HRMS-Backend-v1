@@ -43,6 +43,48 @@ public sealed class EfEmployeeRepositoryTests
     }
 
     [Fact]
+    public async Task ListVisibleAsync_ActiveOnlyFalse_IncludesTerminatedEmployees_BackwardCompatible()
+    {
+        await using var db = BuildInMemoryDb();
+        var tenantId = Guid.NewGuid();
+        var active = NewEmployee(tenantId, "E-001");
+        var terminated = NewEmployee(tenantId, "E-002");
+        terminated.EmploymentStatusId = EmploymentStatusIds.Terminated;
+        db.Employees.AddRange(active, terminated);
+        await db.SaveChangesAsync();
+        db.ChangeTracker.Clear();
+
+        var repo = new EfEmployeeRepository(db);
+        var (items, total) = await repo.ListVisibleAsync(
+            tenantId, EmployeeVisibilityScope.Unrestricted(), new EmployeeListFilter(null, null, null), 1, 25, CancellationToken.None);
+
+        Assert.Equal(2, total);
+        Assert.Contains(items, i => i.Id == terminated.Id);
+    }
+
+    [Fact]
+    public async Task ListVisibleAsync_ActiveOnlyTrue_ExcludesTerminatedAndResignedEmployees()
+    {
+        await using var db = BuildInMemoryDb();
+        var tenantId = Guid.NewGuid();
+        var active = NewEmployee(tenantId, "E-001");
+        var terminated = NewEmployee(tenantId, "E-002");
+        terminated.EmploymentStatusId = EmploymentStatusIds.Terminated;
+        var resigned = NewEmployee(tenantId, "E-003");
+        resigned.EmploymentStatusId = EmploymentStatusIds.Resigned;
+        db.Employees.AddRange(active, terminated, resigned);
+        await db.SaveChangesAsync();
+        db.ChangeTracker.Clear();
+
+        var repo = new EfEmployeeRepository(db);
+        var (items, total) = await repo.ListVisibleAsync(
+            tenantId, EmployeeVisibilityScope.Unrestricted(), new EmployeeListFilter(null, null, null, ActiveOnly: true), 1, 25, CancellationToken.None);
+
+        Assert.Equal(1, total);
+        Assert.Equal(active.Id, items[0].Id);
+    }
+
+    [Fact]
     public async Task ListVisibleAsync_ExcludesEmployeesOutsideCoverage_WhenScopeIsRestrictedByDepartment()
     {
         await using var db = BuildInMemoryDb();
@@ -299,6 +341,37 @@ public sealed class EfEmployeeRepositoryTests
 
         Assert.True(await repo.EmployeeNumberExistsAsync(tenantId, "SHARED-001", null, CancellationToken.None));
         Assert.False(await repo.EmployeeNumberExistsAsync(otherTenantId, "SHARED-001", null, CancellationToken.None));
+    }
+
+    [Fact]
+    public async Task ListVisibleAsync_AttendanceSummaryCountsOnlyTheEmployeesOpenAttendanceAlerts()
+    {
+        await using var db = BuildInMemoryDb();
+        var tenantId = Guid.NewGuid();
+        var legalEntityId = Guid.NewGuid();
+        var employee = NewEmployee(tenantId, "E-001");
+        employee.LegalEntityId = legalEntityId;
+        db.Employees.Add(employee);
+        db.EmploymentStatuses.Add(new EmploymentStatus { Id = 1, Code = "active", Label = "Active" });
+        db.LegalEntities.Add(WorkingLegalEntity(tenantId, legalEntityId));
+        ONEVO.Domain.Features.TimeAttendance.Alerts.AttendanceAlert Alert(Guid who, int day, string status) => new()
+        {
+            Id = Guid.NewGuid(), TenantId = tenantId, EmployeeId = who, WorkDate = new DateOnly(2026, 8, day),
+            SignalKey = ONEVO.Domain.Features.TimeAttendance.Alerts.AttendanceAlertSignals.AbsentDays, Status = status
+        };
+        db.AttendanceAlerts.AddRange(
+            Alert(employee.Id, 3, ONEVO.Domain.Features.TimeAttendance.Alerts.AttendanceAlertStatuses.Open),
+            Alert(employee.Id, 4, ONEVO.Domain.Features.TimeAttendance.Alerts.AttendanceAlertStatuses.Open),
+            Alert(employee.Id, 5, ONEVO.Domain.Features.TimeAttendance.Alerts.AttendanceAlertStatuses.Resolved),
+            Alert(Guid.NewGuid(), 3, ONEVO.Domain.Features.TimeAttendance.Alerts.AttendanceAlertStatuses.Open));
+        await db.SaveChangesAsync();
+        db.ChangeTracker.Clear();
+
+        var (items, _) = await new EfEmployeeRepository(db).ListVisibleAsync(
+            tenantId, EmployeeVisibilityScope.Unrestricted(), new EmployeeListFilter(null, null, legalEntityId, new[] { employee.Id }),
+            1, 25, CancellationToken.None, new EmployeeListAttendanceOptions(new DateTimeOffset(2026, 8, 21, 4, 0, 0, TimeSpan.Zero)));
+
+        Assert.Equal(2, Assert.Single(items).AttendanceSummary!.OpenAlertCount);
     }
 
     [Fact]

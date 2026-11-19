@@ -1,6 +1,5 @@
 using ONEVO.Application.Features.Leave.Balance.DTOs.Responses;
 using ONEVO.Application.Features.Leave.Entitlement.DTOs.Responses;
-using ONEVO.Application.Features.Leave.Entitlement.Helpers;
 using ONEVO.Application.Features.Leave.Entitlement.RepositoryInterfaces;
 using ONEVO.Domain.Features.Leave.Entitlement.Entities;
 
@@ -49,7 +48,11 @@ public static class LeaveEntitlementMapper
             entitlement.UpdatedAt);
     }
 
-    public static LeaveBalanceResponse ToBalance(LeaveEntitlementRow row, DateOnly asOfDate, DateOnly? carryExpiresOn)
+    public static LeaveBalanceResponse ToBalance(
+        LeaveEntitlementRow row,
+        DateOnly asOfDate,
+        DateOnly? carryExpiresOn,
+        ONEVO.Application.Features.Leave.Policy.Services.ResolvedLeavePolicy? policy = null)
     {
         var entitlement = row.Entitlement;
         var carry = EffectiveCarry(entitlement.CarriedForwardHours, carryExpiresOn, asOfDate);
@@ -74,8 +77,15 @@ public static class LeaveEntitlementMapper
             entitlement.PendingHours,
             remaining,
             remaining < 0m,
-            carryExpiresOn);
+            carryExpiresOn,
+            policy?.PolicyName,
+            policy?.Version.AmountHours,
+            policy?.Version.AmountPeriod,
+            ResetsOn(entitlement.Year));
     }
+
+    /// <summary>Leave years are calendar years, so a balance resets on 1 January of the next year.</summary>
+    public static DateOnly ResetsOn(int year) => new(year + 1, 1, 1);
 
     public static string EmployeeName(string firstName, string lastName) =>
         $"{firstName} {lastName}".Trim();

@@ -4,6 +4,7 @@ using ONEVO.Application.Common.ServiceInterfaces;
 using ONEVO.Application.Features.CoreHr.Offboarding.RepositoryInterfaces;
 using ONEVO.Application.Features.CoreHr.Offboarding.ServiceInterfaces;
 using ONEVO.Application.Features.CoreHr.Onboarding.RepositoryInterfaces;
+using ONEVO.Application.Features.CoreHr.Onboarding.Services;
 using ONEVO.Domain.Features.CoreHr.Entities;
 using IEmployeeRepository = ONEVO.Application.Features.CoreHr.Employee.RepositoryInterfaces.IEmployeeRepository;
 
@@ -16,7 +17,8 @@ public class SelectOffboardingChecklistCommandHandler(
     IEmployeeRepository employeeRepository,
     IEmployeeOffboardingCoverageGuard coverageGuard,
     ICurrentUser currentUser,
-    IDateTimeProvider clock)
+    IDateTimeProvider clock,
+    IEmployeeChecklistWorkTaskProvisioner? workTaskProvisioner = null)
     : IRequestHandler<SelectOffboardingChecklistCommand, Result>
 {
     public async Task<Result> Handle(SelectOffboardingChecklistCommand request, CancellationToken ct)
@@ -33,13 +35,24 @@ public class SelectOffboardingChecklistCommandHandler(
         if (record.Status != OffboardingRecordStatuses.Initiated)
             return Result.Conflict("A checklist has already been selected for this offboarding.");
 
-        var template = await checklistTemplateRepository.GetByIdAsync(tenantId, request.TemplateId, ct);
+        // No template: the offboarding goes ahead with no checklist tasks (e.g. none match the employee).
+        if (request.TemplateId is not { } templateId)
+        {
+            record.Status = OffboardingRecordStatuses.InProgress;
+            record.UpdatedAt = clock.UtcNow;
+            await offboardingRecordRepository.SaveChangesAsync(ct);
+            return Result.Success();
+        }
+
+        var template = await checklistTemplateRepository.GetByIdAsync(tenantId, templateId, ct);
         if (template is null || !template.IsActive || template.TemplateType != "offboarding")
             return Result.NotFound("The selected checklist template does not exist or is not an active offboarding template.");
 
         var employee = await employeeRepository.GetByIdAsync(tenantId, request.EmployeeId, ct);
         if (employee is null)
             return Result.NotFound("The employee could not be found.");
+        if (employee.LegalEntityId is null)
+            return Result.UnprocessableEntity("The employee must belong to a company before an offboarding checklist can be selected.");
         if (template.LegalEntityId != employee.LegalEntityId)
             return Result.UnprocessableEntity("This template does not belong to the employee's company.");
 
@@ -48,11 +61,30 @@ public class SelectOffboardingChecklistCommandHandler(
         foreach (var task in tasks)
             task.OffboardingRecordId = record.Id;
 
+        if (workTaskProvisioner is not null && tasks.Count > 0)
+        {
+            var officeResult = await workTaskProvisioner.EnsureOfficeProjectAsync(
+                tenantId, employee.LegalEntityId!.Value, currentUser.UserId,
+                tasks.Max(task => task.DueDate), ct);
+            if (!officeResult.IsSuccess)
+                return Result.Failure(officeResult.Error!, officeResult.StatusCode ?? 400);
+
+            var provisionResult = await workTaskProvisioner.ProvisionAsync(
+                officeResult.Value!, employee, tasks, currentUser.UserId, ct);
+            if (!provisionResult.IsSuccess)
+                return Result.Failure(provisionResult.Error!, provisionResult.StatusCode ?? 400);
+        }
+
         record.ChecklistTemplateId = template.Id;
         record.Status = OffboardingRecordStatuses.InProgress;
         record.UpdatedAt = clock.UtcNow;
 
         await offboardingRecordRepository.SaveChangesAsync(ct);
+
+        // Template attachments are copied only now that the Work tasks are committed.
+        if (workTaskProvisioner is not null && tasks.Count > 0)
+            await workTaskProvisioner.CopyTemplateAttachmentsAsync(tenantId, tasks, currentUser.UserId, ct);
+
         return Result.Success();
     }
 }

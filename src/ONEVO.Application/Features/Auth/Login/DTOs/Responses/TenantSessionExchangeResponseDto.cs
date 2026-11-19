@@ -5,7 +5,7 @@ namespace ONEVO.Application.Features.Auth.Login.DTOs.Responses;
 /// <summary>
 /// Returned to the base-domain browser once every login gate (credentials/Google, MFA, legal
 /// acceptance, password change) has cleared. The base host never signs in and never sets
-/// onevo_session/onevo_csrf here; ContinueUrl carries the one-time opaque exchange code as a query
+/// crownus_session/crownus_csrf here; ContinueUrl carries the one-time opaque exchange code as a query
 /// parameter for the SPA to navigate to. Only the tenant host's POST /auth/session-exchange
 /// consumes that code and creates the real session. No tenant_id, user_id, permissions, or token
 /// material is ever included.

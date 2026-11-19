@@ -9,6 +9,7 @@ using ONEVO.Application.Common.ServiceInterfaces;
 using ONEVO.Application.Features.Auth.Login.RepositoryInterfaces;
 using ONEVO.Application.Features.Auth.Permission.RepositoryInterfaces;
 using ONEVO.Application.Features.CoreHr.Employee.Commands.ChangeEmployeePosition;
+using ONEVO.Application.Features.CoreHr.Employee.ServiceInterfaces;
 using ONEVO.Application.Features.CoreHr.Offboarding.ServiceInterfaces;
 using ONEVO.Application.Features.CoreHr.Onboarding.OutboxHandlers;
 using ONEVO.Application.Features.CoreHr.Onboarding.RepositoryInterfaces;
@@ -42,6 +43,7 @@ public class ChangeEmployeePositionCommandHandlerTests
     private readonly Mock<IUserRepository> _userRepository = new();
     private readonly Mock<ITenantRepository> _tenantRepository = new();
     private readonly Mock<IEmployeeOffboardingLockGuard> _offboardingLockGuard = new();
+    private readonly Mock<IEmployeeManageScopeGuard> _manageScopeGuard = new();
 
     private ChangeEmployeePositionCommandHandler CreateHandler() =>
         new(
@@ -56,7 +58,8 @@ public class ChangeEmployeePositionCommandHandlerTests
             _outboxWriter.Object,
             _userRepository.Object,
             _tenantRepository.Object,
-            _offboardingLockGuard.Object);
+            _offboardingLockGuard.Object,
+            _manageScopeGuard.Object);
 
     private void SetupNonSelfCaller(Guid tenantId, Guid employeeId)
     {
@@ -73,6 +76,23 @@ public class ChangeEmployeePositionCommandHandlerTests
                 UserId = employeeUserId,
                 LegalEntityId = Guid.NewGuid(),
             });
+    }
+
+    [Fact]
+    public async Task Handle_EmployeeOutsideCallerScope_ReturnsForbidden_BeforeLockCheck()
+    {
+        var tenantId = Guid.NewGuid(); var employeeId = Guid.NewGuid();
+        SetupNonSelfCaller(tenantId, employeeId);
+        _manageScopeGuard.Setup(g => g.EnsureCanManage(tenantId, employeeId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(ONEVO.Application.Common.Models.Result.Forbidden("You do not have access to manage this employee."));
+
+        var result = await CreateHandler().Handle(
+            new ChangeEmployeePositionCommand(employeeId, Guid.NewGuid(), DateOnly.FromDateTime(DateTime.UtcNow), "Promotion"), CancellationToken.None);
+
+        Assert.False(result.IsSuccess);
+        Assert.Equal(403, result.StatusCode);
+        Assert.Equal("You do not have access to manage this employee.", result.Error);
+        _offboardingLockGuard.Verify(g => g.EnsureMutable(It.IsAny<Guid>(), It.IsAny<Guid>(), It.IsAny<CancellationToken>()), Times.Never);
     }
 
         [Fact]

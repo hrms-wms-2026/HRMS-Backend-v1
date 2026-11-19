@@ -33,7 +33,6 @@ public class LeaveCancellationClassifierTests
 
     [Theory]
     [InlineData(LeaveRequestStatuses.Pending)]
-    [InlineData(LeaveRequestStatuses.InformationRequested)]
     public void Classify_PendingStyleStatuses_ArePendingStyle(string status)
     {
         var result = _sut.Classify(status, new DateOnly(2026, 9, 1), new DateOnly(2026, 9, 3), new DateOnly(2026, 8, 22), null);

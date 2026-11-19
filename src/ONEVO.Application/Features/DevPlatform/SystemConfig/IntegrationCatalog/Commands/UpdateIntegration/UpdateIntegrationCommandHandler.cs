@@ -8,7 +8,7 @@ using ONEVO.Application.Features.DevPlatform.SystemConfig.PlatformOAuthApps.Repo
 
 namespace ONEVO.Application.Features.DevPlatform.SystemConfig.IntegrationCatalog.Commands.UpdateIntegration;
 
-public sealed record UpdateIntegrationCommand(string IntegrationKey, string DisplayName, string? Description, string ConnectionScope, string OnevoAppProvider, string? LogoUrl, bool IsActive) : IRequest<Result<IntegrationCatalogDto>>;
+public sealed record UpdateIntegrationCommand(string IntegrationKey, string DisplayName, string? Description, string ConnectionScope, string CrownusAppProvider, string? LogoUrl, bool IsActive) : IRequest<Result<IntegrationCatalogDto>>;
 public sealed class UpdateIntegrationCommandHandler : IRequestHandler<UpdateIntegrationCommand, Result<IntegrationCatalogDto>>
 {
     private readonly IIntegrationCatalogRepository _repo;
@@ -25,7 +25,7 @@ public sealed class UpdateIntegrationCommandHandler : IRequestHandler<UpdateInte
     public async Task<Result<IntegrationCatalogDto>> Handle(UpdateIntegrationCommand request, CancellationToken ct)
     {
         var integrationKey = IntegrationCatalogRules.Normalize(request.IntegrationKey);
-        var provider = IntegrationCatalogRules.Normalize(request.OnevoAppProvider);
+        var provider = IntegrationCatalogRules.Normalize(request.CrownusAppProvider);
 
         var entity = await _repo.GetByKeyAsync(integrationKey, ct);
         if (entity is null)
@@ -56,14 +56,14 @@ public sealed class UpdateIntegrationCommandHandler : IRequestHandler<UpdateInte
         if (oauthApp is null)
         {
             return Result<IntegrationCatalogDto>.Failure(
-                $"ONEVO OAuth app provider '{provider}' does not exist.",
+                $"CROWNUS OAuth app provider '{provider}' does not exist.",
                 400);
         }
 
         entity.DisplayName = request.DisplayName.Trim();
         entity.Description = request.Description?.Trim();
         entity.ConnectionScope = request.ConnectionScope;
-        entity.OnevoAppProvider = provider;
+        entity.CrownusAppProvider = provider;
         entity.LogoUrl = request.LogoUrl?.Trim();
         entity.IsActive = request.IsActive;
 

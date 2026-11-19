@@ -33,7 +33,9 @@ public sealed class ListEmployeesAuthorityResolverArchitectureTests
         var text = File.ReadAllText(path);
 
         Assert.Contains("EmployeeAuthorityPurpose.EmployeeListRead", text, StringComparison.Ordinal);
-        Assert.Contains("\"employees:read\"", text, StringComparison.Ordinal);
+        // Relationship-only: the directory passes no permission code to the resolver.
+        Assert.Contains("EmployeeAuthorityVisibilityRequest.RelationshipOnly", text, StringComparison.Ordinal);
+        Assert.DoesNotContain("\"employees:read\"", text, StringComparison.Ordinal);
         Assert.DoesNotContain("\"employees:write\"", text, StringComparison.Ordinal);
     }
 

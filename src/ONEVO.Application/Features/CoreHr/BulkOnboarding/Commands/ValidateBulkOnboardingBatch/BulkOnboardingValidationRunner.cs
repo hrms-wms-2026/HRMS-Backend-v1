@@ -183,7 +183,7 @@ public sealed class BulkOnboardingValidationRunner : IBulkOnboardingValidationRu
                 continue;
 
             var currentPrimary = occupancy.TryGetValue(position.Id, out var preview)
-                ? preview.AssignedCount
+                ? preview.AssignedCount + preview.ReservedCount
                 : await _positionAssignments.CountActiveAsync(tenantId, position.Id, ct);
             var available = Math.Max(0, position.MaxOccupancy - currentPrimary);
             var required = group.Count();
@@ -261,7 +261,7 @@ public sealed class BulkOnboardingValidationRunner : IBulkOnboardingValidationRu
         return others
             .Select(p =>
             {
-                var assigned = occupancy.TryGetValue(p.Id, out var preview) ? preview.AssignedCount : 0;
+                var assigned = occupancy.TryGetValue(p.Id, out var preview) ? preview.AssignedCount + preview.ReservedCount : 0;
                 var seats = Math.Max(0, p.MaxOccupancy - assigned);
                 return (Position: p, Seats: seats);
             })

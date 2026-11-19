@@ -1,0 +1,103 @@
+using Microsoft.EntityFrameworkCore;
+using ONEVO.Application.Features.WorkManagement.Approvals.RepositoryInterfaces;
+using ONEVO.Domain.Features.WorkManagement.Approvals.Entities;
+
+namespace ONEVO.Infrastructure.Persistence.Repositories.WorkManagement;
+
+public class EfWorkApprovalRequestRepository : IWorkApprovalRequestRepository
+{
+    private readonly ApplicationDbContext _db;
+
+    public EfWorkApprovalRequestRepository(ApplicationDbContext db) => _db = db;
+
+    public async Task AddAsync(WorkApprovalRequest request, CancellationToken ct = default)
+        => await _db.WorkApprovalRequests.AddAsync(request, ct);
+
+    public async Task<WorkApprovalRequest?> GetByIdForTenantAsync(Guid tenantId, Guid id, CancellationToken ct = default)
+        => await _db.WorkApprovalRequests.AsNoTracking().FirstOrDefaultAsync(r => r.TenantId == tenantId && r.Id == id, ct);
+
+    public async Task<WorkApprovalRequest?> GetTrackedByIdForTenantAsync(Guid tenantId, Guid id, CancellationToken ct = default)
+        => await _db.WorkApprovalRequests.FirstOrDefaultAsync(r => r.TenantId == tenantId && r.Id == id, ct);
+
+    public async Task<bool> HasPendingAsync(Guid tenantId, string targetType, Guid targetId, string actionType, CancellationToken ct = default)
+        => await _db.WorkApprovalRequests.AsNoTracking().AnyAsync(r =>
+            r.TenantId == tenantId && r.TargetType == targetType && r.TargetId == targetId
+            && r.ActionType == actionType && r.Status == WorkApprovalRequestStatuses.Pending, ct);
+
+    public async Task<IReadOnlySet<Guid>> GetPendingTargetIdsAsync(
+        Guid tenantId, string targetType, IReadOnlyCollection<Guid> targetIds, CancellationToken ct = default)
+    {
+        if (targetIds.Count == 0) return new HashSet<Guid>();
+        var ids = await _db.WorkApprovalRequests.AsNoTracking()
+            .Where(r => r.TenantId == tenantId && r.TargetType == targetType && r.TargetId != null
+                && targetIds.Contains(r.TargetId!.Value) && r.Status == WorkApprovalRequestStatuses.Pending)
+            .Select(r => r.TargetId!.Value)
+            .ToListAsync(ct);
+        return ids.ToHashSet();
+    }
+
+    public async Task<IReadOnlyList<WorkApprovalRequest>> ListByProjectAsync(
+        Guid tenantId, Guid projectId, Guid? requestedByEmployeeId, string? status, CancellationToken ct = default)
+    {
+        var query = _db.WorkApprovalRequests.AsNoTracking()
+            .Where(r => r.TenantId == tenantId && r.ProjectId == projectId);
+        if (requestedByEmployeeId is { } requester)
+            query = query.Where(r => r.RequestedByEmployeeId == requester);
+        if (status is not null)
+            query = query.Where(r => r.Status == status);
+
+        // Sort client-side: the in-memory unit-test provider cannot ORDER BY DateTimeOffset, and the per-project
+        // row count is small.
+        var rows = await query.ToListAsync(ct);
+        return rows.OrderByDescending(r => r.CreatedAt).ToList();
+    }
+
+    public async Task<IReadOnlyList<WorkApprovalRequest>> ListTrackedPendingByActionAsync(
+        Guid tenantId, Guid projectId, string actionType, CancellationToken ct = default)
+        => await _db.WorkApprovalRequests
+            .Where(r => r.TenantId == tenantId && r.ProjectId == projectId
+                && r.ActionType == actionType && r.Status == WorkApprovalRequestStatuses.Pending)
+            .ToListAsync(ct);
+
+    public async Task<bool> HasPendingForHrApproverAsync(
+        Guid tenantId, Guid approverEmployeeId, IReadOnlySet<string> actionTypes, CancellationToken ct = default)
+        => await _db.WorkApprovalRequests.AsNoTracking().AnyAsync(r =>
+            r.TenantId == tenantId && r.ApproverSource == WorkApprovalSources.Hr
+            && r.ApproverEmployeeId == approverEmployeeId && r.Status == WorkApprovalRequestStatuses.Pending
+            && actionTypes.Contains(r.ActionType), ct);
+
+    public async Task<IReadOnlyList<WorkApprovalRequest>> ListPendingForHrApproverAsync(
+        Guid tenantId, Guid approverEmployeeId, IReadOnlySet<string> actionTypes, CancellationToken ct = default)
+        => await _db.WorkApprovalRequests.AsNoTracking().Where(r =>
+            r.TenantId == tenantId && r.ApproverSource == WorkApprovalSources.Hr
+            && r.ApproverEmployeeId == approverEmployeeId && r.Status == WorkApprovalRequestStatuses.Pending
+            && actionTypes.Contains(r.ActionType)).ToListAsync(ct);
+
+    public async Task<IReadOnlySet<Guid>> ListProjectsWithPendingAsync(
+        Guid tenantId, IReadOnlyCollection<Guid> projectIds, IReadOnlySet<string> actionTypes, CancellationToken ct = default)
+    {
+        if (projectIds.Count == 0)
+            return new HashSet<Guid>();
+
+        var ids = projectIds.ToList();
+        var matching = await _db.WorkApprovalRequests.AsNoTracking()
+            .Where(r => r.TenantId == tenantId && ids.Contains(r.ProjectId)
+                && r.Status == WorkApprovalRequestStatuses.Pending && actionTypes.Contains(r.ActionType))
+            .Select(r => r.ProjectId)
+            .ToListAsync(ct);
+        return matching.ToHashSet();
+    }
+
+    public async Task<bool> LockIfPendingAsync(Guid tenantId, Guid id, CancellationToken ct = default)
+    {
+        if (_db.Database.CurrentTransaction is null)
+            throw new InvalidOperationException($"{nameof(LockIfPendingAsync)} needs a transaction.");
+        var locked = await _db.Database.SqlQuery<int>($"""
+            SELECT 1 AS [Value] FROM wm_approval_requests WITH (UPDLOCK, ROWLOCK)
+            WHERE tenant_id = {tenantId} AND id = {id} AND status = {WorkApprovalRequestStatuses.Pending}
+            """).ToListAsync(ct);
+        return locked.Count > 0;
+    }
+
+    public void Update(WorkApprovalRequest request) => _db.WorkApprovalRequests.Update(request);
+}

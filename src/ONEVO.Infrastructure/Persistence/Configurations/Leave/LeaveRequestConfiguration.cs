@@ -4,6 +4,7 @@ using ONEVO.Domain.Features.CoreHr.Entities;
 using ONEVO.Domain.Features.Leave.Request.Entities;
 using ONEVO.Domain.Features.Leave.Type.Entities;
 using ONEVO.Domain.Features.Storage.File.Entities;
+using ONEVO.Infrastructure.Persistence.SqlServer;
 
 namespace ONEVO.Infrastructure.Persistence.Configurations.Leave;
 
@@ -14,10 +15,11 @@ public class LeaveRequestConfiguration : IEntityTypeConfiguration<LeaveRequest>
         builder.ToTable("leave_requests");
         builder.HasKey(r => r.Id);
         builder.Property(r => r.Status).HasMaxLength(40).IsRequired();
-        builder.Property(r => r.TotalHours).HasColumnType("numeric(8,2)");
-        builder.Property(r => r.PaidHours).HasColumnType("numeric(8,2)");
-        builder.Property(r => r.UnpaidHours).HasColumnType("numeric(8,2)");
-        builder.Property(r => r.ConflictSnapshotJson).HasColumnType("jsonb");
+        builder.Property(r => r.TotalHours).HasColumnType("decimal(8,2)");
+        builder.Property(r => r.PaidHours).HasColumnType("decimal(8,2)");
+        builder.Property(r => r.UnpaidHours).HasColumnType("decimal(8,2)");
+        builder.Property(r => r.ExceedsBalanceByHours).HasColumnType("decimal(8,2)");
+        builder.Property(r => r.ConflictSnapshotJson).IsJsonColumn();
 
         builder.HasIndex(r => new { r.TenantId, r.EmployeeId }).HasDatabaseName("ix_leave_requests_tenant_employee");
         builder.HasIndex(r => new { r.TenantId, r.Status }).HasDatabaseName("ix_leave_requests_tenant_status");
@@ -27,11 +29,9 @@ public class LeaveRequestConfiguration : IEntityTypeConfiguration<LeaveRequest>
         builder.HasOne<LeaveType>().WithMany().HasForeignKey(r => r.LeaveTypeId).OnDelete(DeleteBehavior.Restrict);
         builder.HasOne<Employee>().WithMany().HasForeignKey(r => r.EmployeeId).OnDelete(DeleteBehavior.Restrict);
 
-        builder.Property<uint?>("xmin")
+        builder.Property<ulong?>("xmin")
             .HasColumnName("xmin")
-            .HasColumnType("xid")
-            .ValueGeneratedOnAddOrUpdate()
-            .IsConcurrencyToken();
+            .IsRowVersion();
     }
 }
 
@@ -80,36 +80,15 @@ public class LeaveApprovalDelegateConfiguration : IEntityTypeConfiguration<Leave
     }
 }
 
-public class LeaveRequestInfoMessageConfiguration : IEntityTypeConfiguration<LeaveRequestInfoMessage>
-{
-    public void Configure(EntityTypeBuilder<LeaveRequestInfoMessage> builder)
-    {
-        builder.ToTable("leave_request_info_messages");
-        builder.HasKey(x => x.Id);
-        builder.Property(x => x.Message).HasMaxLength(2000).IsRequired();
-        builder.HasIndex(x => new { x.TenantId, x.LeaveRequestId, x.CreatedAt })
-            .HasDatabaseName("ix_leave_request_info_messages_tenant_request_created");
-
-        builder.HasOne<LeaveRequest>()
-            .WithMany()
-            .HasForeignKey(x => x.LeaveRequestId)
-            .OnDelete(DeleteBehavior.Cascade);
-        builder.HasOne<Employee>()
-            .WithMany()
-            .HasForeignKey(x => x.SenderEmployeeId)
-            .OnDelete(DeleteBehavior.Restrict);
-    }
-}
-
 public class LeaveRequestDayAllocationConfiguration : IEntityTypeConfiguration<LeaveRequestDayAllocation>
 {
     public void Configure(EntityTypeBuilder<LeaveRequestDayAllocation> builder)
     {
         builder.ToTable("leave_request_day_allocations");
         builder.HasKey(a => a.Id);
-        builder.Property(a => a.HoursUnit).HasColumnType("numeric(8,2)");
-        builder.Property(a => a.PaidHoursUnit).HasColumnType("numeric(8,2)");
-        builder.Property(a => a.UnpaidHoursUnit).HasColumnType("numeric(8,2)");
+        builder.Property(a => a.HoursUnit).HasColumnType("decimal(8,2)");
+        builder.Property(a => a.PaidHoursUnit).HasColumnType("decimal(8,2)");
+        builder.Property(a => a.UnpaidHoursUnit).HasColumnType("decimal(8,2)");
         builder.Property(a => a.Status).HasMaxLength(20).IsRequired();
         builder.HasIndex(a => new { a.TenantId, a.LeaveRequestId, a.LeaveDate })
             .IsUnique()

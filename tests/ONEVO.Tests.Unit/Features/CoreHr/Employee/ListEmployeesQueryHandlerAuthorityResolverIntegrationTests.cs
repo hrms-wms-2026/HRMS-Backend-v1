@@ -266,6 +266,10 @@ public sealed class ListEmployeesQueryHandlerAuthorityResolverIntegrationTests
     /// flows through the handler into the repository filter, end to end.</summary>
     private sealed class FakeListEmployeesRepository : IEmployeeRepository
     {
+        public Task<IReadOnlyDictionary<Guid, string>> ListPositionNamesAsync(
+            Guid tenantId, IReadOnlyCollection<Guid> employeeIds, CancellationToken ct = default)
+            => Task.FromResult<IReadOnlyDictionary<Guid, string>>(new Dictionary<Guid, string>());
+
         public Dictionary<Guid, EmployeeListItemResponse> Employees { get; } = new();
         public Dictionary<Guid, EmployeeEntity?> DefaultEmployeeByUser { get; } = new();
 
@@ -303,12 +307,14 @@ public sealed class ListEmployeesQueryHandlerAuthorityResolverIntegrationTests
             => throw new NotImplementedException();
         public Task<EmployeeEntity?> GetByIdAsync(Guid tenantId, Guid employeeId, CancellationToken ct = default)
             => throw new NotImplementedException();
+        public Task<Guid?> GetLegalEntityIdAsync(Guid tenantId, Guid employeeId, CancellationToken ct = default)
+            => throw new NotImplementedException();
         public Task<EmployeeEntity?> GetByUserAndLegalEntityAsync(Guid tenantId, Guid userId, Guid legalEntityId, CancellationToken ct = default)
             => throw new NotImplementedException();
         public Task<EmployeeEntity?> GetTrackedByIdAsync(Guid tenantId, Guid employeeId, CancellationToken ct = default)
             => throw new NotImplementedException();
         public void SetExpectedVersion(EmployeeEntity employee, string expectedVersion) => throw new NotImplementedException();
-        public Task<uint?> GetVersionTokenAsync(Guid tenantId, Guid employeeId, CancellationToken ct = default)
+        public Task<ulong?> GetVersionTokenAsync(Guid tenantId, Guid employeeId, CancellationToken ct = default)
             => throw new NotImplementedException();
         public Task<bool> EmailExistsAsync(Guid tenantId, string email, Guid? excludeId, CancellationToken ct = default)
             => throw new NotImplementedException();

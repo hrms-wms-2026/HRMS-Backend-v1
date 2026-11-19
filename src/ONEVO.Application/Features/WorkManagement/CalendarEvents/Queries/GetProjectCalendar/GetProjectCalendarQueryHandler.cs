@@ -8,6 +8,10 @@ using ONEVO.Domain.Features.WorkManagement.Objectives.Entities;
 using ONEVO.Application.Features.WorkManagement.Objectives.RepositoryInterfaces;
 using ONEVO.Application.Features.WorkManagement.ProjectMembers.RepositoryInterfaces;
 using ONEVO.Application.Features.WorkManagement.Tasks.RepositoryInterfaces;
+using ONEVO.Application.Features.WorkManagement.Tasks.Services;
+using ONEVO.Application.Features.WorkManagement.CalendarEvents.Services;
+
+using ONEVO.Application.Features.WorkManagement.Hierarchy;
 
 namespace ONEVO.Application.Features.WorkManagement.CalendarEvents.Queries.GetProjectCalendar;
 
@@ -20,6 +24,8 @@ public sealed class GetProjectCalendarQueryHandler
     private readonly IObjectiveRepository _objectives;
     private readonly IWorkTaskRepository _tasks;
     private readonly ICalendarEventRepository _calendarEvents;
+    private readonly ITaskStatusRepository _taskStatuses;
+    private readonly ITaskAccessResolver? _taskAccess;
 
     public GetProjectCalendarQueryHandler(
         ICurrentUser currentUser,
@@ -27,7 +33,9 @@ public sealed class GetProjectCalendarQueryHandler
         IProjectMemberRepository members,
         IObjectiveRepository objectives,
         IWorkTaskRepository tasks,
-        ICalendarEventRepository calendarEvents)
+        ICalendarEventRepository calendarEvents,
+        ITaskStatusRepository taskStatuses,
+        ITaskAccessResolver? taskAccess = null)
     {
         _currentUser = currentUser;
         _identity = identity;
@@ -35,6 +43,8 @@ public sealed class GetProjectCalendarQueryHandler
         _objectives = objectives;
         _tasks = tasks;
         _calendarEvents = calendarEvents;
+        _taskStatuses = taskStatuses;
+        _taskAccess = taskAccess;
     }
 
     public async Task<Result<ProjectCalendarResponse>> Handle(
@@ -53,6 +63,9 @@ public sealed class GetProjectCalendarQueryHandler
             return Result<ProjectCalendarResponse>.Forbidden("No employee record for the current user.");
 
         var memberships = await _members.ListForEmployeeInProjectAsync(tenantId, request.ProjectId, callerEmployeeId.Value, ct);
+        if (!memberships.Any(m => m.IsActive))
+            return Result<ProjectCalendarResponse>.Forbidden("You do not have access to this project.");
+
         var objectives = await _objectives.GetAllByProjectIdAsync(tenantId, request.ProjectId, ct);
         if (objectives.Count == 0)
             return Result<ProjectCalendarResponse>.Success(
@@ -61,21 +74,9 @@ public sealed class GetProjectCalendarQueryHandler
         var objectivesById = objectives.ToDictionary(o => o.Id);
         var activeMembershipObjectiveIds = memberships.Where(m => m.IsActive).Select(m => m.ObjectiveId).ToHashSet();
 
+        var tree = new ProjectModuleTree(objectives);
         bool IsEffectiveManager(Objective objective)
-        {
-            Objective? cursor = objective;
-            while (cursor is not null)
-            {
-                if (cursor.OwnerId == callerEmployeeId.Value || activeMembershipObjectiveIds.Contains(cursor.Id))
-                    return true;
-
-                cursor = cursor.ParentObjectiveId is { } parentId
-                    ? objectivesById.GetValueOrDefault(parentId)
-                    : null;
-            }
-
-            return false;
-        }
+            => tree.AncestorChain(objective.Id).Any(o => o.OwnerId == callerEmployeeId.Value || activeMembershipObjectiveIds.Contains(o.Id));
 
         var wholeLinks = await _calendarEvents.ListActiveMembershipsForProjectAsync(tenantId, request.ProjectId, ct);
         var taskLinks = await _calendarEvents.ListActiveTaskMembershipsForProjectAsync(tenantId, request.ProjectId, ct);
@@ -83,7 +84,19 @@ public sealed class GetProjectCalendarQueryHandler
         var headerById = eventHeaders.ToDictionary(h => h.EventId);
 
         var allTasks = await _tasks.GetByProjectAsync(tenantId, request.ProjectId, ct);
+        if (_taskAccess is not null)
+        {
+            allTasks = await _taskAccess.FilterViewableTasksAsync(
+                tenantId, userId, callerEmployeeId.Value, allTasks, ct);
+            var visibleTaskIds = allTasks.Select(task => task.Id).ToHashSet();
+            taskLinks = taskLinks.Where(link => visibleTaskIds.Contains(link.TaskId)).ToList();
+        }
         var taskCountByObjective = allTasks.GroupBy(t => t.ObjectiveId).ToDictionary(g => g.Key, g => g.Count());
+
+        var statusIds = allTasks.Select(t => t.StatusId).Distinct().ToList();
+        var statuses = await _taskStatuses.GetByIdsForTenantAsync(tenantId, statusIds, ct);
+        var doneStatusIds = statuses.Where(s => s.MarksTaskComplete).Select(s => s.Id).ToHashSet();
+        var tasksByObjective = allTasks.ToLookup(t => t.ObjectiveId);
 
         var wholeEventsByObjective = wholeLinks
             .GroupBy(l => l.ObjectiveId)
@@ -114,9 +127,16 @@ public sealed class GetProjectCalendarQueryHandler
                             ProjectCalendarEventMemberships.Partial, count, total));
 
             var canEdit = IsEffectiveManager(objective) && !objective.IsAchieved && !objective.IsDefault;
+
+            var subtreeIds = tree.AtOrBelow(new[] { objective.Id });
+            var subtreeTasks = subtreeIds.SelectMany(id => tasksByObjective[id]).ToList();
+            var progressPercent = ObjectiveProgressCalculator.Calculate(
+                subtreeTasks.Count(t => doneStatusIds.Contains(t.StatusId)), subtreeTasks.Count);
+
             return new ProjectCalendarItemResponse(
                 objective.Id, objective.ProjectId, objective.ParentObjectiveId, objective.Title,
-                objective.StartDate, objective.EndDate, objective.IsActive, objective.IsAchieved, canEdit, links);
+                objective.StartDate, objective.EndDate, objective.IsActive, objective.IsAchieved, canEdit, links,
+                progressPercent);
         }).ToList();
 
         var contributingObjectivesByEvent = new Dictionary<Guid, HashSet<Guid>>();

@@ -15,9 +15,8 @@ using ONEVO.Application.Features.Leave.Cancellation.Outbox;
 using ONEVO.Application.Features.Leave.Cancellation.RepositoryInterfaces;
 using ONEVO.Application.Features.Leave.Entitlement.Helpers;
 using ONEVO.Application.Features.Leave.Entitlement.Mappers;
-using ONEVO.Application.Features.Leave.Policy.RepositoryInterfaces;
+using ONEVO.Application.Features.Leave.Policy.Services;
 using ONEVO.Application.Features.Leave.Request.Helpers;
-using ONEVO.Application.Features.Leave.Request.Services;
 using ONEVO.Application.Features.OrgStructure.Mappers;
 using ONEVO.Domain.Features.Leave.BalanceAudit.Entities;
 using ONEVO.Domain.Features.Leave.Common;
@@ -29,7 +28,10 @@ public sealed record CancelLeaveRequestCommand(
     Guid RequestId,
     string? Reason,
     DateOnly? EffectiveDate,
-    string? ExpectedVersion)
+    string? ExpectedVersion,
+    // Inbox undo of an alert converted to leave (plan E2): the approver who created that past-day leave may cancel it
+    // in full although its period has passed. Never bound from the API; only the creating approver qualifies.
+    bool RevertOfApproverBackdatedLeave = false)
     : IRequest<Result<CancelLeaveRequestResponse>>;
 
 public sealed class CancelLeaveRequestCommandValidator : AbstractValidator<CancelLeaveRequestCommand>
@@ -53,7 +55,7 @@ public sealed class CancelLeaveRequestCommandHandler
     private readonly LeaveRequestDayAllocationBuilder _allocationBuilder;
     private readonly LeaveRequestHourCalculator _hourCalculator;
     private readonly ILeaveCalendarHolidayProvider _holidays;
-    private readonly ILeavePolicyRepository _policies;
+    private readonly ILeavePolicyResolver _policies;
     private readonly IOutboxWriter _outbox;
     private readonly INotificationDispatcher _notifications;
     private readonly IDateTimeProvider _clock;
@@ -68,7 +70,7 @@ public sealed class CancelLeaveRequestCommandHandler
         LeaveRequestDayAllocationBuilder allocationBuilder,
         LeaveRequestHourCalculator hourCalculator,
         ILeaveCalendarHolidayProvider holidays,
-        ILeavePolicyRepository policies,
+        ILeavePolicyResolver policies,
         IOutboxWriter outbox,
         INotificationDispatcher notifications,
         IDateTimeProvider clock,
@@ -104,7 +106,11 @@ public sealed class CancelLeaveRequestCommandHandler
 
         var isOwner = state.Request.EmployeeId == currentEmployee.Id;
         var isHrCancel = !isOwner;
-        if (isHrCancel && !_currentUser.HasPermission("leave:manage"))
+        if (command.RevertOfApproverBackdatedLeave
+            && (state.Request.Status != LeaveRequestStatuses.Approved || state.Request.ApprovedBy != currentEmployee.Id
+                || state.Request.SubmittedOnBehalfOfBy != _currentUser.UserId))
+            return Result<CancelLeaveRequestResponse>.Forbidden(LeaveCancellationMessages.NotOwner);
+        if (isHrCancel && !command.RevertOfApproverBackdatedLeave && !_currentUser.HasPermission("leave:manage"))
             return Result<CancelLeaveRequestResponse>.Forbidden(LeaveCancellationMessages.NotOwner);
 
         if (isHrCancel && string.IsNullOrWhiteSpace(command.Reason))
@@ -115,7 +121,9 @@ public sealed class CancelLeaveRequestCommandHandler
         var businessDate = _businessDateResolver.Today(state.LegalEntity?.Timezone);
         var startDate = DateOnly.FromDateTime(state.Request.StartAt.UtcDateTime);
         var endDate = DateOnly.FromDateTime(state.Request.EndAt.UtcDateTime);
-        var classificationResult = _classifier.Classify(
+        var classificationResult = command.RevertOfApproverBackdatedLeave
+            ? Result<LeaveCancellationClassification>.Success(new LeaveCancellationClassification(LeaveCancellationKind.ApprovedFull, businessDate, null))
+            : _classifier.Classify(
             state.Request.Status,
             startDate,
             endDate,
@@ -132,7 +140,7 @@ public sealed class CancelLeaveRequestCommandHandler
         _repository.SetExpectedVersion(state.Request, command.ExpectedVersion);
 
         var openApproverIds = state.Approvers
-            .Where(a => a.Status is LeaveRequestApproverStatuses.Pending or LeaveRequestApproverStatuses.InformationRequested)
+            .Where(a => a.Status == LeaveRequestApproverStatuses.Pending)
             .Select(a => a.ApproverEmployeeId)
             .ToHashSet();
 
@@ -168,7 +176,7 @@ public sealed class CancelLeaveRequestCommandHandler
             }
 
             foreach (var approver in state.Approvers.Where(a =>
-                a.Status is LeaveRequestApproverStatuses.Pending or LeaveRequestApproverStatuses.InformationRequested))
+                a.Status == LeaveRequestApproverStatuses.Pending))
             {
                 approver.Status = LeaveRequestApproverStatuses.Cancelled;
                 approver.DecidedAt = now;
@@ -377,7 +385,7 @@ public sealed class CancelLeaveRequestCommandHandler
             {
                 await _notifications.SendTemplatedAsync(
                     _currentUser.TenantId, state.Employee.UserId, template, placeholders,
-                    "leave_request", state.Request.Id, ct);
+                    ONEVO.Application.Features.Inbox.Contracts.InboxNotificationNavigation.RelatedEntityType("leave", "request"), state.Request.Id, ct);
             }
 
             return;
@@ -393,7 +401,7 @@ public sealed class CancelLeaveRequestCommandHandler
         {
             await _notifications.SendTemplatedAsync(
                 _currentUser.TenantId, recipient.UserId!.Value, template, placeholders,
-                "leave_request", state.Request.Id, ct);
+                ONEVO.Application.Features.Inbox.Contracts.InboxNotificationNavigation.RelatedEntityType("leave", "request"), state.Request.Id, ct);
         }
     }
 
@@ -402,15 +410,10 @@ public sealed class CancelLeaveRequestCommandHandler
         if (state.Entitlement is null)
             return 0m;
 
-        LeavePolicyAggregate? policy = null;
-        if (state.Employee.LegalEntityId is Guid legalEntityId)
-        {
-            var policies = await _policies.ListActiveAggregatesByLegalEntityIdsAsync(
-                _currentUser.TenantId, [legalEntityId], state.Request.StartAt.Year, ct);
-            policies.TryGetValue(legalEntityId, out policy);
-        }
-
-        var expiry = LeaveEntitlementPlanner.CarryExpiryFromPolicy(policy, state.Request.LeaveTypeId, state.Request.StartAt.Year);
+        var year = state.Request.StartAt.Year;
+        var policy = await _policies.ResolveAsync(
+            _currentUser.TenantId, state.Employee.Id, state.Request.LeaveTypeId, LeaveCarryExpiry.ResolutionDate(year), ct);
+        var expiry = LeaveCarryExpiry.For(policy, year);
         var carry = LeaveEntitlementMapper.EffectiveCarry(state.Entitlement.CarriedForwardHours, expiry, businessDate);
         return LeaveEntitlementMapper.Remaining(
             state.Entitlement.TotalHours, carry, state.Entitlement.UsedHours, state.Entitlement.PendingHours);

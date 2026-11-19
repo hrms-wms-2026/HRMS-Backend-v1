@@ -1,3 +1,4 @@
+using ONEVO.Application.Common.Helpers;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata.Builders;
 using ONEVO.Domain.Features.Leave.Type.Entities;
@@ -12,11 +13,11 @@ public class LeaveTypeConfiguration : IEntityTypeConfiguration<LeaveType>
         builder.HasKey(t => t.Id);
         builder.Property(t => t.Name).HasMaxLength(100).IsRequired();
         builder.Property(t => t.Code).HasMaxLength(20).IsRequired();
-        builder.Property(t => t.Category).HasMaxLength(20).IsRequired();
+        builder.Property(t => t.Color).HasMaxLength(9).IsRequired().HasDefaultValue(LeaveType.DefaultColor);
+        builder.Property(t => t.Icon).HasMaxLength(EntityIconRules.MaxLength);
         builder.Property(t => t.ApplicableGender).HasMaxLength(10).IsRequired();
-        builder.Property(t => t.DefaultDaysPerYear).HasColumnType("numeric(5,1)");
-        builder.Property(t => t.MaxCarryForwardDays).HasColumnType("numeric(5,1)");
-        builder.Property(t => t.AcceptedDocumentTypes).HasColumnType("text[]");
+        builder.Property(t => t.DocumentRequiredAfterHours).HasColumnType("decimal(7,2)");
+        builder.Property(t => t.AcceptedDocumentTypes);
 
         builder.HasIndex(t => t.TenantId).HasDatabaseName("ix_leave_types_tenant_id");
 

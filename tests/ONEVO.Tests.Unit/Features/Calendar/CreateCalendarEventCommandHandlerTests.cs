@@ -1,3 +1,5 @@
+using ONEVO.Application.Features.WorkManagement.Meetings;
+using Microsoft.Extensions.Options;
 using Moq;
 using ONEVO.Application.Common.RepositoryInterfaces;
 using ONEVO.Application.Common.ServiceInterfaces;
@@ -41,6 +43,25 @@ public sealed class CreateCalendarEventCommandHandlerTests
         return new CreateCalendarEventCommandHandler(_currentUser.Object, _events.Object, _employees.Object, _notifications.Object, _timezoneResolver.Object, _unitOfWork.Object);
     }
 
+    // Meetings-as-tasks: with Meetings:Create on, a meeting with people or a link belongs to a project (a Meeting work item).
+    [Fact]
+    public async Task With_meetings_on_a_new_event_with_people_or_a_link_is_refused()
+    {
+        _currentUser.SetupGet(x => x.IsAuthenticated).Returns(true);
+        var sut = new CreateCalendarEventCommandHandler(_currentUser.Object, _events.Object, _employees.Object, _notifications.Object,
+            _timezoneResolver.Object, _unitOfWork.Object, new CalendarMeetingGuard(Options.Create(new MeetingsOptions { Create = true }), _events.Object));
+
+        var withPeople = await sut.Handle(new CreateCalendarEventCommand("Sync", null, Start, Start.AddHours(1), false, null, null, null,
+            CalendarRecurrences.None, [Guid.NewGuid()]), CancellationToken.None);
+        var withLink = await sut.Handle(new CreateCalendarEventCommand("Sync", null, Start, Start.AddHours(1), false, null,
+            "https://zoom.us/j/1", null, CalendarRecurrences.None, []), CancellationToken.None);
+        var withGuest = await sut.Handle(new CreateCalendarEventCommand("Sync", null, Start, Start.AddHours(1), false, null, null, null,
+            CalendarRecurrences.None, [], GuestEmails: ["client@example.com"]), CancellationToken.None);
+
+        foreach (var result in new[] { withPeople, withLink, withGuest })
+            Assert.Equal((400, CalendarMeetingGuard.ErrorCode), (result.StatusCode, result.ErrorCode));
+    }
+
     [Fact]
     public async Task Handle_Unauthenticated_ReturnsForbidden()
     {
@@ -77,7 +98,132 @@ public sealed class CreateCalendarEventCommandHandlerTests
         _notifications.Verify(x => x.NotifyParticipantsAddedAsync(
             TenantId, "Sprint Planning", Start, "Room 4",
             It.Is<IReadOnlyList<Guid>>(ids => ids.Count == 1 && ids[0] == participantId),
-            "Ada Owner", It.IsAny<CancellationToken>()), Times.Once);
+            "Ada Owner", It.IsAny<CancellationToken>(), null, true, It.IsAny<ONEVO.Application.Features.Calendar.Services.CalendarEventIcs?>()), Times.Once);
+    }
+
+    [Fact]
+    public async Task Handle_PendingMeetingProvider_SkipsTheParticipantInviteEmail_ButStillAddsThemAndNotifiesInApp()
+    {
+        var sut = BuildSut();
+        var participantId = Guid.NewGuid();
+
+        var result = await sut.Handle(
+            new CreateCalendarEventCommand(
+                "Sprint Planning", null, Start, Start.AddHours(1), false, "Room 4", null, null,
+                CalendarRecurrences.None, [participantId], PendingMeetingProvider: "zoom"),
+            CancellationToken.None);
+
+        Assert.True(result.IsSuccess);
+        _events.Verify(x => x.AddParticipantsAsync(
+            It.Is<IReadOnlyList<CalendarEventParticipant>>(p => p.Count == 1 && p[0].EmployeeId == participantId),
+            It.IsAny<CancellationToken>()), Times.Once);
+        _notifications.Verify(x => x.NotifyParticipantsAddedAsync(
+            TenantId, "Sprint Planning", Start, "Room 4",
+            It.Is<IReadOnlyList<Guid>>(ids => ids.Count == 1 && ids[0] == participantId),
+            "Ada Owner", It.IsAny<CancellationToken>(), null, false, It.IsAny<ONEVO.Application.Features.Calendar.Services.CalendarEventIcs?>()), Times.Once);
+    }
+
+    [Fact]
+    public async Task Handle_PendingMeetingProvider_DoesNotInviteGuestsYet_TheyGetTheirOneEmailWhenTheMeetingIsCreated()
+    {
+        var sut = BuildSut();
+
+        var result = await sut.Handle(
+            new CreateCalendarEventCommand(
+                "Vendor sync", null, Start, Start.AddHours(1), false, null, null, null,
+                CalendarRecurrences.None, [], PendingMeetingProvider: "microsoft_teams", GuestEmails: ["vendor@example.com"]),
+            CancellationToken.None);
+
+        Assert.True(result.IsSuccess);
+        _events.Verify(x => x.AddGuestsAsync(It.IsAny<IReadOnlyList<CalendarEventGuest>>(), It.IsAny<CancellationToken>()), Times.Once);
+        _notifications.Verify(x => x.NotifyGuestsAsync(
+            It.IsAny<Guid>(), It.IsAny<string>(), It.IsAny<DateTimeOffset>(), It.IsAny<string?>(),
+            It.IsAny<IReadOnlyList<string>>(), It.IsAny<string>(), It.IsAny<string?>(), It.IsAny<CancellationToken>(), It.IsAny<ONEVO.Application.Features.Calendar.Services.CalendarEventIcs?>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task Handle_NoPendingMeetingProvider_SendsTheParticipantInviteEmailAsBefore()
+    {
+        var sut = BuildSut();
+        var participantId = Guid.NewGuid();
+
+        await sut.Handle(
+            new CreateCalendarEventCommand(
+                "Sprint Planning", null, Start, Start.AddHours(1), false, "Room 4", null, null,
+                CalendarRecurrences.None, [participantId]),
+            CancellationToken.None);
+
+        _notifications.Verify(x => x.NotifyParticipantsAddedAsync(
+            TenantId, "Sprint Planning", Start, "Room 4",
+            It.Is<IReadOnlyList<Guid>>(ids => ids.Count == 1 && ids[0] == participantId),
+            "Ada Owner", It.IsAny<CancellationToken>(), null, true, It.IsAny<ONEVO.Application.Features.Calendar.Services.CalendarEventIcs?>()), Times.Once);
+    }
+
+    [Fact]
+    public async Task Handle_GuestEmails_AreStoredNormalizedAndInvited()
+    {
+        var sut = BuildSut();
+
+        var result = await sut.Handle(
+            new CreateCalendarEventCommand(
+                "Vendor sync", null, Start, Start.AddHours(1), false, "Room 4", "https://us05web.zoom.us/j/1",
+                null, CalendarRecurrences.None, [], null, ["  Vendor@Example.com ", "vendor@example.com", "pm@example.com"]),
+            CancellationToken.None);
+
+        Assert.True(result.IsSuccess);
+        _events.Verify(x => x.AddGuestsAsync(
+            It.Is<IReadOnlyList<CalendarEventGuest>>(g => g.Count == 2 && g[0].Email == "vendor@example.com" && g[1].Email == "pm@example.com" && g.All(x => x.TenantId == TenantId)),
+            It.IsAny<CancellationToken>()), Times.Once);
+        _notifications.Verify(x => x.NotifyGuestsAsync(
+            TenantId, "Vendor sync", Start, "Room 4",
+            It.Is<IReadOnlyList<string>>(e => e.SequenceEqual(new[] { "vendor@example.com", "pm@example.com" })),
+            "Ada Owner", "https://us05web.zoom.us/j/1", It.IsAny<CancellationToken>(), It.IsAny<ONEVO.Application.Features.Calendar.Services.CalendarEventIcs?>()), Times.Once);
+    }
+
+    [Fact]
+    public async Task Handle_InvalidGuestEmail_Returns400_AndCreatesNothing()
+    {
+        var sut = BuildSut();
+
+        var result = await sut.Handle(
+            new CreateCalendarEventCommand(
+                "Vendor sync", null, Start, Start.AddHours(1), false, null, null, null, CalendarRecurrences.None, [], null, ["nope"]),
+            CancellationToken.None);
+
+        Assert.False(result.IsSuccess);
+        Assert.Equal(400, result.StatusCode);
+        Assert.Contains("nope", result.Error);
+        _events.Verify(x => x.AddAsync(It.IsAny<CalendarEvent>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task Handle_MoreThanTwentyGuests_Returns400()
+    {
+        var sut = BuildSut();
+        var guests = Enumerable.Range(0, 21).Select(i => $"g{i}@example.com").ToList();
+
+        var result = await sut.Handle(
+            new CreateCalendarEventCommand(
+                "Big event", null, Start, Start.AddHours(1), false, null, null, null, CalendarRecurrences.None, [], null, guests),
+            CancellationToken.None);
+
+        Assert.False(result.IsSuccess);
+        Assert.Equal(400, result.StatusCode);
+        _events.Verify(x => x.AddAsync(It.IsAny<CalendarEvent>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task Handle_NoGuestEmails_DoesNotInviteAnyone()
+    {
+        var sut = BuildSut();
+
+        await sut.Handle(
+            new CreateCalendarEventCommand("Solo block", null, Start, Start.AddHours(1), false, null, null, null, CalendarRecurrences.None, []),
+            CancellationToken.None);
+
+        _notifications.Verify(x => x.NotifyGuestsAsync(
+            It.IsAny<Guid>(), It.IsAny<string>(), It.IsAny<DateTimeOffset>(), It.IsAny<string?>(),
+            It.IsAny<IReadOnlyList<string>>(), It.IsAny<string>(), It.IsAny<string?>(), It.IsAny<CancellationToken>(), It.IsAny<ONEVO.Application.Features.Calendar.Services.CalendarEventIcs?>()), Times.Never);
     }
 
     [Fact]
@@ -92,7 +238,7 @@ public sealed class CreateCalendarEventCommandHandlerTests
         Assert.True(result.IsSuccess);
         _notifications.Verify(x => x.NotifyParticipantsAddedAsync(
             It.IsAny<Guid>(), It.IsAny<string>(), It.IsAny<DateTimeOffset>(), It.IsAny<string?>(),
-            It.IsAny<IReadOnlyList<Guid>>(), It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
+            It.IsAny<IReadOnlyList<Guid>>(), It.IsAny<string>(), It.IsAny<CancellationToken>(), null, true, It.IsAny<ONEVO.Application.Features.Calendar.Services.CalendarEventIcs?>()), Times.Never);
     }
 
     [Fact]
@@ -106,6 +252,37 @@ public sealed class CreateCalendarEventCommandHandlerTests
 
         Assert.False(result.IsSuccess);
         Assert.Equal(400, result.StatusCode);
+    }
+
+    [Theory]
+    [InlineData("not a url")]
+    [InlineData("ftp://files.example.com/meeting")]
+    [InlineData("javascript:alert(1)")]
+    public async Task Handle_InvalidMeetingLink_ReturnsFailure(string meetingLink)
+    {
+        var sut = BuildSut();
+
+        var result = await sut.Handle(
+            new CreateCalendarEventCommand("Title", null, Start, Start.AddHours(1), false, null, meetingLink, null, CalendarRecurrences.None, []),
+            CancellationToken.None);
+
+        Assert.False(result.IsSuccess);
+        Assert.Equal(400, result.StatusCode);
+    }
+
+    [Theory]
+    [InlineData(null)]
+    [InlineData("https://meet.example.com/room-1")]
+    [InlineData("http://meet.example.com/room-1")]
+    public async Task Handle_ValidOrAbsentMeetingLink_Succeeds(string? meetingLink)
+    {
+        var sut = BuildSut();
+
+        var result = await sut.Handle(
+            new CreateCalendarEventCommand("Title", null, Start, Start.AddHours(1), false, null, meetingLink, null, CalendarRecurrences.None, []),
+            CancellationToken.None);
+
+        Assert.True(result.IsSuccess);
     }
 
     [Fact]

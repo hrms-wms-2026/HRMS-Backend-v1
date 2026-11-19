@@ -1,3 +1,4 @@
+using ONEVO.Tests.Integration.TestDoubles;
 using FluentAssertions;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
@@ -51,7 +52,7 @@ public sealed class OffboardingExecutionIntegrationTests : IAsyncLifetime
 
     public async Task InitializeAsync()
     {
-        _connectionString = await SharedPostgresTemplate.CreateDatabaseAsync();
+        _connectionString = await SharedSqlServerTemplate.CreateDatabaseAsync();
 
         await using var db = CreateContext();
         await EnsureLookupsAsync(db);
@@ -255,7 +256,8 @@ public sealed class OffboardingExecutionIntegrationTests : IAsyncLifetime
             new OutboxWriter(db, _encryption, _clock),
             new EfUserRepository(db),
             new EfTenantRepository(db),
-            new EmployeeOffboardingLockGuard(employees)).Handle(
+            new EmployeeOffboardingLockGuard(employees),
+            new AllowAllManageScopeGuard()).Handle(
             new ChangeEmployeePositionCommand(employee.Id, Guid.NewGuid(), DateOnly.FromDateTime(DateTime.UtcNow), "LateralMove"),
             CancellationToken.None);
 
@@ -267,7 +269,7 @@ public sealed class OffboardingExecutionIntegrationTests : IAsyncLifetime
     {
         var tenantContext = new TenantContextAccessor();
         var options = new DbContextOptionsBuilder<ApplicationDbContext>()
-            .UseNpgsql(_connectionString)
+            .UseTestSqlServer(_connectionString)
             .UseSnakeCaseNamingConvention()
             .Options;
 

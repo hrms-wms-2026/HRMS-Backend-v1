@@ -21,7 +21,7 @@ public class PerformanceBehavior<TRequest, TResponse> : IPipelineBehavior<TReque
     public async Task<TResponse> Handle(TRequest request, RequestHandlerDelegate<TResponse> next, CancellationToken ct)
     {
         var sw = Stopwatch.StartNew();
-        var response = await next();
+        var response = await next(ct);
         sw.Stop();
 
         if (sw.ElapsedMilliseconds > 500)

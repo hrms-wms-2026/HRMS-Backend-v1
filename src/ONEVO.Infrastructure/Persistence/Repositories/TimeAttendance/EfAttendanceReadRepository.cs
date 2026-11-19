@@ -1,5 +1,5 @@
 using Microsoft.EntityFrameworkCore;
-using Npgsql;
+using ONEVO.Infrastructure.Persistence.SqlServer;
 using ONEVO.Application.Common.Constants;
 using ONEVO.Application.Common.Exceptions;
 using ONEVO.Application.Features.Storage.File.Helpers;
@@ -7,7 +7,6 @@ using ONEVO.Application.Features.TimeAttendance.DTOs.Responses;
 using ONEVO.Application.Features.TimeAttendance.RepositoryInterfaces;
 using ONEVO.Domain.Features.CoreHr.Entities;
 using ONEVO.Domain.Features.TimeAttendance.Entities;
-using ONEVO.Infrastructure.Persistence;
 
 namespace ONEVO.Infrastructure.Persistence.Repositories.TimeAttendance;
 
@@ -71,6 +70,21 @@ public sealed class EfAttendanceReadRepository(ApplicationDbContext db) : IAtten
             .ToListAsync(ct);
 
         return (items, totalCount);
+    }
+
+    public async Task<IReadOnlyList<AttendanceRecord>> ListRecordsForDateAsync(
+        Guid tenantId,
+        IReadOnlyCollection<Guid> employeeIds,
+        DateOnly date,
+        CancellationToken ct = default)
+    {
+        if (employeeIds.Count == 0)
+            return Array.Empty<AttendanceRecord>();
+
+        return await db.AttendanceRecords
+            .AsNoTracking()
+            .Where(x => x.TenantId == tenantId && employeeIds.Contains(x.EmployeeId) && x.Date == date)
+            .ToListAsync(ct);
     }
 
     public async Task<IReadOnlyList<BreakRecord>> ListBreaksAsync(
@@ -191,7 +205,7 @@ public sealed class EfAttendanceReadRepository(ApplicationDbContext db) : IAtten
             throw new ConcurrencyConflictException(ex);
         }
         catch (DbUpdateException ex) when (
-            ex.InnerException is PostgresException { SqlState: PostgresErrorCodes.UniqueViolation })
+            SqlServerErrors.IsUniqueViolation(ex))
         {
             throw new UniqueConstraintConflictException(ex);
         }

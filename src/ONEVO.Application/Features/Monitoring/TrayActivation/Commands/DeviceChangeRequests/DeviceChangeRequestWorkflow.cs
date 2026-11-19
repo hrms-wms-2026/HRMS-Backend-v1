@@ -78,12 +78,15 @@ public sealed class DeviceChangeRequestWorkflow(
             return Result<DeviceChangeRequestResponse>.NotFound("Device change request was not found.");
         if (request.Status != DeviceChangeRequest.StatusPending)
             return Result<DeviceChangeRequestResponse>.Conflict("Only a pending device change request can be reviewed.");
-        if (request.LegalEntityId is not Guid legalEntityId)
+        // A request with no legal entity of its own is scoped through the employee's (inbox plan D-c).
+        var legalEntityId = request.LegalEntityId
+            ?? (await employees.GetByIdAsync(currentUser.TenantId, request.EmployeeId, ct))?.LegalEntityId;
+        if (legalEntityId is not Guid)
             return Result<DeviceChangeRequestResponse>.Conflict(
                 "This device change request has no resolvable legal entity, so no approver can be determined.");
 
         var route = await authority.ResolveApproverAsync(new EmployeeApprovalRouteRequest(
-            request.EmployeeId, legalEntityId, ApprovalPermission,
+            request.EmployeeId, legalEntityId.Value, ApprovalPermission,
             EmployeeAuthorityPurpose.DeviceChangeApproval), ct);
         if (!route.IsSuccess || route.Value is null)
             return Result<DeviceChangeRequestResponse>.Conflict("No eligible device-change approver is configured for this employee.");

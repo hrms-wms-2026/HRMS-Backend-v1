@@ -1,15 +1,27 @@
 using System.Text;
 using ONEVO.Application.Common.RepositoryInterfaces;
 using ONEVO.Application.Common.ServiceInterfaces;
+using ONEVO.Application.Features.SharedPlatform.Notifications.Catalog;
+using ONEVO.Application.Features.SharedPlatform.Notifications.Delivery;
 using ONEVO.Domain.Features.SharedPlatform.Notifications.Entities;
 
 namespace ONEVO.Infrastructure.Services.SharedPlatform.Notifications;
 
+/// <summary>
+/// Compatibility adapter and single cut-over point for producers that call SendTemplatedAsync directly: events
+/// owned by the orchestrator (NotificationEventCatalog) are routed there per tenant settings; every other event
+/// keeps the legacy in-app insert. An event never goes both ways.
+/// </summary>
 public class NotificationDispatcher : INotificationDispatcher
 {
     private readonly INotificationRepository _notifications;
+    private readonly INotificationOrchestrator? _orchestrator;
 
-    public NotificationDispatcher(INotificationRepository notifications) => _notifications = notifications;
+    public NotificationDispatcher(INotificationRepository notifications, INotificationOrchestrator? orchestrator = null)
+    {
+        _notifications = notifications;
+        _orchestrator = orchestrator;
+    }
 
     public Task SendToUserAsync(Guid userId, string eventName, object payload, CancellationToken ct = default)
         => throw new NotImplementedException("Use SendTemplatedAsync for Work Management notification templates.");
@@ -20,12 +32,35 @@ public class NotificationDispatcher : INotificationDispatcher
     public Task SendToGroupAsync(string groupName, string eventName, object payload, CancellationToken ct = default)
         => throw new NotImplementedException("Use SendTemplatedAsync for Work Management notification templates.");
 
-    public async Task SendTemplatedAsync(
+    public Task SendTemplatedAsync(
         Guid tenantId, Guid recipientUserId, string templateCode,
         IReadOnlyDictionary<string, string> placeholders,
         string? relatedEntityType = null, Guid? relatedEntityId = null,
         CancellationToken ct = default)
+        => SendAsync(null, tenantId, recipientUserId, templateCode, placeholders, relatedEntityType, relatedEntityId, ct);
+
+    public Task SendTemplatedEventAsync(
+        Guid eventId, Guid tenantId, Guid recipientUserId, string templateCode,
+        IReadOnlyDictionary<string, string> placeholders,
+        string? relatedEntityType = null, Guid? relatedEntityId = null,
+        CancellationToken ct = default)
+        => SendAsync(eventId, tenantId, recipientUserId, templateCode, placeholders, relatedEntityType, relatedEntityId, ct);
+
+    private async Task SendAsync(
+        Guid? eventId, Guid tenantId, Guid recipientUserId, string templateCode,
+        IReadOnlyDictionary<string, string> placeholders,
+        string? relatedEntityType, Guid? relatedEntityId, CancellationToken ct)
     {
+        if (_orchestrator is not null && NotificationEventCatalog.TryGet(templateCode, out var definition) && definition.OrchestratorOwned)
+        {
+            // Direct callers run inside their business transaction, so a new id here is stable for the occurrence;
+            // outbox-driven callers pass the id persisted in their payload.
+            await _orchestrator.EnqueueAsync(new NotificationDispatchRequest(
+                eventId ?? Guid.NewGuid(), templateCode, tenantId, recipientUserId, placeholders,
+                relatedEntityType, relatedEntityId), ct);
+            return;
+        }
+
         var template = await _notifications.GetTemplateByCodeAsync(templateCode, ct);
         if (template is null || !template.InAppEnabled)
             return;

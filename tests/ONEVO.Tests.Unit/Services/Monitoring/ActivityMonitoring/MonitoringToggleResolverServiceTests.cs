@@ -168,6 +168,37 @@ public class MonitoringToggleResolverServiceTests
     }
 
     [Fact]
+    public async Task IsEnabledForEmployeeAsync_ResolvesByEmployeeId_WhereUserIdOverloadCannot()
+    {
+        await using var db = BuildInMemoryDb();
+        var tenantId = Guid.NewGuid();
+
+        var employee = await SeedEmployeeAsync(db, tenantId);
+        employee.Id.Should().NotBe(employee.UserId);
+
+        db.MonitoringFeatureToggles.Add(new MonitoringFeatureToggles
+        {
+            Id = Guid.NewGuid(),
+            TenantId = tenantId,
+            LegalEntityId = null,
+            ActivityMonitoring = true,
+            ApplicationTracking = true
+        });
+        await db.SaveChangesAsync();
+
+        var resolver = new MonitoringToggleResolverService(db, new NoOpCacheService());
+
+        (await resolver.IsEnabledForEmployeeAsync(tenantId, employee.Id, MonitoringCapability.ActivityMonitoring))
+            .Should().BeTrue("an /employees/{id} read passes the Employee.Id, which must resolve the tenant toggle");
+        (await resolver.IsEnabledForEmployeeAsync(tenantId, employee.Id, MonitoringCapability.ApplicationTracking))
+            .Should().BeTrue();
+        (await resolver.IsEnabledAsync(tenantId, employee.Id, MonitoringCapability.ActivityMonitoring))
+            .Should().BeFalse("the User.Id overload never matches an Employee.Id - the original bug");
+        (await resolver.IsEnabledForEmployeeAsync(tenantId, Guid.NewGuid(), MonitoringCapability.ActivityMonitoring))
+            .Should().BeFalse("an unknown employee falls back to the safe default");
+    }
+
+    [Fact]
     public async Task ResolveAsync_EmployeeOverride_StillWinsOverWorkMode()
     {
         await using var db = BuildInMemoryDb();

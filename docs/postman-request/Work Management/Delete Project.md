@@ -30,4 +30,4 @@ No body.
 
 Controller: `src/ONEVO.Api/Controllers/Tenant/WorkManagement/ProjectsController.cs` (`Delete`)
 Handler: `src/ONEVO.Application/Features/WorkManagement/Projects/Commands/DeleteProject/DeleteProjectCommandHandler.cs`
-Plan: `docs/superpowers/plans/2026-08-04-work-management-projects-edit-delete-view.md`
+Plan: `docs/superpowers/plans/finished/2026-08-04/2026-08-04-work-management-projects-edit-delete-view.md`

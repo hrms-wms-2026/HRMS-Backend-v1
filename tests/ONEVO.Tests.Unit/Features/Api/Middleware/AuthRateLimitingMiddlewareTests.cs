@@ -33,7 +33,7 @@ public sealed class AuthRateLimitingMiddlewareTests
         context.Response.Body = new MemoryStream();
 
         if (mfaCookie is not null)
-            context.Request.Headers.Cookie = $"onevo_mfa={mfaCookie}";
+            context.Request.Headers.Cookie = $"crownus_mfa={mfaCookie}";
 
         if (jsonBody is not null)
         {
@@ -205,7 +205,7 @@ public sealed class AuthRateLimitingMiddlewareTests
     [Fact]
     public async Task AdminMfaVerify_UsesAdminMfaCookie_NotTenantOnevoMfaCookie()
     {
-        // The admin login flow sets an "admin_mfa" challenge cookie, not "onevo_mfa" - the
+        // The admin login flow sets an "admin_mfa" challenge cookie, not "crownus_mfa" - the
         // per-challenge limit must key off the cookie admin actually sends.
         var sut = Build();
         for (var i = 0; i < 5; i++)
@@ -236,5 +236,39 @@ public sealed class AuthRateLimitingMiddlewareTests
             first.Response.StatusCode.Should().NotBe(429);
             second.Response.StatusCode.Should().NotBe(429);
         }
+    }
+
+    [Fact]
+    public async Task AdminGoogleCallback_SixthRequestWithSameIdToken_Returns429()
+    {
+        var sut = Build();
+        for (var i = 0; i < 5; i++)
+        {
+            await sut.InvokeAsync(MakeContextForPath(
+                "/admin/v1/auth/google-callback", $"10.0.5.{i}", jsonBody: """{"google_id_token":"same-token"}"""));
+        }
+
+        var sixth = MakeContextForPath(
+            "/admin/v1/auth/google-callback", "10.0.5.99", jsonBody: """{"google_id_token":"same-token"}""");
+        await sut.InvokeAsync(sixth);
+
+        sixth.Response.StatusCode.Should().Be(429);
+    }
+
+    [Fact]
+    public async Task AdminGoogleCallback_TwentyFirstRequestFromSameIp_Returns429()
+    {
+        var sut = Build();
+        for (var i = 0; i < 20; i++)
+        {
+            await sut.InvokeAsync(MakeContextForPath(
+                "/admin/v1/auth/google-callback", "10.0.6.1", jsonBody: $$"""{"google_id_token":"token-{{i}}"}"""));
+        }
+
+        var twentyFirst = MakeContextForPath(
+            "/admin/v1/auth/google-callback", "10.0.6.1", jsonBody: """{"google_id_token":"token-final"}""");
+        await sut.InvokeAsync(twentyFirst);
+
+        twentyFirst.Response.StatusCode.Should().Be(429);
     }
 }

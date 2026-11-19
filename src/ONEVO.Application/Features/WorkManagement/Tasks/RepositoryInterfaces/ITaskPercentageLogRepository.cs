@@ -6,6 +6,11 @@ public interface ITaskPercentageLogRepository
 {
     Task AddAsync(TaskPercentageLog log, CancellationToken ct = default);
     Task<IReadOnlyList<TaskPercentageLog>> GetForTaskAsync(Guid tenantId, Guid taskId, CancellationToken ct = default);
+
+    /// <summary>The employee's own Push logs on the given tasks within [fromUtc, toUtcExclusive), oldest first.</summary>
+    Task<IReadOnlyList<TaskPercentageLog>> GetPushesByEmployeeAsync(
+        Guid tenantId, Guid employeeId, IReadOnlyCollection<Guid> taskIds,
+        DateTimeOffset fromUtc, DateTimeOffset toUtcExclusive, CancellationToken ct = default);
     Task<TaskPercentageLog?> GetTrackedByIdForTenantAsync(Guid tenantId, Guid id, CancellationToken ct = default);
     void Update(TaskPercentageLog log);
 }

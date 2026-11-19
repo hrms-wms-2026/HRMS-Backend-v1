@@ -1,18 +1,23 @@
 using MediatR;
 using ONEVO.Application.Common.Models;
-using ONEVO.Application.Common.RepositoryInterfaces;
 using ONEVO.Application.Common.ServiceInterfaces;
-using ONEVO.Application.Features.WorkManagement.Common.OutboxHandlers;
 using ONEVO.Application.Features.WorkManagement.Common.Services;
+using ONEVO.Application.Features.WorkManagement.Objectives.DTOs;
 using ONEVO.Application.Features.WorkManagement.Objectives.DTOs.Responses;
 using ONEVO.Application.Features.WorkManagement.Objectives.RepositoryInterfaces;
 using ONEVO.Application.Features.WorkManagement.Objectives.Services;
 using ONEVO.Application.Features.WorkManagement.ProjectInvitations.Mappers;
 using ONEVO.Application.Features.WorkManagement.ProjectInvitations.RepositoryInterfaces;
+using ONEVO.Domain.Features.WorkManagement.Approvals.Entities;
 using ONEVO.Domain.Features.WorkManagement.ProjectInvitations.Entities;
 
 namespace ONEVO.Application.Features.WorkManagement.Objectives.Commands.AddObjectiveMember;
 
+/// <summary>
+/// Adds a milestone member through the approval engine: the parent's owner (or anyone above) invites
+/// them now; the milestone's own head or members below file a module.member_add request to the
+/// parent's owner. Either way, "added" means a pending ProjectMemberInvitation the invitee must accept.
+/// </summary>
 public class AddObjectiveMemberCommandHandler : IRequestHandler<AddObjectiveMemberCommand, Result<AddObjectiveMemberOutcomeResponse>>
 {
     private readonly ICurrentUser _currentUser;
@@ -20,21 +25,18 @@ public class AddObjectiveMemberCommandHandler : IRequestHandler<AddObjectiveMemb
     private readonly IObjectiveRepository _objectives;
     private readonly IMilestoneMembershipCoordinator _membership;
     private readonly IProjectMemberInvitationRepository _invitations;
-    private readonly IUnitOfWork _unitOfWork;
-    private readonly IOutboxWriter _outboxWriter;
+    private readonly IModuleActionSubmitter _submitter;
 
     public AddObjectiveMemberCommandHandler(
         ICurrentUser currentUser, ICallerIdentityResolver identity, IObjectiveRepository objectives,
-        IMilestoneMembershipCoordinator membership, IProjectMemberInvitationRepository invitations, IUnitOfWork unitOfWork,
-        IOutboxWriter outboxWriter)
+        IMilestoneMembershipCoordinator membership, IProjectMemberInvitationRepository invitations, IModuleActionSubmitter submitter)
     {
         _currentUser = currentUser;
         _identity = identity;
         _objectives = objectives;
         _membership = membership;
         _invitations = invitations;
-        _unitOfWork = unitOfWork;
-        _outboxWriter = outboxWriter;
+        _submitter = submitter;
     }
 
     public async Task<Result<AddObjectiveMemberOutcomeResponse>> Handle(AddObjectiveMemberCommand request, CancellationToken ct)
@@ -59,56 +61,35 @@ public class AddObjectiveMemberCommandHandler : IRequestHandler<AddObjectiveMemb
             return Result<AddObjectiveMemberOutcomeResponse>.Failure("Cannot add members to an achieved milestone.");
 
         if (!await _membership.IsEffectiveManagerAsync(tenantId, objective.Id, callerEmployeeId.Value, ct))
-            return Result<AddObjectiveMemberOutcomeResponse>.Forbidden("Only this milestone's head can add members.");
+            return Result<AddObjectiveMemberOutcomeResponse>.Forbidden("Only this milestone's head or an active member can add members.");
 
         var assignee = await _membership.GetActiveAssigneeAsync(tenantId, request.EmployeeId, ct);
         if (assignee is null)
             return Result<AddObjectiveMemberOutcomeResponse>.Failure("The member must be an active employee in this tenant.");
 
         if (await _membership.HasActiveMembershipAsync(tenantId, objective.ProjectId, objective.Id, assignee.Id, ct))
-            return Result<AddObjectiveMemberOutcomeResponse>.Success(new AddObjectiveMemberOutcomeResponse(AlreadyMember: true, Invitation: null));
+            return Result<AddObjectiveMemberOutcomeResponse>.Success(new AddObjectiveMemberOutcomeResponse(true, true, null, null));
 
         if (await _invitations.GetPendingForObjectiveAndEmployeeAsync(tenantId, objective.Id, assignee.Id, ct) is not null)
             return Result<AddObjectiveMemberOutcomeResponse>.Conflict("An invitation is already pending for this employee on this milestone.");
 
-        var invitation = new ProjectMemberInvitation
-        {
-            Id = Guid.NewGuid(),
-            TenantId = tenantId,
-            ProjectId = objective.ProjectId,
-            ObjectiveId = objective.Id,
-            InvitedEmployeeId = assignee.Id,
-            InviteType = ProjectInvitationTypes.Member,
-            Status = ProjectInvitationStatuses.Pending,
-            InvitedById = callerEmployeeId.Value,
-            CreatedById = userId,
-            CreatedAt = DateTimeOffset.UtcNow
-        };
+        var input = new ModuleMemberAddInput(assignee.Id, callerEmployeeId.Value);
+        ProjectMemberInvitation? createdInvitation = null;
+        var outcome = await _submitter.SubmitAsync(tenantId, callerEmployeeId.Value, objective, WorkActionTypes.ModuleMemberAdd, input,
+            async (tracked, innerCt) =>
+            {
+                var applied = await _membership.ApplyMemberAddAsync(tenantId, tracked, callerEmployeeId.Value, assignee.Id, innerCt);
+                if (!applied.IsSuccess)
+                    return Result.Failure(applied.Error!, applied.StatusCode ?? 400);
+                createdInvitation = applied.Value;
+                return Result.Success();
+            }, ct: ct);
 
-        await _invitations.AddAsync(invitation, ct);
+        if (!outcome.IsSuccess)
+            return Result<AddObjectiveMemberOutcomeResponse>.Failure(outcome.Error!, outcome.StatusCode ?? 400);
 
-        var names = await _identity.ResolveDisplayNamesByEmployeeIdAsync(tenantId, [callerEmployeeId.Value], ct);
-        var inviterDisplayName = names.GetValueOrDefault(callerEmployeeId.Value) ?? "A teammate";
-        await _outboxWriter.EnqueueAsync(
-            OutboxMessageTypes.WorkNotification,
-            new WorkNotificationPayload(
-                tenantId,
-                assignee.UserId,
-                "work_objective_invitation_created",
-                new Dictionary<string, string>
-                {
-                    ["inviterName"] = inviterDisplayName,
-                    ["objectiveName"] = objective.Title,
-                    ["inviteType"] = ProjectInvitationTypes.Member
-                },
-                "project_member_invitation",
-                invitation.Id),
-            tenantId,
-            ct);
-
-        await _unitOfWork.SaveChangesAsync(ct);
-
-        return Result<AddObjectiveMemberOutcomeResponse>.Success(
-            new AddObjectiveMemberOutcomeResponse(AlreadyMember: false, ProjectMemberInvitationMapper.ToResponse(invitation)));
+        return Result<AddObjectiveMemberOutcomeResponse>.Success(outcome.Value!.Applied
+            ? new AddObjectiveMemberOutcomeResponse(true, false, null, createdInvitation is null ? null : ProjectMemberInvitationMapper.ToResponse(createdInvitation))
+            : new AddObjectiveMemberOutcomeResponse(false, false, outcome.Value.ApprovalRequestId, null));
     }
 }

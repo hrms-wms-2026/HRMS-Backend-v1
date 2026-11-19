@@ -13,6 +13,26 @@ public class EfAppUsageSnapshotRepository : IAppUsageSnapshotRepository
     public async Task AddRangeAsync(IEnumerable<AppUsageSnapshot> snapshots, CancellationToken ct)
         => await _db.AppUsageSnapshots.AddRangeAsync(snapshots, ct);
 
+    public async Task<IReadOnlySet<DateTimeOffset>> GetExistingCapturedAtsAsync(
+        Guid tenantId,
+        Guid agentDeviceId,
+        IReadOnlyCollection<DateTimeOffset> capturedAts,
+        CancellationToken ct)
+    {
+        if (capturedAts.Count == 0)
+            return new HashSet<DateTimeOffset>();
+
+        var existing = await _db.AppUsageSnapshots
+            .AsNoTracking()
+            .Where(s => s.TenantId == tenantId
+                        && s.AgentDeviceId == agentDeviceId
+                        && capturedAts.Contains(s.CapturedAt))
+            .Select(s => s.CapturedAt)
+            .ToListAsync(ct);
+
+        return existing.ToHashSet();
+    }
+
     public async Task<IReadOnlyList<AppUsageSnapshot>> GetByEmployeeDateAsync(
         Guid tenantId, Guid employeeId, DateOnly date, int page, int pageSize, CancellationToken ct)
     {
@@ -54,6 +74,26 @@ public class EfAppUsageSnapshotRepository : IAppUsageSnapshotRepository
                         && s.CapturedAt >= start && s.CapturedAt < end)
             .ToListAsync(ct);
     }
+
+    public async Task<IReadOnlyList<AppProcessMinutesRow>> GetMinutesByProcessAsync(
+        Guid tenantId, Guid employeeId, DateTimeOffset fromUtc, DateTimeOffset toUtcExclusive, CancellationToken ct)
+        => await _db.AppUsageSnapshots.AsNoTracking()
+            .Where(s => s.TenantId == tenantId && s.EmployeeId == employeeId && s.ProcessName != null
+                        && s.CapturedAt >= fromUtc && s.CapturedAt < toUtcExclusive)
+            .GroupBy(s => s.ProcessName!)
+            .Select(g => new AppProcessMinutesRow(g.Key, g.Count(), g.Max(s => s.CapturedAt)))
+            .ToListAsync(ct);
+
+    public async Task<IReadOnlyList<AppProcessSampleRow>> GetSamplesForProcessesAsync(
+        Guid tenantId, Guid employeeId, DateTimeOffset fromUtc, DateTimeOffset toUtcExclusive,
+        IReadOnlyCollection<string> processNames, CancellationToken ct)
+        => await _db.AppUsageSnapshots.AsNoTracking()
+            .Where(s => s.TenantId == tenantId && s.EmployeeId == employeeId && s.ProcessName != null
+                        && processNames.Contains(s.ProcessName)
+                        && s.CapturedAt >= fromUtc && s.CapturedAt < toUtcExclusive)
+            .OrderBy(s => s.CapturedAt)
+            .Select(s => new AppProcessSampleRow(s.ProcessName!, s.CapturedAt))
+            .ToListAsync(ct);
 
     private static (DateTimeOffset Start, DateTimeOffset End) UtcDayBounds(DateOnly date)
     {

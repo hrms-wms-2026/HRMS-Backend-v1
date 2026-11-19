@@ -57,6 +57,8 @@ public sealed class CreateSubtaskCommandHandler : IRequestHandler<CreateSubtaskC
         var parent = await _tasks.GetByIdForTenantAsync(tenantId, request.ParentTaskId, ct);
         if (parent is null)
             return Result<WorkTaskResponse>.NotFound("Parent task not found.");
+        if (parent.TaskKind == WorkTaskKinds.EmployeeChecklist)
+            return Result<WorkTaskResponse>.Conflict("Checklist tasks cannot contain subtasks.");
         if (parent.ParentTaskId is not null)
             return Result<WorkTaskResponse>.Conflict("A subtask cannot itself have subtasks.");
 
@@ -92,7 +94,8 @@ public sealed class CreateSubtaskCommandHandler : IRequestHandler<CreateSubtaskC
             var subtask = new WorkTask
             {
                 Id = Guid.NewGuid(), TenantId = tenantId, ProjectId = parent.ProjectId, ParentTaskId = parent.Id,
-                ObjectiveId = parent.ObjectiveId, ShortId = $"{project.Identifier}-{taskNumber}",
+                ObjectiveId = parent.ObjectiveId, CreatorPositionObjectiveId = parent.CreatorPositionObjectiveId ?? parent.ObjectiveId,
+                ShortId = $"{project.Identifier}-{taskNumber}",
                 StatusId = defaultStatus.Id, Title = request.Title.Trim(), CategoryId = parent.CategoryId,
                 Priority = request.Priority ?? WorkTaskPriorities.Medium, DueDate = request.DueDate,
                 CompletedHours = 0m, ProgressPercent = 0, CreatedById = userId, CreatedAt = now

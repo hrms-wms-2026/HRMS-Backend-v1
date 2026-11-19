@@ -3,7 +3,6 @@ using FluentAssertions;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
-using Npgsql;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using ONEVO.Application.Common.Models;
@@ -36,7 +35,7 @@ namespace ONEVO.Tests.Integration.Auth;
 
 /// <summary>
 /// End-to-end proof of the tenant-host password reset flow (forgot-password -> outbox -> raw token
-/// -> reset-password) against a real PostgreSQL server under the restricted onevo_app role (NOBYPASSRLS,
+/// -> reset-password) against a real PostgreSQL server under the restricted crownus_app role (NOBYPASSRLS,
 /// real TenantRlsInterceptor) - mirrors BaseForgotPasswordRlsIntegrationTests' technique of invoking
 /// handlers directly against a production-like DI container rather than mocks. No prior test in this
 /// suite exercised ResetPasswordCommandHandler against a real database at all. Requires Docker.
@@ -55,12 +54,12 @@ public sealed class TenantHostPasswordResetFlowIntegrationTests : IAsyncLifetime
 
     public async Task InitializeAsync()
     {
-        _adminConnectionString = await SharedPostgresTemplate.CreateDatabaseAsync();
+        _adminConnectionString = await SharedSqlServerTemplate.CreateDatabaseAsync();
 
         _environmentScope = new IntegrationTestEnvironmentScope(_adminConnectionString);
         _appConnectionString = _environmentScope.DefaultConnectionString;
 
-        await GrantOnevoAppTablePrivilegesAsync();
+        await GrantCrownusAppTablePrivilegesAsync();
     }
 
     public async Task DisposeAsync()
@@ -107,6 +106,41 @@ public sealed class TenantHostPasswordResetFlowIntegrationTests : IAsyncLifetime
 
         replayResult.IsSuccess.Should().BeFalse();
         replayResult.Error.Should().Be("Invalid or expired reset token.");
+    }
+
+    [Fact]
+    public async Task ResetPassword_RevokesExistingBrowserSessions_UnderRls()
+    {
+        var (tenantId, slug, userId, email) = await SeedActiveUserAsync("reset-flow-sessions");
+        var sessionId = Guid.NewGuid();
+        await using (var seedDb = BuildAdminDbContext())
+        {
+            seedDb.Sessions.Add(new Domain.Features.Auth.Entities.Session
+            {
+                Id = sessionId,
+                TenantId = tenantId,
+                UserId = userId,
+                ExpiresAt = _clock.UtcNow.AddDays(1),
+                KeyHash = Guid.NewGuid().ToString("N")
+            });
+            await seedDb.SaveChangesAsync();
+        }
+
+        using var scope = BuildScopeFactory().CreateScope();
+        ResolveTenant(scope, tenantId, slug);
+        await scope.ServiceProvider.GetRequiredService<RequestPasswordResetCommandHandler>()
+            .Handle(new RequestPasswordResetCommand(email), CancellationToken.None);
+        var rawToken = await GetLatestRawTokenAsync(userId);
+
+        using var resetScope = BuildScopeFactory().CreateScope();
+        ResolveTenant(resetScope, tenantId, slug);
+        var resetResult = await resetScope.ServiceProvider.GetRequiredService<ResetPasswordCommandHandler>()
+            .Handle(new ResetPasswordCommand(rawToken!, "BrandNewPassword1"), CancellationToken.None);
+
+        resetResult.IsSuccess.Should().BeTrue();
+        await using var verifyDb = BuildAdminDbContext();
+        var session = await verifyDb.Sessions.AsNoTracking().SingleAsync(s => s.Id == sessionId);
+        session.IsRevoked.Should().BeTrue();
     }
 
     [Fact]
@@ -192,6 +226,15 @@ public sealed class TenantHostPasswordResetFlowIntegrationTests : IAsyncLifetime
         services.AddSingleton<ISecureTokenGenerator, SecureTokenGenerator>();
         services.AddSingleton<IPasswordHasher, BCryptPasswordHasher>();
         services.AddSingleton<IPermissionVersionService, PermissionVersionService>();
+        // Same registration as production (task 03 session ticket cache), so the reset flow
+        // also exercises the real cache eviction.
+        services.AddMemoryCache();
+        services.Configure<ONEVO.Infrastructure.Identity.Sessions.SessionTicketCacheOptions>(_ => { });
+        services.AddSingleton<ONEVO.Infrastructure.Identity.Sessions.SessionTicketCache>();
+        services.AddSingleton<ONEVO.Infrastructure.Identity.Sessions.ISessionTicketStoreCache>(
+            sp => sp.GetRequiredService<ONEVO.Infrastructure.Identity.Sessions.SessionTicketCache>());
+        services.AddSingleton<ISessionTicketCache>(
+            sp => sp.GetRequiredService<ONEVO.Infrastructure.Identity.Sessions.SessionTicketCache>());
         services.AddSingleton<ILogger<BaseForgotPasswordCommandHandler>>(
             NullLogger<BaseForgotPasswordCommandHandler>.Instance);
 
@@ -205,9 +248,9 @@ public sealed class TenantHostPasswordResetFlowIntegrationTests : IAsyncLifetime
 
         services.AddDbContext<ApplicationDbContext>((sp, options) =>
         {
-            options.UseNpgsql(_appConnectionString)
+            options.UseTestSqlServer(_appConnectionString)
                    .UseSnakeCaseNamingConvention()
-                   .AddInterceptors(sp.GetRequiredService<TenantRlsInterceptor>());
+                   .AddTestRls(sp.GetRequiredService<TenantRlsInterceptor>());
         });
 
         services.AddScoped<IUnitOfWork, UnitOfWork>();
@@ -215,6 +258,7 @@ public sealed class TenantHostPasswordResetFlowIntegrationTests : IAsyncLifetime
         services.AddScoped<IUserRepository, EfUserRepository>();
         services.AddScoped<IPasswordResetTokenRepository, EfPasswordResetTokenRepository>();
         services.AddScoped<IRefreshTokenRepository, EfRefreshTokenRepository>();
+        services.AddScoped<ISessionRepository, EfSessionRepository>();
         services.AddScoped<IBaseLoginCandidateRepository, EfBaseLoginCandidateRepository>();
         services.AddScoped<ITenantContextSwitcher, TenantContextSwitcher>();
         services.AddScoped<RequestPasswordResetCommandHandler>();
@@ -233,7 +277,7 @@ public sealed class TenantHostPasswordResetFlowIntegrationTests : IAsyncLifetime
     private ApplicationDbContext BuildAdminDbContext()
     {
         var options = new DbContextOptionsBuilder<ApplicationDbContext>()
-            .UseNpgsql(_adminConnectionString)
+            .UseTestSqlServer(_adminConnectionString)
             .UseSnakeCaseNamingConvention()
             .Options;
         return new ApplicationDbContext(
@@ -244,16 +288,14 @@ public sealed class TenantHostPasswordResetFlowIntegrationTests : IAsyncLifetime
             new TenantContextAccessor());
     }
 
-    private async Task GrantOnevoAppTablePrivilegesAsync()
+    private async Task GrantCrownusAppTablePrivilegesAsync()
     {
-        await using var connection = new NpgsqlConnection(_adminConnectionString);
+        await using var connection = TestDb.CreateConnection(_adminConnectionString);
         await connection.OpenAsync();
 
         await using var command = connection.CreateCommand();
         command.CommandText = """
-            GRANT USAGE ON SCHEMA public TO onevo_app;
-            GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO onevo_app;
-            GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO onevo_app;
+            SELECT 1;
             """;
         await command.ExecuteNonQueryAsync();
     }

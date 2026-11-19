@@ -22,5 +22,10 @@ public class EfTaskAssignmentRepository : ITaskAssignmentRepository
     public async Task<TaskAssignment?> GetByTaskAndEmployeeAsync(Guid taskId, Guid employeeId, CancellationToken ct = default)
         => await _db.TaskAssignments.FirstOrDefaultAsync(a => a.TaskId == taskId && a.EmployeeId == employeeId, ct);
 
+    public async Task<bool> AnyForEmployeeInObjectiveAsync(Guid tenantId, Guid objectiveId, Guid employeeId, CancellationToken ct = default)
+        => await _db.TaskAssignments.AsNoTracking()
+            .Join(_db.WorkTasks.AsNoTracking(), a => a.TaskId, t => t.Id, (a, t) => new { a, t })
+            .AnyAsync(x => x.t.TenantId == tenantId && x.a.EmployeeId == employeeId && x.t.ObjectiveId == objectiveId, ct);
+
     public void Remove(TaskAssignment assignment) => _db.TaskAssignments.Remove(assignment);
 }

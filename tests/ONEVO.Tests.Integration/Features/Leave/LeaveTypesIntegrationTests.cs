@@ -49,10 +49,10 @@ public sealed class LeaveTypesIntegrationTestsFixture : IAsyncLifetime
 
     public async Task InitializeAsync()
     {
-        var connectionString = Environment.GetEnvironmentVariable("ONEVO_TEST_DB");
+        var connectionString = Environment.GetEnvironmentVariable("CROWNUS_TEST_DB");
         if (string.IsNullOrWhiteSpace(connectionString))
         {
-            connectionString = await SharedPostgresTemplate.CreateDatabaseAsync();
+            connectionString = await SharedSqlServerTemplate.CreateDatabaseAsync();
         }
         else
         {
@@ -69,11 +69,11 @@ public sealed class LeaveTypesIntegrationTestsFixture : IAsyncLifetime
 
         await WaitForSeedersAsync();
 
-        var loginResponse = await SendAsync(HttpMethod.Post, AdminHost, "/admin/v1/auth/login",
-            new { email = "test_admin@onevo.dev", password = "test_password_123" });
-        var adminCookies = ParseSetCookies(loginResponse);
-        _adminCsrfToken = adminCookies["admin_csrf"];
-        _adminCookie = $"admin_session={adminCookies["admin_session"]}";
+        // F-02: sign-in completes mandatory MFA enrollment; no gate bypass.
+        var adminSession = await PlatformAdminTestSignIn.SignInAsync(
+            _client, "test_admin@onevo.dev", "test_password_123", AdminHost);
+        _adminCsrfToken = adminSession.CsrfToken;
+        _adminCookie = adminSession.SessionCookie;
 
         _owner = await ProvisionAndLoginOwnerAsync("leave-a", "Leave A Co", "owner-a@leave.test");
         _tenantId = await GetTenantIdAsync(_owner.Host);
@@ -88,25 +88,18 @@ public sealed class LeaveTypesIntegrationTestsFixture : IAsyncLifetime
         await _environmentScope.DisposeAsync();
     }
 
+    /// <summary>A leave type is only the kind of leave: its amounts, carry-over, notice and approval live on its policy.</summary>
     public static object CreateBody(string name, string code) => new
     {
         name,
         code,
         description = "test type",
-        category = "custom",
+        color = "#4F46E5",
         isPaid = true,
-        requiresApproval = true,
-        requiresDocument = false,
-        documentRequiredAfterDays = (int?)null,
-        acceptedDocumentTypes = Array.Empty<string>(),
-        maxConsecutiveDays = (int?)null,
-        defaultDaysPerYear = 10m,
-        carryForwardAllowed = false,
-        maxCarryForwardDays = (decimal?)null,
-        carryForwardExpiryMonths = (int?)null,
-        proRataForNewJoiners = false,
         applicableGender = "all",
-        minimumNoticeDays = 0
+        requiresDocument = false,
+        documentRequiredAfterHours = (decimal?)null,
+        acceptedDocumentTypes = Array.Empty<string>()
     };
 
     public sealed record TenantSession(string Host, string SessionCookie, string CsrfHeader);
@@ -190,8 +183,8 @@ public sealed class LeaveTypesIntegrationTestsFixture : IAsyncLifetime
         exchangeResponse.StatusCode.Should().Be(HttpStatusCode.OK, exchangeJson.ToString());
         var cookies = ParseSetCookies(exchangeResponse);
 
-        var sessionCookie = $"onevo_session={cookies["onevo_session"]}; onevo_csrf={cookies["onevo_csrf"]}";
-        var csrfHeader = Uri.UnescapeDataString(cookies["onevo_csrf"]);
+        var sessionCookie = $"crownus_session={cookies["crownus_session"]}; crownus_csrf={cookies["crownus_csrf"]}";
+        var csrfHeader = Uri.UnescapeDataString(cookies["crownus_csrf"]);
         return new TenantSession(host, sessionCookie, csrfHeader);
     }
 
@@ -433,20 +426,12 @@ public class LeaveTypesIntegrationTests : IClassFixture<LeaveTypesIntegrationTes
             {
                 name = "Renamed Leave",
                 description = "updated",
-                category = "custom",
+                color = "#16A34A",
                 isPaid = true,
-                requiresApproval = true,
-                requiresDocument = false,
-                documentRequiredAfterDays = (int?)null,
-                acceptedDocumentTypes = Array.Empty<string>(),
-                maxConsecutiveDays = (int?)null,
-                defaultDaysPerYear = 12m,
-                carryForwardAllowed = false,
-                maxCarryForwardDays = (decimal?)null,
-                carryForwardExpiryMonths = (int?)null,
-                proRataForNewJoiners = false,
                 applicableGender = "all",
-                minimumNoticeDays = 0
+                requiresDocument = false,
+                documentRequiredAfterHours = (decimal?)null,
+                acceptedDocumentTypes = Array.Empty<string>()
             },
             cookie: _fixture.Owner.SessionCookie, csrfToken: _fixture.Owner.CsrfHeader);
         update.StatusCode.Should().Be(HttpStatusCode.OK);

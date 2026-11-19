@@ -1,3 +1,4 @@
+using ONEVO.Tests.Integration.TestDoubles;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
 using ONEVO.Application.Common.ServiceInterfaces;
@@ -18,6 +19,7 @@ using ONEVO.Infrastructure.Persistence.Repositories.Auth.Login;
 using ONEVO.Infrastructure.Persistence.Repositories.CoreHr;
 using ONEVO.Infrastructure.Persistence.Repositories.DevPlatform.Tenancy;
 using ONEVO.Infrastructure.Persistence.Repositories.OrgStructure;
+using ONEVO.Infrastructure.Persistence.Repositories.WorkManagement;
 using ONEVO.Infrastructure.Security;
 using ONEVO.Infrastructure.Services.CoreHr.Offboarding;
 using ONEVO.Infrastructure.Services.SharedPlatform.Outbox;
@@ -64,7 +66,7 @@ public sealed class EmployeeDetailAndChangePositionIntegrationTests : IAsyncLife
 
     public async Task InitializeAsync()
     {
-        _connectionString = await SharedPostgresTemplate.CreateDatabaseAsync();
+        _connectionString = await SharedSqlServerTemplate.CreateDatabaseAsync();
 
         await using var db = CreateContext();
 
@@ -284,7 +286,9 @@ public sealed class EmployeeDetailAndChangePositionIntegrationTests : IAsyncLife
             _encryption,
             new StubCurrentUser(_tenantId, userId, orgManage, sensitive),
             _clock,
-            new EfEmploymentTypeRepository(db));
+            new EfEmploymentTypeRepository(db),
+            new EfLegalEntityRepository(db),
+            new EfProjectMemberRepository(db));
     }
 
     private ChangeEmployeePositionCommandHandler BuildChangePositionHandler(Guid userId)
@@ -303,7 +307,8 @@ public sealed class EmployeeDetailAndChangePositionIntegrationTests : IAsyncLife
             new OutboxWriter(db, _encryption, _clock),
             new EfUserRepository(db),
             new EfTenantRepository(db),
-            new EmployeeOffboardingLockGuard(employees));
+            new EmployeeOffboardingLockGuard(employees),
+            new AllowAllManageScopeGuard());
     }
 
     private Position NewPosition(Guid id, string name) => new()
@@ -342,9 +347,9 @@ public sealed class EmployeeDetailAndChangePositionIntegrationTests : IAsyncLife
         }
 
         var options = new DbContextOptionsBuilder<ApplicationDbContext>()
-            .UseNpgsql(_connectionString)
+            .UseTestSqlServer(_connectionString)
             .UseSnakeCaseNamingConvention()
-            .AddInterceptors(new TenantRlsInterceptor(tenantContext))
+            .AddTestRls(new TenantRlsInterceptor(tenantContext))
             .Options;
 
         return new ApplicationDbContext(

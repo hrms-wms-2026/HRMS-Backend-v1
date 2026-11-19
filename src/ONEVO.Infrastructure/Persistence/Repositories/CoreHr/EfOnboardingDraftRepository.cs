@@ -1,10 +1,9 @@
 using Microsoft.EntityFrameworkCore;
-using Npgsql;
+using ONEVO.Infrastructure.Persistence.SqlServer;
 using ONEVO.Application.Common.Exceptions;
 using ONEVO.Application.Features.CoreHr.OnboardingDrafts.DTOs.Responses;
 using ONEVO.Application.Features.CoreHr.OnboardingDrafts.RepositoryInterfaces;
-using ONEVO.Domain.Features.InfrastructureModule.Entities;
-using ONEVO.Domain.Features.OrgStructure.Entities;
+using ONEVO.Domain.Features.CoreHr.Entities;
 using OnboardingDraftEntity = ONEVO.Domain.Features.CoreHr.Entities.OnboardingDraft;
 
 namespace ONEVO.Infrastructure.Persistence.Repositories.CoreHr;
@@ -60,10 +59,13 @@ public class EfOnboardingDraftRepository : IOnboardingDraftRepository
                 d.DraftReason,
                 d.LastSavedStep,
                 d.StartedById,
-                EF.Property<uint>(d, "xmin").ToString(),
+                RowVersionToken.ToToken(EF.Property<ulong>(d, "xmin")),
                 d.ReportsToEmployeeId,
                 manager != null ? manager.FirstName + " " + manager.LastName : null,
-                reportsToPosition != null ? reportsToPosition.Name : null))
+                reportsToPosition != null ? reportsToPosition.Name : null,
+                d.PhotoRequiredOverride,
+                d.LocationCaptureOverride,
+                d.AvatarFileId))
             .FirstOrDefaultAsync(ct);
 
     public async Task<(IReadOnlyList<OnboardingDraftResponse> Items, int TotalCount)> ListAsync(
@@ -112,10 +114,13 @@ public class EfOnboardingDraftRepository : IOnboardingDraftRepository
                 d.DraftReason,
                 d.LastSavedStep,
                 d.StartedById,
-                EF.Property<uint>(d, "xmin").ToString(),
+                RowVersionToken.ToToken(EF.Property<ulong>(d, "xmin")),
                 d.ReportsToEmployeeId,
                 manager != null ? manager.FirstName + " " + manager.LastName : null,
-                reportsToPosition != null ? reportsToPosition.Name : null))
+                reportsToPosition != null ? reportsToPosition.Name : null,
+                d.PhotoRequiredOverride,
+                d.LocationCaptureOverride,
+                d.AvatarFileId))
             .Skip((page - 1) * pageSize)
             .Take(pageSize)
             .ToListAsync(ct);
@@ -124,7 +129,7 @@ public class EfOnboardingDraftRepository : IOnboardingDraftRepository
     }
 
     public async Task<(IReadOnlyList<DraftListItemResponse> Items, int TotalCount)> ListWithNamesAsync(
-        Guid tenantId, Guid? startedById, int page, int pageSize, CancellationToken ct = default)
+        Guid tenantId, Guid? startedById, int page, int pageSize, CancellationToken ct = default, bool openOnly = false)
     {
         var joined =
             from d in _db.OnboardingDrafts.AsNoTracking()
@@ -140,6 +145,14 @@ public class EfOnboardingDraftRepository : IOnboardingDraftRepository
         if (startedById is not null)
         {
             joined = joined.Where(row => row.d.StartedById == startedById.Value);
+        }
+
+        if (openOnly)
+        {
+            joined = joined.Where(row =>
+                row.d.Status != OnboardingDraftStatus.Cancelled
+                && row.d.Status != OnboardingDraftStatus.Finalized
+                && (row.d.DraftReason == null || row.d.DraftReason != OnboardingDraftReason.InvitationSent));
         }
 
         var totalCount = await joined.CountAsync(ct);
@@ -167,7 +180,7 @@ public class EfOnboardingDraftRepository : IOnboardingDraftRepository
 
     public void SetExpectedVersion(OnboardingDraftEntity draft, string expectedVersion)
     {
-        if (!uint.TryParse(expectedVersion, out var expectedXmin))
+        if (!RowVersionToken.TryParse(expectedVersion, out var expectedXmin))
         {
             return;
         }
@@ -185,7 +198,7 @@ public class EfOnboardingDraftRepository : IOnboardingDraftRepository
         {
             throw new ConcurrencyConflictException(ex);
         }
-        catch (DbUpdateException ex) when (ex.InnerException is PostgresException { SqlState: PostgresErrorCodes.UniqueViolation })
+        catch (DbUpdateException ex) when (SqlServerErrors.IsUniqueViolation(ex))
         {
             // Finalize stages every write (employee, user, position assignment, user role,
             // invitation token, access grant request, checklist tasks) on this same DbContext

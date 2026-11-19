@@ -23,9 +23,11 @@ public class LeaveTypesController : ControllerBase
         _mediator = mediator;
     }
 
-    /// <summary>List leave types for this tenant.</summary>
+    /// <summary>List leave types for this tenant. Self-service employees (leave:read-own) need this
+    /// for the New Request wizard; they only ever get active types. leave:manage holders need it to
+    /// see whether Time Off is set up and to manage the types they create.</summary>
     [HttpGet]
-    [RequirePermission("leave:read")]
+    [RequireAnyPermission("leave:read", "leave:read-own", "leave:manage")]
     public async Task<IActionResult> List([FromQuery] bool includeInactive = false, CancellationToken ct = default)
     {
         var result = await _mediator.Send(new ListLeaveTypesQuery(includeInactive), ct);
@@ -48,12 +50,9 @@ public class LeaveTypesController : ControllerBase
     {
         var result = await _mediator.Send(
             new CreateLeaveTypeCommand(
-                request.Name, request.Code, request.Description, request.Category,
-                request.IsPaid, request.RequiresApproval, request.RequiresDocument,
-                request.DocumentRequiredAfterDays, request.AcceptedDocumentTypes,
-                request.MaxConsecutiveDays, request.DefaultDaysPerYear,
-                request.CarryForwardAllowed, request.MaxCarryForwardDays, request.CarryForwardExpiryMonths,
-                request.ProRataForNewJoiners, request.ApplicableGender, request.MinimumNoticeDays),
+                request.Name, request.Code, request.Description, request.Color,
+                request.IsPaid, request.ApplicableGender, request.RequiresDocument,
+                request.DocumentRequiredAfterHours, request.AcceptedDocumentTypes, request.Icon),
             ct);
 
         return result.IsSuccess
@@ -68,12 +67,9 @@ public class LeaveTypesController : ControllerBase
     {
         var result = await _mediator.Send(
             new UpdateLeaveTypeCommand(
-                leaveTypeId, request.Name, request.Description, request.Category,
-                request.IsPaid, request.RequiresApproval, request.RequiresDocument,
-                request.DocumentRequiredAfterDays, request.AcceptedDocumentTypes,
-                request.MaxConsecutiveDays, request.DefaultDaysPerYear,
-                request.CarryForwardAllowed, request.MaxCarryForwardDays, request.CarryForwardExpiryMonths,
-                request.ProRataForNewJoiners, request.ApplicableGender, request.MinimumNoticeDays),
+                leaveTypeId, request.Name, request.Description, request.Color,
+                request.IsPaid, request.ApplicableGender, request.RequiresDocument,
+                request.DocumentRequiredAfterHours, request.AcceptedDocumentTypes, request.Icon),
             ct);
 
         return result.IsSuccess ? Ok(result.Value) : Problem(result.Error, statusCode: result.StatusCode ?? 400);

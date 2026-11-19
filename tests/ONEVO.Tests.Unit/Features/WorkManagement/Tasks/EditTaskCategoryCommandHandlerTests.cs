@@ -26,7 +26,7 @@ public class EditTaskCategoryCommandHandlerTests
     private static readonly Guid CategoryId = Guid.NewGuid();
 
     private (EditTaskCategoryCommandHandler Handler, Mock<ITaskCategoryRepository> Categories) Build(
-        Guid? callerEmployeeId = null, bool? callerIsEffectiveManager = null)
+        Guid? callerEmployeeId = null, bool? callerIsEffectiveManager = null, string? systemKey = null, string kind = TaskCategoryKinds.Task, string? icon = null)
     {
         var resolvedCallerEmployeeId = callerEmployeeId ?? OwnerEmployeeId;
 
@@ -44,7 +44,10 @@ public class EditTaskCategoryCommandHandlerTests
             Id = CategoryId,
             TenantId = TenantId,
             ProjectId = ProjectId,
-            Name = "Bug",
+            Name = systemKey ?? "Bug",
+            SystemKey = systemKey,
+            Kind = kind,
+            Icon = icon,
             DisplayOrder = 0,
             CreatedAt = DateTimeOffset.UtcNow
         };
@@ -95,6 +98,74 @@ public class EditTaskCategoryCommandHandlerTests
     }
 
     [Fact]
+    public async Task Handle_Icon_IsStored()
+    {
+        var (handler, categories) = Build();
+
+        var result = await handler.Handle(new EditTaskCategoryCommand(CategoryId, "Bug", 0, Icon: "emoji:🐞"), CancellationToken.None);
+
+        Assert.True(result.IsSuccess);
+        categories.Verify(x => x.Update(It.Is<TaskCategory>(c => c.Icon == "emoji:🐞")), Times.Once);
+    }
+
+    [Fact]
+    public async Task Handle_OmittedIcon_KeepsTheCurrentOne()
+    {
+        var (handler, categories) = Build(icon: "lucide:bug");
+
+        var result = await handler.Handle(new EditTaskCategoryCommand(CategoryId, "Defect", 0), CancellationToken.None);
+
+        Assert.True(result.IsSuccess);
+        categories.Verify(x => x.Update(It.Is<TaskCategory>(c => c.Name == "Defect" && c.Icon == "lucide:bug")), Times.Once);
+    }
+
+    [Fact]
+    public async Task Handle_EmptyIcon_ClearsIt()
+    {
+        var (handler, categories) = Build(icon: "lucide:bug");
+
+        var result = await handler.Handle(new EditTaskCategoryCommand(CategoryId, "Bug", 0, Icon: ""), CancellationToken.None);
+
+        Assert.True(result.IsSuccess);
+        categories.Verify(x => x.Update(It.Is<TaskCategory>(c => c.Icon == null)), Times.Once);
+    }
+
+    [Fact]
+    public async Task Handle_SystemCategory_IconChange_IsRefused()
+    {
+        var (handler, categories) = Build(systemKey: TaskCategorySystemKeys.Meeting, kind: TaskCategoryKinds.Meeting);
+
+        var result = await handler.Handle(
+            new EditTaskCategoryCommand(CategoryId, TaskCategorySystemKeys.Meeting, 0, Icon: "lucide:bug"), CancellationToken.None);
+
+        Assert.False(result.IsSuccess);
+        Assert.Equal(409, result.StatusCode);
+        categories.Verify(x => x.Update(It.IsAny<TaskCategory>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task Handle_SystemCategory_WithNoIconSent_StillSaves()
+    {
+        var (handler, categories) = Build(systemKey: TaskCategorySystemKeys.Meeting, kind: TaskCategoryKinds.Meeting);
+
+        var result = await handler.Handle(new EditTaskCategoryCommand(CategoryId, TaskCategorySystemKeys.Meeting, 3), CancellationToken.None);
+
+        Assert.True(result.IsSuccess);
+        categories.Verify(x => x.Update(It.Is<TaskCategory>(c => c.DisplayOrder == 3)), Times.Once);
+    }
+
+    [Theory]
+    [InlineData("lucide:bug", true)]
+    [InlineData("", true)]
+    [InlineData("javascript:alert(1)", false)]
+    public void Validator_ChecksTheIconFormat(string icon, bool valid)
+    {
+        var result = new EditTaskCategoryCommandValidator().Validate(new EditTaskCategoryCommand(CategoryId, "Bug", 0, Icon: icon));
+
+        Assert.Equal(valid, result.IsValid);
+    }
+
+    [Fact]
     public async Task Handle_Owner_UpdatesCategory()
     {
         var (handler, categories) = Build();
@@ -130,6 +201,125 @@ public class EditTaskCategoryCommandHandlerTests
 
         Assert.False(result.IsSuccess);
         Assert.Equal(403, result.StatusCode);
+        categories.Verify(x => x.Update(It.IsAny<TaskCategory>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task Handle_SystemCategoryRename_ReturnsConflict()
+    {
+        var (handler, categories) = Build(systemKey: TaskCategorySystemKeys.Meeting);
+
+        var result = await handler.Handle(new EditTaskCategoryCommand(CategoryId, "Calls", 3), CancellationToken.None);
+
+        Assert.Equal(409, result.StatusCode);
+        categories.Verify(x => x.Update(It.IsAny<TaskCategory>()), Times.Never);
+    }
+
+    [Theory]
+    [InlineData("meeting")]
+    [InlineData(" meeting ")]
+    public async Task Handle_SystemCategoryOrderOnlyEdit_IsAllowed(string sameName)
+    {
+        var (handler, categories) = Build(systemKey: TaskCategorySystemKeys.Meeting);
+
+        var result = await handler.Handle(new EditTaskCategoryCommand(CategoryId, sameName, 3), CancellationToken.None);
+
+        Assert.True(result.IsSuccess);
+        categories.Verify(x => x.Update(It.Is<TaskCategory>(c => c.DisplayOrder == 3 && c.Name == "meeting")), Times.Once);
+    }
+
+    [Theory]
+    [InlineData("Meeting")]
+    [InlineData(" MEETING ")]
+    public async Task Handle_RenameUserCategoryToReservedName_ReturnsConflict(string name)
+    {
+        var (handler, categories) = Build();
+
+        var result = await handler.Handle(new EditTaskCategoryCommand(CategoryId, name, 0), CancellationToken.None);
+
+        Assert.Equal(409, result.StatusCode);
+        categories.Verify(x => x.Update(It.IsAny<TaskCategory>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task Handle_Rename_KeepsTheKind_AndDoesNotReInferIt()
+    {
+        var (handler, categories) = Build();
+
+        var result = await handler.Handle(new EditTaskCategoryCommand(CategoryId, "Bugs fixed", 0), CancellationToken.None);
+
+        Assert.True(result.IsSuccess);
+        categories.Verify(x => x.Update(It.Is<TaskCategory>(c => c.Name == "Bugs fixed" && c.Kind == TaskCategoryKinds.Task)), Times.Once);
+    }
+
+    [Fact]
+    public async Task Handle_GivenKind_ChangesIt()
+    {
+        var (handler, categories) = Build();
+
+        var result = await handler.Handle(new EditTaskCategoryCommand(CategoryId, "Bug", 0, TaskCategoryKinds.Bug), CancellationToken.None);
+
+        Assert.True(result.IsSuccess);
+        categories.Verify(x => x.Update(It.Is<TaskCategory>(c => c.Kind == TaskCategoryKinds.Bug)), Times.Once);
+    }
+
+    [Fact]
+    public async Task Handle_UnknownKind_Is400()
+    {
+        var (handler, categories) = Build();
+
+        var result = await handler.Handle(new EditTaskCategoryCommand(CategoryId, "Bug", 0, "epic"), CancellationToken.None);
+
+        Assert.Equal((400, "invalid_category_kind"), (result.StatusCode, result.ErrorCode));
+        categories.Verify(x => x.Update(It.IsAny<TaskCategory>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task Handle_SystemCategoryKind_CannotChange()
+    {
+        var (handler, categories) = Build(systemKey: TaskCategorySystemKeys.Meeting);
+
+        var result = await handler.Handle(
+            new EditTaskCategoryCommand(CategoryId, TaskCategorySystemKeys.Meeting, 0, TaskCategoryKinds.Bug), CancellationToken.None);
+
+        Assert.Equal((400, "invalid_category_kind"), (result.StatusCode, result.ErrorCode));
+        categories.Verify(x => x.Update(It.IsAny<TaskCategory>()), Times.Never);
+    }
+
+    // An existing user category the AddTaskCategoryKind backfill gave a system kind by its name (e.g. "Onboarding" in a
+    // normal project): it keeps that kind on a rename, and its owner can still move it to a user kind.
+    [Fact]
+    public async Task Handle_ExistingBackfilledCategory_Rename_KeepsItsStoredKind()
+    {
+        var (handler, categories) = Build(kind: TaskCategoryKinds.Checklist);
+
+        var result = await handler.Handle(new EditTaskCategoryCommand(CategoryId, "Onboarding steps", 0), CancellationToken.None);
+
+        Assert.True(result.IsSuccess);
+        categories.Verify(x => x.Update(It.Is<TaskCategory>(c => c.Kind == TaskCategoryKinds.Checklist)), Times.Once);
+    }
+
+    [Fact]
+    public async Task Handle_ExistingBackfilledCategory_CanMoveToAUserKind()
+    {
+        var (handler, categories) = Build(kind: TaskCategoryKinds.Checklist);
+
+        var result = await handler.Handle(new EditTaskCategoryCommand(CategoryId, "Onboarding", 0, TaskCategoryKinds.Task), CancellationToken.None);
+
+        Assert.True(result.IsSuccess);
+        categories.Verify(x => x.Update(It.Is<TaskCategory>(c => c.Kind == TaskCategoryKinds.Task)), Times.Once);
+    }
+
+    [Theory]
+    [InlineData(TaskCategoryKinds.Meeting)]
+    [InlineData(TaskCategoryKinds.Checklist)]
+    public async Task Handle_UserCategory_CannotMoveToASystemKind(string kind)
+    {
+        var (handler, categories) = Build();
+
+        var result = await handler.Handle(new EditTaskCategoryCommand(CategoryId, "Bug", 0, kind), CancellationToken.None);
+
+        Assert.Equal((400, "invalid_category_kind"), (result.StatusCode, result.ErrorCode));
         categories.Verify(x => x.Update(It.IsAny<TaskCategory>()), Times.Never);
     }
 }

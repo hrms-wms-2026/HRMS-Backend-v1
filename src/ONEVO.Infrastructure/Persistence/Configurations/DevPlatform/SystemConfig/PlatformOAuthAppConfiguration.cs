@@ -21,7 +21,7 @@ public class PlatformOAuthAppConfiguration : IEntityTypeConfiguration<PlatformOA
         builder.HasKey(a => a.Id);
 
         builder.Property(a => a.Provider)
-            .HasMaxLength(30)
+            .HasMaxLength(50)
             .IsRequired();
 
         builder.HasIndex(a => a.Provider)

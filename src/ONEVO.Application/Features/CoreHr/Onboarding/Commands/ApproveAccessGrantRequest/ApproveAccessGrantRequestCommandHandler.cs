@@ -9,21 +9,16 @@ using ONEVO.Application.Features.Auth.Login.RepositoryInterfaces;
 using ONEVO.Application.Features.Auth.Login.ServiceInterfaces;
 using ONEVO.Application.Features.Auth.Permission.RepositoryInterfaces;
 using ONEVO.Application.Features.CoreHr.Employee.RepositoryInterfaces;
-using ONEVO.Application.Features.CoreHr.OnboardingDraft.OutboxHandlers;
 using ONEVO.Application.Features.CoreHr.OnboardingDraft.Services;
 using ONEVO.Application.Features.CoreHr.Onboarding.DTOs.Responses;
 using ONEVO.Application.Features.CoreHr.Onboarding.RepositoryInterfaces;
+using ONEVO.Application.Features.CoreHr.Onboarding.Services;
 using ONEVO.Application.Features.CoreHr.OnboardingDrafts.RepositoryInterfaces;
 using ONEVO.Application.Features.CoreHr.PositionAssignment.RepositoryInterfaces;
 using ONEVO.Application.Features.DevPlatform.Tenancy.RepositoryInterfaces;
 using ONEVO.Application.Features.OrgStructure.RepositoryInterfaces;
 using ONEVO.Application.Features.TimeAttendance.RepositoryInterfaces;
-using ONEVO.Domain.Features.Auth.Entities;
 using ONEVO.Domain.Features.CoreHr.Entities;
-using ONEVO.Domain.Features.InfrastructureModule.Entities;
-using ONEVO.Domain.Features.OrgStructure.Entities;
-using EmployeeEntity = ONEVO.Domain.Features.CoreHr.Entities.Employee;
-using OnboardingDraftEntity = ONEVO.Domain.Features.CoreHr.Entities.OnboardingDraft;
 
 namespace ONEVO.Application.Features.CoreHr.Onboarding.Commands.ApproveAccessGrantRequest;
 
@@ -44,8 +39,6 @@ namespace ONEVO.Application.Features.CoreHr.Onboarding.Commands.ApproveAccessGra
 public class ApproveAccessGrantRequestCommandHandler
     : IRequestHandler<ApproveAccessGrantRequestCommand, Result<ApproveAccessGrantRequestResponse>>
 {
-    private const int InvitationValidityHours = 24;
-
     private readonly IAccessGrantRequestRepository _accessGrantRequestRepository;
     private readonly IOnboardingDraftRepository _draftRepository;
     private readonly IEmployeeRepository _employeeRepository;
@@ -67,6 +60,9 @@ public class ApproveAccessGrantRequestCommandHandler
     private readonly ICurrentUser _currentUser;
     private readonly IDateTimeProvider _clock;
     private readonly IUnitOfWork _unitOfWork;
+    private readonly IEmployeeChecklistWorkTaskProvisioner? _workTaskProvisioner;
+    private readonly IOnboardingWizardLookupService? _wizardLookups;
+    private readonly IOfficeProjectReconciler? _officeReconciler;
 
     public ApproveAccessGrantRequestCommandHandler(
         IAccessGrantRequestRepository accessGrantRequestRepository,
@@ -89,7 +85,10 @@ public class ApproveAccessGrantRequestCommandHandler
         ISecureTokenGenerator tokenGenerator,
         ICurrentUser currentUser,
         IDateTimeProvider clock,
-        IUnitOfWork unitOfWork)
+        IUnitOfWork unitOfWork,
+        IEmployeeChecklistWorkTaskProvisioner? workTaskProvisioner = null,
+        IOnboardingWizardLookupService? wizardLookups = null,
+        IOfficeProjectReconciler? officeReconciler = null)
     {
         _accessGrantRequestRepository = accessGrantRequestRepository;
         _draftRepository = draftRepository;
@@ -112,6 +111,9 @@ public class ApproveAccessGrantRequestCommandHandler
         _currentUser = currentUser;
         _clock = clock;
         _unitOfWork = unitOfWork;
+        _workTaskProvisioner = workTaskProvisioner;
+        _wizardLookups = wizardLookups;
+        _officeReconciler = officeReconciler;
     }
 
     public async Task<Result<ApproveAccessGrantRequestResponse>> Handle(
@@ -297,19 +299,7 @@ public class ApproveAccessGrantRequestCommandHandler
         var user = await _userRepository.GetByTenantAndEmailAsync(draft.TenantId, normalizedEmail, ct);
         if (user is null)
         {
-            user = new User
-            {
-                Id = Guid.NewGuid(),
-                TenantId = draft.TenantId,
-                Email = draft.WorkEmail.Trim(),
-                FirstName = draft.FirstName.Trim(),
-                LastName = draft.LastName.Trim(),
-                PasswordHash = string.Empty,
-                IsActive = false,
-                EmailVerified = false,
-                MustChangePassword = true,
-                PasswordSetByAdmin = false,
-            };
+            user = OnboardingFinalizeFactory.NewPendingUser(draft);
             await _userRepository.AddAsync(user, ct);
         }
 
@@ -321,46 +311,75 @@ public class ApproveAccessGrantRequestCommandHandler
                 draft.TenantId, draft.SelectedTemplateId.Value, draft.LegalEntityId, draft.DepartmentId, draft.PositionId, ct);
             if (template is null)
                 return Result<ApproveAccessGrantRequestResponse>.UnprocessableEntity(
-                    "The selected onboarding checklist template does not exist, is inactive, or no longer applies to this company/department/position.");
+                    OnboardingFinalizeFactory.TemplateNoLongerAppliesMessage);
         }
 
         var employeeId = Guid.NewGuid();
         var tasksCreated = 0;
+        IReadOnlyList<EmployeeChecklistTask> checklistTasks = Array.Empty<EmployeeChecklistTask>();
         if (template is not null)
         {
             try
             {
-                var tasks = await _checklistTaskRepository.InstantiateAsync(template, employeeId, user.Id, draft.EditedTasksJson, draft.StartDate, ct);
-                tasksCreated = tasks.Count;
+                checklistTasks = await _checklistTaskRepository.InstantiateAsync(template, employeeId, user.Id, draft.EditedTasksJson, draft.StartDate!.Value, ct);
+                tasksCreated = checklistTasks.Count;
             }
             catch (ArgumentException)
             {
                 return Result<ApproveAccessGrantRequestResponse>.UnprocessableEntity(
-                    "Checklist task data is invalid: every task requires a title, a known owner type, a resolvable assignee, a due rule, and an explicit required flag.");
+                    OnboardingFinalizeFactory.InvalidChecklistTasksMessage);
             }
         }
 
-        var employee = new EmployeeEntity
-        {
-            Id = employeeId,
-            TenantId = draft.TenantId,
-            UserId = user.Id,
-            EmployeeNumber = draft.EmployeeNumber!,
-            FirstName = draft.FirstName.Trim(),
-            LastName = draft.LastName.Trim(),
-            Email = draft.WorkEmail.Trim(),
-            DepartmentId = draft.DepartmentId,
-            LegalEntityId = draft.LegalEntityId,
-            EmploymentStatusId = 1,
-            EmploymentTypeId = employmentTypeId.Value,
-            WorkModeId = draft.WorkModeId,
-            HireDate = draft.StartDate,
-            CreatedById = _currentUser.UserId,
-        };
+        var employee = OnboardingFinalizeFactory.NewEmployee(
+            draft, employeeId, user.Id, employmentTypeId.Value, draft.StartDate!.Value, _currentUser.UserId);
         await _employeeRepository.AddAsync(employee, ct);
 
+        // Same per-employee clock-in overrides the direct finalize path writes (see
+        // OnboardingDraftWriteService) - approval must not silently drop the wizard's choices.
+        if (_wizardLookups is not null
+            && OnboardingFinalizeFactory.NewMonitoringOverride(draft, employeeId, _currentUser.UserId, _clock.UtcNow) is { } monitoringOverride)
+        {
+            await _wizardLookups.AddEmployeeOverrideAsync(monitoringOverride, ct);
+        }
+
+        if (_workTaskProvisioner is not null && checklistTasks.Count > 0)
+        {
+            var officeResult = await _workTaskProvisioner.EnsureOfficeProjectAsync(
+                draft.TenantId, draft.LegalEntityId, _currentUser.UserId,
+                checklistTasks.Max(task => task.DueDate), ct);
+            if (!officeResult.IsSuccess)
+                return Result<ApproveAccessGrantRequestResponse>.Failure(
+                    officeResult.Error!, officeResult.StatusCode ?? 400);
+
+            var provisionResult = await _workTaskProvisioner.ProvisionAsync(
+                officeResult.Value!, employee, checklistTasks, _currentUser.UserId, ct);
+            if (!provisionResult.IsSuccess)
+                return Result<ApproveAccessGrantRequestResponse>.Failure(
+                    provisionResult.Error!, provisionResult.StatusCode ?? 400);
+        }
+
+        // Keep the manager the Add Employee wizard picked - a holder of the position above, or a
+        // one-off manager from another reporting line. Approval can come days later, so re-check
+        // they're still employed here with an active seat; if not, fall back to the wizard's own
+        // default (the first current holder of the position above, when there are several).
+        Guid? reportsToEmployeeId = null;
+        if (draft.ReportsToEmployeeId is Guid chosen
+            && await _employeeRepository.GetByIdAsync(draft.TenantId, chosen, ct) is { } chosenEmployee
+            && chosenEmployee.LegalEntityId == draft.LegalEntityId
+            && await _positionAssignmentRepository.GetActivePrimaryAsync(draft.TenantId, chosen, ct) is not null)
+        {
+            reportsToEmployeeId = chosen;
+        }
+        else if (position.ReportsToPositionId is Guid reportsToPositionId)
+        {
+            var holders = await _positionAssignmentRepository.GetActiveHoldersAsync(draft.TenantId, reportsToPositionId, ct);
+            if (holders.Count > 1)
+                reportsToEmployeeId = holders[0].EmployeeId;
+        }
+
         var reservedAssignmentId = await _positionAssignmentRepository.TryReservePositionAssignmentAsync(
-            draft.TenantId, employeeId, position.Id, draft.StartDate, _currentUser.UserId, reportsToEmployeeId: null, ct);
+            draft.TenantId, employeeId, position.Id, draft.StartDate!.Value, _currentUser.UserId, reportsToEmployeeId, ct);
         if (reservedAssignmentId is null)
             return Result<ApproveAccessGrantRequestResponse>.Conflict("This position has reached its capacity.");
 
@@ -371,52 +390,23 @@ public class ApproveAccessGrantRequestCommandHandler
         var existingRoles = await _userRoleRepository.ListActiveByUserIdAsync(user.Id, _clock.UtcNow, ct);
         if (!existingRoles.Any(ur => ur.RoleId == grantRequest.RequestedRoleId))
         {
-            var userRole = new UserRole
-            {
-                TenantId = draft.TenantId,
-                UserId = user.Id,
-                RoleId = grantRequest.RequestedRoleId,
-                AssignedAt = _clock.UtcNow,
-                AssignedBy = _currentUser.UserId,
-                SourcePositionId = draft.PositionId,
-                SourcePositionAccessTemplateId = accessTemplate.Id,
-            };
+            var userRole = OnboardingFinalizeFactory.NewPositionUserRole(
+                draft, user.Id, grantRequest.RequestedRoleId, accessTemplate.Id, _currentUser.UserId, _clock.UtcNow);
             await _userRoleRepository.AddAsync(userRole, ct);
         }
 
         var rawToken = _tokenGenerator.GenerateUrlSafeOpaqueToken();
         var tokenHash = InvitationTokenHasher.Hash(rawToken);
-        var expiresAt = _clock.UtcNow.AddHours(InvitationValidityHours);
-        var fullName = $"{draft.FirstName.Trim()} {draft.LastName.Trim()}".Trim();
+        var expiresAt = _clock.UtcNow.AddHours(OnboardingFinalizeFactory.InvitationValidityHours);
 
-        var invitation = new InvitationToken
-        {
-            Id = Guid.NewGuid(),
-            TenantId = draft.TenantId,
-            UserId = user.Id,
-            RoleId = null,
-            PositionId = draft.PositionId,
-            PositionAssignmentId = reservedAssignmentId,
-            Purpose = InvitationToken.EmployeeOnboardingPurpose,
-            LegalEntityId = draft.LegalEntityId,
-            EmployeeId = employeeId,
-            OnboardingDraftId = draft.Id,
-            InvitedEmail = draft.WorkEmail.Trim(),
-            InvitedFullName = fullName,
-            TokenHash = tokenHash,
-            ExpiresAt = expiresAt,
-            CreatedAt = _clock.UtcNow,
-            CreatedById = _currentUser.UserId,
-        };
+        var invitation = OnboardingFinalizeFactory.NewInvitation(
+            draft, user.Id, employeeId, reservedAssignmentId, tokenHash, expiresAt, _currentUser.UserId, _clock.UtcNow);
         await _invitationTokenRepository.AddAsync(invitation, ct);
 
         var tenant = await _tenantRepository.GetByIdAsync(draft.TenantId, ct);
         await _outboxWriter.EnqueueAsync(
             OutboxMessageTypes.EmployeeOnboardingInviteEmail,
-            new EmployeeOnboardingInviteEmailPayload(
-                draft.TenantId, draft.LegalEntityId, employeeId, invitation.Id,
-                draft.WorkEmail.Trim(), draft.FirstName.Trim(), draft.LastName.Trim(), rawToken, expiresAt,
-                tenant?.Slug),
+            OnboardingFinalizeFactory.NewInviteEmailPayload(draft, employeeId, invitation.Id, rawToken, expiresAt, tenant?.Slug),
             draft.TenantId,
             ct);
 
@@ -426,14 +416,33 @@ public class ApproveAccessGrantRequestCommandHandler
         grantRequest.EmployeeId = employeeId;
         grantRequest.UserId = user.Id;
 
-        draft.Status = OnboardingDraftStatus.Finalized;
-        draft.DraftReason = OnboardingDraftReason.InvitationSent;
-        draft.FinalizedAt = _clock.UtcNow;
-        draft.UpdatedAt = _clock.UtcNow;
+        OnboardingFinalizeFactory.MarkFinalized(draft, _clock.UtcNow);
 
         var saveResult = await SaveAsync(ct);
         if (saveResult is not null)
             return saveResult;
+
+        // Template attachments are copied only now that the Work tasks are committed.
+        if (_workTaskProvisioner is not null && checklistTasks.Count > 0)
+            await _workTaskProvisioner.CopyTemplateAttachmentsAsync(draft.TenantId, checklistTasks, _currentUser.UserId, ct);
+
+        // Profile photo from the wizard - linked only now that the employee is committed, and
+        // best effort (see OnboardingDraftWriteService).
+        if (draft.AvatarFileId is Guid draftAvatarId && _wizardLookups is not null)
+        {
+            try
+            {
+                await _wizardLookups.LinkDraftAvatarAsync(draft.TenantId, employeeId, draftAvatarId, ct);
+            }
+            catch (Exception) when (!ct.IsCancellationRequested)
+            {
+            }
+        }
+
+        // Spec §4.2: the employee is committed, so if this user holds the Owner role the Office
+        // project can now be created (or re-led) owner-led. Best-effort: never fails onboarding.
+        if (_officeReconciler is not null)
+            await _officeReconciler.TryReconcileAsync(draft.TenantId, ct);
 
         return Result<ApproveAccessGrantRequestResponse>.Success(new ApproveAccessGrantRequestResponse(
             grantRequest.Id, draft.Id, employeeId, draft.Status,

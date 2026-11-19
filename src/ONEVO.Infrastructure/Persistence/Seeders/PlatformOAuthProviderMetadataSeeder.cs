@@ -80,14 +80,14 @@ public sealed class PlatformOAuthProviderMetadataSeeder : IHostedService
         {
             if (existingByProvider.TryGetValue(definition.Provider, out var app))
             {
-                // Never touch a row that already has real operator/dev configuration
-                // (a non-empty clientId). Protocol metadata is backend-owned and always
-                // safe to keep in sync since it was never operator-editable.
-                if (!string.IsNullOrWhiteSpace(app.ClientId))
-                {
-                    continue;
-                }
-
+                // Protocol metadata (auth/token URLs, default scopes) is backend-owned and was
+                // never operator-editable, so it's always kept in sync with the catalog - even
+                // after an operator has configured a real clientId. Only clientId/appName/
+                // logoUrl/isActive are operator-owned and must never be silently overwritten
+                // once set (a prior version of this method skipped the whole sync block,
+                // including these three fields, once clientId was non-empty - that meant an
+                // already-configured provider's DefaultScopes could never pick up a later
+                // catalog change without a manual DB edit).
                 app.AuthorizationUrl = definition.AuthorizationUrl;
                 app.TokenUrl = definition.TokenUrl;
                 app.DefaultScopes = definition.DefaultScopes;

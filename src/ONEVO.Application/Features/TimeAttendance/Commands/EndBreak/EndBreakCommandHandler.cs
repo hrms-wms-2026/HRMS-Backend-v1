@@ -1,3 +1,4 @@
+using ONEVO.Application.Features.Monitoring.TrayActivation.ServiceInterfaces;
 using MediatR;
 using ONEVO.Application.Common.Exceptions;
 using ONEVO.Application.Common.Models;
@@ -12,7 +13,8 @@ public sealed class EndBreakCommandHandler(
     IAttendanceTodayStateService todayState,
     IAttendanceReadRepository attendance,
     IUnitOfWork unitOfWork,
-    ONEVO.Application.Features.Monitoring.Notifications.RepositoryInterfaces.INotificationRepository? notifications = null)
+    ONEVO.Application.Features.Monitoring.Notifications.RepositoryInterfaces.INotificationRepository? notifications = null,
+    ITrayPushNotifier? trayPush = null)
     : IRequestHandler<EndBreakCommand, Result<AttendanceTodayResponse>>
 {
     public async Task<Result<AttendanceTodayResponse>> Handle(
@@ -53,6 +55,11 @@ public sealed class EndBreakCommandHandler(
         }
 
         await new BreakAllowanceMonitor(attendance, notifications).ObserveAsync(context, ct);
+        // After commit, so the tray re-reads the committed state.
+        if (trayPush is not null)
+            await trayPush.NotifyUserAsync(
+                context.Employee.TenantId, context.Employee.UserId, TrayPushMessages.AttendanceChanged, ct);
+
         return await todayState.GetTodayAsync(context.Employee.TenantId, context.Employee.UserId, ct);
     }
 

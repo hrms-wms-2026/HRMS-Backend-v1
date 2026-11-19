@@ -1,5 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata.Builders;
+using ONEVO.Application.Common.Helpers;
 using ONEVO.Domain.Features.WorkManagement.Tasks.Entities;
 
 namespace ONEVO.Infrastructure.Persistence.Configurations.WorkManagement;
@@ -18,5 +19,14 @@ public class TaskCategoryConfiguration : IEntityTypeConfiguration<TaskCategory>
         builder.HasIndex(c => new { c.TenantId, c.ProjectId, c.Name })
             .IsUnique()
             .HasDatabaseName("ix_task_categories_one_name_per_project");
+
+        builder.Property(c => c.SystemKey).HasMaxLength(32);
+        builder.Property(c => c.Kind).HasMaxLength(20).IsRequired().HasDefaultValue(TaskCategoryKinds.Task);
+        builder.Property(c => c.Icon).HasMaxLength(EntityIconRules.MaxLength);
+
+        builder.HasIndex(c => new { c.TenantId, c.ProjectId, c.SystemKey })
+            .IsUnique()
+            .HasFilter("system_key IS NOT NULL")
+            .HasDatabaseName("ix_task_categories_one_system_key_per_project");
     }
 }

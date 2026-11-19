@@ -38,7 +38,7 @@ public class CompleteOffboardingCommandHandler(
         if (record.Status != OffboardingRecordStatuses.InProgress)
             return Result.Conflict("A checklist must be selected before this offboarding can be completed.");
 
-        var tasks = await taskRepository.ListByOffboardingRecordAsync(tenantId, record.Id, ct);
+        var tasks = await taskRepository.ListEffectiveByOffboardingRecordAsync(tenantId, record.Id, ct);
         if (!OffboardingCompletionGate.AllRequiredTasksResolved(tasks))
             return Result.UnprocessableEntity("Every required checklist task must be completed or bypassed before the exit can be finalized.");
 

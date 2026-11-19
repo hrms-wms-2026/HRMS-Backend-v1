@@ -124,11 +124,11 @@ public class GetLegalEntityGeneralSettingsQueryHandlerTests
     public async Task Handle_RegularUser_AnotherCompanyInSameTenant_ReturnsNotFound()
     {
         // Exercises the handler's own accessible-company filter in isolation. This exact
-        // caller (no legal_entity:update) can never reach this handler over HTTP -
-        // LegalEntitiesController.GetGeneralSettings requires legal_entity:update, which
-        // under LegalEntityAccessPolicy.HasManagementAccess already implies management
-        // access. This unit test is the only real coverage of the filter's non-management
-        // branch; see LEGAL_ENTITY_CREATE_ACCESS_REPORT.md for why.
+        // caller (no legal_entity:read/update) can never reach this handler over HTTP -
+        // LegalEntitiesController.GetGeneralSettings requires one of them, and either one
+        // implies tenant-wide read access under LegalEntityAccessPolicy.HasReadAccess.
+        // This unit test is the only real coverage of the filter's narrow branch; see
+        // LEGAL_ENTITY_CREATE_ACCESS_REPORT.md for why.
         var otherCompanyId = Guid.NewGuid();
         _legalEntities.Setup(r => r.GetAccessibleByIdAsync(TenantId, otherCompanyId, UserId, false, It.IsAny<CancellationToken>()))
             .ReturnsAsync((LegalEntityEntity?)null);
@@ -138,5 +138,28 @@ public class GetLegalEntityGeneralSettingsQueryHandlerTests
 
         result.IsSuccess.Should().BeFalse();
         result.StatusCode.Should().Be(404);
+    }
+
+    [Fact]
+    public async Task Handle_ReadOnlyUser_GetsTenantWideReadAccess()
+    {
+        var entity = new LegalEntityEntity
+        {
+            Id = Guid.NewGuid(),
+            TenantId = TenantId,
+            Name = "Other Co",
+            CountryCode = "LKA",
+            CurrencyCode = "LKR",
+            IsActive = true
+        };
+        _legalEntities.Setup(r => r.GetAccessibleByIdAsync(TenantId, entity.Id, UserId, true, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(entity);
+        var sut = BuildSut(hasManagementAccess: false);
+        _currentUser.Setup(c => c.HasPermission("legal_entity:read")).Returns(true);
+
+        var result = await sut.Handle(new GetLegalEntityGeneralSettingsQuery(entity.Id), CancellationToken.None);
+
+        result.IsSuccess.Should().BeTrue();
+        result.Value!.Id.Should().Be(entity.Id);
     }
 }

@@ -1,0 +1,27 @@
+using ONEVO.Domain.Features.WorkManagement.Approvals.Entities;
+
+namespace ONEVO.Application.Features.WorkManagement.Approvals.Services;
+
+/// <summary>The single source of truth for "how long after a decision can it be reverted" - both the
+/// revert command's authorization check and the response mapper's canRevert/revertableUntil fields
+/// read this, so the two can never disagree.</summary>
+public static class ApprovalRevertWindow
+{
+    /// <summary>The Inbox Standard's window (every inbox kind shares it).</summary>
+    public const int Minutes = ONEVO.Application.Features.Inbox.Revert.InboxRevertWindow.Minutes;
+
+    /// <summary>True only for the viewer who decided this request, only while Approved/Rejected, only
+    /// within Minutes of DecidedAt, never for a meeting action. Shared by WorkApprovalRequestMapper and GetApprovalDetailQueryHandler
+    /// so the two can never disagree on what's revertable.</summary>
+    public static (bool CanRevert, DateTimeOffset? RevertableUntil) ComputeCanRevert(WorkApprovalRequest request, Guid viewerEmployeeId)
+    {
+        // Meeting decisions are final (spec 5.2: revert answers 409), so no window is offered for them.
+        if (WorkActionTypes.IsMeeting(request.ActionType))
+            return (false, null);
+        var isDecided = request.Status == WorkApprovalRequestStatuses.Approved || request.Status == WorkApprovalRequestStatuses.Rejected;
+        var revertableUntil = isDecided ? request.DecidedAt?.AddMinutes(Minutes) : null;
+        var canRevert = isDecided && request.DecidedByEmployeeId == viewerEmployeeId
+            && revertableUntil is { } until && until >= DateTimeOffset.UtcNow;
+        return (canRevert, revertableUntil);
+    }
+}

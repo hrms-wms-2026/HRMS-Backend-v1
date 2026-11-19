@@ -38,7 +38,10 @@ public sealed class DisconnectCalendarConnectionCommandHandler(
             // check stays correct for when a later spec adds one (per the design spec's explicit note).
             foreach (var link in connectionLinks)
             {
-                var linkedEvent = await events.GetTrackedByIdForTenantAsync(tenantId, link.CalendarEventId, innerCt);
+                // A meeting occurrence's push link has no calendar event to delete; the link row itself still goes.
+                if (link.CalendarEventId is not Guid linkedEventId)
+                    continue;
+                var linkedEvent = await events.GetTrackedByIdForTenantAsync(tenantId, linkedEventId, innerCt);
                 if (linkedEvent is not null && linkedEvent.SourceType == CalendarEventSourceTypes.ExternalSync)
                     events.Remove(linkedEvent);
             }

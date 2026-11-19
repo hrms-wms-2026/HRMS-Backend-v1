@@ -23,7 +23,7 @@ public sealed class InvoicesAdminApiIntegrationTests : IAsyncLifetime
 
     public async Task InitializeAsync()
     {
-        var connectionString = await SharedPostgresTemplate.CreateDatabaseAsync();
+        var connectionString = await SharedSqlServerTemplate.CreateDatabaseAsync();
         _environmentScope = new IntegrationTestEnvironmentScope(connectionString);
         _factory = new AdminTestFactory(connectionString);
 
@@ -46,23 +46,11 @@ public sealed class InvoicesAdminApiIntegrationTests : IAsyncLifetime
 
     private async Task AuthenticateAsync()
     {
-        var loginResponse = await _client.PostAsJsonAsync(
-            "/admin/v1/auth/login",
-            new { email = "test_admin@onevo.dev", password = "test_password_123" });
-        loginResponse.IsSuccessStatusCode.Should().BeTrue(
-            await loginResponse.Content.ReadAsStringAsync());
-
-        var cookies = loginResponse.Headers.GetValues("Set-Cookie");
-        var adminSessionCookie = cookies.FirstOrDefault(c => c.StartsWith("admin_session="));
-        var csrfCookie = cookies.FirstOrDefault(c => c.StartsWith("admin_csrf="));
-
-        if (adminSessionCookie != null)
-            _client.DefaultRequestHeaders.Add("Cookie", adminSessionCookie.Split(';')[0]);
-        if (csrfCookie != null)
-        {
-            var csrfToken = csrfCookie.Split(';')[0].Split('=')[1];
-            _client.DefaultRequestHeaders.Add("X-CSRF-Token", csrfToken);
-        }
+        // F-02: sign-in completes mandatory MFA enrollment; no gate bypass.
+        var adminSession = await PlatformAdminTestSignIn.SignInAsync(
+            _client, "test_admin@onevo.dev", "test_password_123");
+        _client.DefaultRequestHeaders.Add("Cookie", adminSession.SessionCookie);
+        _client.DefaultRequestHeaders.Add("X-CSRF-Token", adminSession.CsrfToken);
     }
 
     private async Task<Guid> SeedTenantAsync()

@@ -1,0 +1,80 @@
+using Microsoft.EntityFrameworkCore;
+using ONEVO.Application.Features.Conversations.Contracts;
+using ONEVO.Application.Features.Inbox.Contracts;
+using ONEVO.Domain.Features.Inbox.Entities;
+
+namespace ONEVO.Infrastructure.Persistence.Repositories.Inbox;
+
+public class EfInboxDecisionJournal : IInboxDecisionJournal
+{
+    private readonly ApplicationDbContext _db;
+
+    public EfInboxDecisionJournal(ApplicationDbContext db) => _db = db;
+
+    public async Task RecordAsync(InboxDecisionJournalEntry entry, CancellationToken ct = default)
+    {
+        await _db.InboxDecisionJournal.AddAsync(entry, ct);
+        await _db.SaveChangesAsync(ct);
+    }
+
+    public async Task<InboxDecisionJournalEntry?> LatestAsync(Guid tenantId, ItemRef item, CancellationToken ct = default)
+        => await ForItem(tenantId, item).OrderByDescending(e => e.DecidedAt).ThenByDescending(e => e.CreatedAt).FirstOrDefaultAsync(ct);
+
+    public async Task<IReadOnlyList<InboxDecisionJournalEntry>> ListForItemAsync(Guid tenantId, ItemRef item, CancellationToken ct = default)
+        => await ForItem(tenantId, item).AsNoTracking().OrderBy(e => e.DecidedAt).ThenBy(e => e.CreatedAt).ToListAsync(ct);
+
+    public async Task<InboxJournalPage> ListByActorAsync(
+        Guid tenantId, Guid actorEmployeeId, DateTimeOffset? from, DateTimeOffset? to, string? source, string? kind,
+        int page, int pageSize, CancellationToken ct = default)
+    {
+        var query = _db.InboxDecisionJournal.AsNoTracking()
+            .Where(e => e.TenantId == tenantId && e.ActorEmployeeId == actorEmployeeId);
+        if (from is { } since)
+            query = query.Where(e => e.DecidedAt >= since);
+        if (to is { } until)
+            query = query.Where(e => e.DecidedAt <= until);
+        if (!string.IsNullOrEmpty(source))
+            query = query.Where(e => e.Source == source);
+        if (!string.IsNullOrEmpty(kind))
+            query = query.Where(e => e.Kind == kind);
+
+        var total = await query.CountAsync(ct);
+        var entries = await query.OrderByDescending(e => e.DecidedAt).ThenByDescending(e => e.CreatedAt)
+            .Skip((Math.Max(1, page) - 1) * pageSize).Take(pageSize).ToListAsync(ct);
+        return new InboxJournalPage(entries, total);
+    }
+
+    public async Task<IReadOnlyList<InboxDecisionJournalEntry>> ListLatestEscalationsAsync(
+        Guid tenantId, string source, string kind, CancellationToken ct = default)
+    {
+        var rows = await _db.InboxDecisionJournal.AsNoTracking()
+            .Where(e => e.TenantId == tenantId && e.Source == source && e.Kind == kind
+                        && e.Action == InboxJournalActions.Escalate && e.RevertedByJournalId == null)
+            .ToListAsync(ct);
+        return rows.GroupBy(e => e.ItemId)
+            .Select(g => g.OrderByDescending(e => e.DecidedAt).ThenByDescending(e => e.CreatedAt).First())
+            .ToList();
+    }
+
+    public async Task<bool> MarkRevertedAsync(InboxDecisionJournalEntry original, InboxDecisionJournalEntry revertEntry, CancellationToken ct = default)
+    {
+        // Conditional claim (UPDATE ... WHERE reverted_by_journal_id IS NULL): of two concurrent reverts of one
+        // decision only the first matches a row; the second waits on the row lock, then matches none.
+        var claimed = await _db.InboxDecisionJournal
+            .Where(e => e.Id == original.Id && e.RevertedByJournalId == null)
+            .ExecuteUpdateAsync(s => s.SetProperty(e => e.RevertedByJournalId, revertEntry.Id), ct);
+        if (claimed == 0)
+            return false;
+
+        original.RevertedByJournalId = revertEntry.Id;
+        var tracked = _db.Entry(original);
+        if (tracked.State != EntityState.Detached)
+            tracked.Property(e => e.RevertedByJournalId).IsModified = false;
+        await _db.InboxDecisionJournal.AddAsync(revertEntry, ct);
+        await _db.SaveChangesAsync(ct);
+        return true;
+    }
+
+    private IQueryable<InboxDecisionJournalEntry> ForItem(Guid tenantId, ItemRef item)
+        => _db.InboxDecisionJournal.Where(e => e.TenantId == tenantId && e.Source == item.Source && e.Kind == item.Kind && e.ItemId == item.Id);
+}

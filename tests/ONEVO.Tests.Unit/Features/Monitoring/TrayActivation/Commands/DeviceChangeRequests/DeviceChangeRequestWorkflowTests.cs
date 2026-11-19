@@ -115,11 +115,13 @@ public sealed class DeviceChangeRequestWorkflowTests
     }
 
     [Fact]
-    public async Task ApproveAsync_WhenLegalEntityIsUnresolved_ReturnsConflict()
+    public async Task ApproveAsync_WhenNeitherRequestNorEmployeeHasALegalEntity_ReturnsConflict()
     {
         var fixture = new Fixture(actingAsApprover: true);
         var request = fixture.PendingRequest(currentDeviceRegistrationId: DeviceId);
         request.LegalEntityId = null;
+        fixture.Employees.Setup(e => e.GetByIdAsync(TenantId, EmployeeId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new Employee { Id = EmployeeId, TenantId = TenantId, LegalEntityId = null, FirstName = "Alex" });
         fixture.Requests.Setup(r => r.GetTrackedByIdAsync(TenantId, request.Id, It.IsAny<CancellationToken>()))
             .ReturnsAsync(request);
 
@@ -129,6 +131,21 @@ public sealed class DeviceChangeRequestWorkflowTests
         result.IsSuccess.Should().BeFalse();
         result.StatusCode.Should().Be(409);
         fixture.Authority.Verify(a => a.ResolveApproverAsync(It.IsAny<EmployeeApprovalRouteRequest>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task ApproveAsync_WhenTheRequestHasNoLegalEntity_UsesTheEmployeesForTheApproverRoute()
+    {
+        var fixture = new Fixture(actingAsApprover: true);
+        var request = fixture.PendingRequest(currentDeviceRegistrationId: DeviceId);
+        request.LegalEntityId = null;
+        fixture.Requests.Setup(r => r.GetTrackedByIdAsync(TenantId, request.Id, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(request);
+
+        await fixture.Workflow.ApproveAsync(new ApproveDeviceChangeRequestCommand(request.Id, null), CancellationToken.None);
+
+        fixture.Authority.Verify(a => a.ResolveApproverAsync(
+            It.Is<EmployeeApprovalRouteRequest>(r => r.LegalEntityId == LegalEntityId), It.IsAny<CancellationToken>()), Times.Once);
     }
 
     private sealed class Fixture

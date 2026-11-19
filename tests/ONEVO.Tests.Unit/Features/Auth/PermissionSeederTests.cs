@@ -56,7 +56,20 @@ public class PermissionSeederTests
             "time_off:manage",
             "calendar:read",
             "monitoring:read",
-            "monitoring:configure"
+            "monitoring:configure",
+            "monitoring:screenshots:request",
+            "projects:create"
+        ]);
+
+        codes.Should().NotContain([
+            "agent:command", "agent:manage", "agent:register", "agent:view-health",
+            "projects:access", "projects:read",
+            "tasks:read", "tasks:read-own", "tasks:write", "tasks:approve", "tasks:delete",
+            "time:read", "time:write", "time:approve",
+            "okr:read", "okr:write", "wiki:read", "wiki:write",
+            "sprints:read", "sprints:manage",
+            "workspaces:read", "workspaces:create", "workspaces:manage",
+            "resources:read", "resources:manage", "roadmaps:read", "roadmaps:write"
         ]);
 
         // Must NOT contain invalid monitoring keys
@@ -69,8 +82,11 @@ public class PermissionSeederTests
         // notifications:manage is the single canonical Phase 1 notification-management permission.
         codes.Should().NotContain("settings:notifications");
         codes.Should().Contain("notifications:manage");
-        codes.Should().Contain("invitations:manage");
+        codes.Should().NotContain("invitations:manage");
+        codes.Should().Contain("users:read");
+        codes.Should().Contain("users:manage");
         codes.Should().Contain("employees:read:sensitive");
         codes.Should().Contain("employees:offboard");
+        codes.Should().Contain("checklists:manage");
     }
 }

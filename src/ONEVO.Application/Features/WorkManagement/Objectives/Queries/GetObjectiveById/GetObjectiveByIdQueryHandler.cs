@@ -1,12 +1,15 @@
 using MediatR;
+using ONEVO.Application.Common.Constants;
 using ONEVO.Application.Common.Models;
+using ONEVO.Application.Common.RepositoryInterfaces;
 using ONEVO.Application.Common.ServiceInterfaces;
 using ONEVO.Application.Features.Auth.Permission.ServiceInterfaces;
+using ONEVO.Application.Features.Storage.File.Helpers;
 using ONEVO.Application.Features.WorkManagement.Common.Services;
 using ONEVO.Application.Features.WorkManagement.Objectives.DTOs.Responses;
 using ONEVO.Application.Features.WorkManagement.Objectives.Mappers;
 using ONEVO.Application.Features.WorkManagement.Objectives.RepositoryInterfaces;
-using ONEVO.Application.Features.WorkManagement.ProjectMembers.RepositoryInterfaces;
+using ONEVO.Application.Features.WorkManagement.Hierarchy;
 
 namespace ONEVO.Application.Features.WorkManagement.Objectives.Queries.GetObjectiveById;
 
@@ -15,18 +18,20 @@ public class GetObjectiveByIdQueryHandler : IRequestHandler<GetObjectiveByIdQuer
     private readonly ICurrentUser _currentUser;
     private readonly ICallerIdentityResolver _identity;
     private readonly IObjectiveRepository _objectives;
-    private readonly IProjectMemberRepository _members;
+    private readonly IModuleReadAccess _readAccess;
     private readonly IPermissionResolver _permissionResolver;
+    private readonly IEntityAssetRepository _assets;
 
     public GetObjectiveByIdQueryHandler(
         ICurrentUser currentUser, ICallerIdentityResolver identity, IObjectiveRepository objectives,
-        IProjectMemberRepository members, IPermissionResolver permissionResolver)
+        IModuleReadAccess readAccess, IPermissionResolver permissionResolver, IEntityAssetRepository assets)
     {
         _currentUser = currentUser;
         _identity = identity;
         _objectives = objectives;
-        _members = members;
+        _readAccess = readAccess;
         _permissionResolver = permissionResolver;
+        _assets = assets;
     }
 
     public async Task<Result<ObjectiveDetailResponse>> Handle(GetObjectiveByIdQuery request, CancellationToken ct)
@@ -48,23 +53,11 @@ public class GetObjectiveByIdQueryHandler : IRequestHandler<GetObjectiveByIdQuer
             return Result<ObjectiveDetailResponse>.NotFound("Objective not found.");
 
         var permissions = await _permissionResolver.ResolveAsync(userId, tenantId, null, ct);
-        var hasReadPermission = permissions.Contains("projects:read") || permissions.Contains("*");
+        var hasReadPermission = permissions.Contains("*");
 
         if (!hasReadPermission)
         {
-            var selfAndAncestorIds = new List<Guid> { objective.Id };
-            var cursor = objective;
-            while (cursor.ParentObjectiveId is not null)
-            {
-                var parent = await _objectives.GetByIdForTenantAsync(tenantId, cursor.ParentObjectiveId.Value, ct);
-                if (parent is null)
-                    break;
-
-                selfAndAncestorIds.Add(parent.Id);
-                cursor = parent;
-            }
-
-            var hasAccess = await _members.HasActiveMembershipForAnyObjectiveAsync(tenantId, objective.ProjectId, callerEmployeeId.Value, selfAndAncestorIds, ct);
+            var hasAccess = await _readAccess.CanReadAsync(tenantId, objective, callerEmployeeId.Value, ct);
             if (!hasAccess)
                 return Result<ObjectiveDetailResponse>.Forbidden("You do not have access to this milestone.");
         }
@@ -75,6 +68,13 @@ public class GetObjectiveByIdQueryHandler : IRequestHandler<GetObjectiveByIdQuer
 
         var namesByEmployeeId = await _identity.ResolveDisplayNamesByEmployeeIdAsync(tenantId, nameLookupIds, ct);
 
-        return Result<ObjectiveDetailResponse>.Success(ObjectiveMapper.ToDetail(objective, namesByEmployeeId, callerEmployeeId.Value));
+        var assets = (await _assets.ListByOwnerAsync(tenantId, EntityAssetOwnerTypes.Objective, objective.Id, ct))
+            .Where(a => a.AssetPurpose == UploadPurposeCatalog.ObjectiveAsset)
+            .Select(a => new ObjectiveAssetResponse(
+                a.Id, a.OriginalFileName, a.FileSizeBytes, a.ContentType, a.CreatedAt,
+                ObjectiveAssetResponse.DownloadPath(objective.Id, a.Id)))
+            .ToList();
+
+        return Result<ObjectiveDetailResponse>.Success(ObjectiveMapper.ToDetail(objective, namesByEmployeeId, callerEmployeeId.Value, assets));
     }
 }
