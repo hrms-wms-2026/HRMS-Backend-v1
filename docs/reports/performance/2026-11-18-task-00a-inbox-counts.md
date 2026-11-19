@@ -154,6 +154,26 @@ Both clean runs are under 200 ms for both requests. The duplicate came from the 
 which ran again when modules arrived after sign-in. Fixed on frontend branch `fix/inbox-counts-once`: with it the page
 sends one `/inbox/counts` per load, 96-120 ms on reloads (two runs of three loads).
 
+### Capture 9 — backend and frontend fixes together (2026-11-19)
+
+Both fixes merged into local `development` (backend, this branch) and `Development` (frontend, `fix/inbox-counts-once`,
+including the latest `origin/Development`), not yet merged upstream. Backend Release build on a fresh process, frontend
+dev server, same seeded demo user, same headless Chromium method as Capture 8.
+
+| Measurement | `/inbox/counts` |
+|---|---|
+| Cold first call after process start | 1,386 ms |
+| Warm, one reused connection (10 calls) | 108–175 ms; 8 of 10 between 108 and 130 ms |
+| New connection per call (6 calls) | 121–142 ms |
+
+| Browser load | `/inbox/counts` requests | Duration | API calls on the page |
+|---|---:|---:|---:|
+| First load (cold page) | 1 | 335 ms | 13 |
+| Reload 1 | 1 | 121 ms | 13 |
+| Reload 2 | 1 | 116 ms | 13 |
+
+The page now sends one counts request per load (two before), and the page makes 13 API calls instead of 15.
+
 ## Verification status
 
 - Capture 1–4 (before): the combined endpoint failed (1443 ms first run, warm provider stages at least 345 ms).
@@ -163,6 +183,8 @@ sends one `/inbox/counts` per load, 96-120 ms on reloads (two runs of three load
 - Cold first call: about 1.2 s once per process start; a second user's first call is about 280 ms.
 - Capture 8 (browser): two clean inbox reloads, `/inbox/counts` 93–105 ms (and 175–186 ms for the duplicate
   request the page sends at the same time) - the Task 00a target of two clean browser runs under 200 ms is met.
+- Capture 9 (both fixes together, local): one `/inbox/counts` per load, 116–121 ms on clean reloads; warm API calls
+  108–175 ms. Still to do: the same check on the shared dev environment after both PRs merge.
 - Not yet done: a run with production-level logging.
 - Remaining repeated reads: the exact-approver lookups in case routing, Attendance's scope, and Work alert audiences
   per project with open alerts.
