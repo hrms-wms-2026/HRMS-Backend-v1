@@ -53,7 +53,26 @@ public sealed class ExceptionInboxSourceProvider : IInboxSourceProvider, IInboxP
 
     public async Task<InboxSourceCounts> CountAsync(Guid tenantId, Guid callerEmployeeId, CancellationToken ct)
     {
-        var count = (await VisibleActiveCasesAsync(tenantId, callerEmployeeId, ct)).Count;
+        var candidateEmployeeIds = await _exceptions.ListActiveInboxEmployeeIdsAsync(tenantId, calendar: false, ct);
+        var scope = candidateEmployeeIds.Count == 0
+            ? null
+            : await _scope.ResolveAsync(forAction: true, candidateEmployeeIds, ct);
+        var route = scope is null
+            ? ExceptionInboxCountRoute.Empty
+            : await _routing.CountRouteAsync(tenantId, candidateEmployeeIds, scope, hrFallback: true, ct);
+        var addedCaseIds = (await _conversations.ListAddedSubjectsAsync(tenantId, callerEmployeeId, Source, ct))
+            .Select(subject => subject.Id)
+            .Distinct()
+            .ToList();
+        var count = await _exceptions.CountActiveInboxAsync(tenantId, new ExceptionInboxCountCriteria(
+            callerEmployeeId,
+            route.RoutedEmployeeIds,
+            route.HrFallbackEmployeeIds,
+            route.HeldCaseIds,
+            addedCaseIds,
+            route.IncludeLegacyHrEscalations,
+            route.JournaledEscalatedCaseIds,
+            Calendar: false), ct);
         return new InboxSourceCounts(0, count, count == 0
             ? new Dictionary<string, int>()
             : new Dictionary<string, int> { [ExceptionInboxKinds.Case] = count });

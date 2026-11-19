@@ -122,12 +122,79 @@ public class ExceptionInboxTests
         ScopeIs(isHr: false, Subject);
         ApproverOf(Subject);
 
+        _exceptions.Setup(x => x.ListActiveInboxEmployeeIdsAsync(TenantId, false, It.IsAny<CancellationToken>()))
+            .ReturnsAsync([Subject]);
+        _exceptions.Setup(x => x.CountActiveInboxAsync(
+                TenantId,
+                It.Is<ExceptionInboxCountCriteria>(c =>
+                    c.CallerEmployeeId == Reviewer
+                    && c.RoutedEmployeeIds.Contains(Subject)
+                    && !c.Calendar),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(1);
+
         var counts = await Provider().CountAsync(TenantId, Reviewer, default);
 
         counts.Should().BeEquivalentTo(new InboxSourceCounts(0, 1, new Dictionary<string, int>
         {
             [ExceptionInboxKinds.Case] = 1,
         }));
+        _exceptions.Verify(x => x.GetListAsync(
+            It.IsAny<Guid>(), It.IsAny<ExceptionListFilter>(), It.IsAny<int>(), It.IsAny<int>(), It.IsAny<CancellationToken>()), Times.Never);
+        _exceptions.Verify(x => x.GetByIdAsync(It.IsAny<Guid>(), It.IsAny<Guid>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task Count_keeps_own_held_and_chat_added_visibility_as_identifier_only_criteria()
+    {
+        var heldCaseId = Guid.NewGuid();
+        var addedCaseId = Guid.NewGuid();
+        _exceptions.Setup(x => x.ListActiveInboxEmployeeIdsAsync(TenantId, false, It.IsAny<CancellationToken>()))
+            .ReturnsAsync([Subject]);
+        _scope.Setup(s => s.ResolveAsync(true, It.IsAny<IReadOnlyCollection<Guid>>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new ExceptionScope(false, Reviewer, [], [heldCaseId]));
+        _conversations.Setup(x => x.ListAddedSubjectsAsync(TenantId, Reviewer, "monitoring", It.IsAny<CancellationToken>()))
+            .ReturnsAsync([new ItemRef("monitoring", ExceptionInboxKinds.Case, addedCaseId)]);
+        _exceptions.Setup(x => x.CountActiveInboxAsync(
+                TenantId,
+                It.Is<ExceptionInboxCountCriteria>(c =>
+                    c.CallerEmployeeId == Reviewer
+                    && c.RoutedEmployeeIds.Count == 0
+                    && c.HrFallbackEmployeeIds.Count == 0
+                    && c.HeldCaseIds.SequenceEqual(new[] { heldCaseId })
+                    && c.AddedCaseIds.SequenceEqual(new[] { addedCaseId })
+                    && !c.IncludeLegacyHrEscalations
+                    && !c.Calendar),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(3);
+
+        var counts = await Provider().CountAsync(TenantId, Reviewer, default);
+
+        counts.OpenAlerts.Should().Be(3);
+        _exceptions.Verify(x => x.GetListAsync(
+            It.IsAny<Guid>(), It.IsAny<ExceptionListFilter>(), It.IsAny<int>(), It.IsAny<int>(), It.IsAny<CancellationToken>()), Times.Never);
+        _exceptions.Verify(x => x.GetByIdAsync(It.IsAny<Guid>(), It.IsAny<Guid>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task Count_does_not_treat_broad_scope_as_exact_routing()
+    {
+        _exceptions.Setup(x => x.ListActiveInboxEmployeeIdsAsync(TenantId, false, It.IsAny<CancellationToken>()))
+            .ReturnsAsync([Subject]);
+        ScopeIs(isHr: false, Subject);
+        ApproverOf();
+        _exceptions.Setup(x => x.CountActiveInboxAsync(
+                TenantId,
+                It.Is<ExceptionInboxCountCriteria>(c =>
+                    c.RoutedEmployeeIds.Count == 0
+                    && c.HrFallbackEmployeeIds.Count == 0
+                    && c.HeldCaseIds.Count == 0),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(0);
+
+        var counts = await Provider().CountAsync(TenantId, Reviewer, default);
+
+        counts.Should().BeEquivalentTo(new InboxSourceCounts(0, 0, new Dictionary<string, int>()));
     }
 
     [Fact]

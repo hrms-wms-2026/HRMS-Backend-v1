@@ -117,20 +117,8 @@ public interface IInboxSourceProvider
     /// <summary>Every item that involves the caller. The router applies the common filters, sorting and paging.</summary>
     Task<IReadOnlyList<InboxItem>> ListAsync(Guid tenantId, InboxQuery query, Guid callerEmployeeId, CancellationToken ct);
 
-    /// <summary>Badge totals without building inbox rows. Providers override this with count-only reads.</summary>
-    async Task<InboxSourceCounts> CountAsync(Guid tenantId, Guid callerEmployeeId, CancellationToken ct)
-    {
-        // Compatibility fallback while source providers move to count-only reads. Task 00a removes this body once
-        // every registered provider overrides it, so a future provider cannot accidentally reintroduce list loading.
-        var items = await ListAsync(tenantId, new InboxQuery(), callerEmployeeId, ct);
-        var needsMe = items.Where(i => i.IsPending
-            && (i.Category == InboxCategories.Alert
-                || (i.Category == InboxCategories.Request && i.Direction == InboxDirections.Received))).ToList();
-        return new InboxSourceCounts(
-            items.Count(i => i.IsPending && i.Category == InboxCategories.Request && i.Direction == InboxDirections.Received),
-            items.Count(i => i.IsPending && i.Category == InboxCategories.Alert),
-            needsMe.GroupBy(i => i.Kind).ToDictionary(g => g.Key, g => g.Count()));
-    }
+    /// <summary>Badge totals without building inbox rows.</summary>
+    Task<InboxSourceCounts> CountAsync(Guid tenantId, Guid callerEmployeeId, CancellationToken ct);
 
     /// <summary>Null when the item does not exist or the caller may not see it.</summary>
     Task<InboxItemDetail?> GetDetailAsync(Guid tenantId, string kind, Guid id, Guid callerEmployeeId, CancellationToken ct);
