@@ -43,9 +43,18 @@ public sealed class AddTaskCommentReactionCommandHandler : IRequestHandler<AddTa
         if (!access.IsSuccess)
             return Result.Failure(access.Error!, access.StatusCode ?? 400);
 
-        var existing = await _reactions.GetAsync(tenantId, comment.Id, access.Value!.CallerEmployeeId, request.Emoji, ct);
+        // One reaction per employee per comment: same emoji is a no-op, a different emoji replaces it.
+        var existing = await _reactions.GetForEmployeeAsync(tenantId, comment.Id, access.Value!.CallerEmployeeId, ct);
         if (existing is not null)
+        {
+            if (existing.Emoji == request.Emoji)
+                return Result.Success();
+
+            existing.Emoji = request.Emoji;
+            existing.UpdatedAt = DateTimeOffset.UtcNow;
+            await _unitOfWork.SaveChangesAsync(ct);
             return Result.Success();
+        }
 
         await _reactions.AddAsync(new TaskCommentReaction
         {
