@@ -12,6 +12,7 @@ using ONEVO.Application.Features.TimeAttendance.RepositoryInterfaces;
 using ONEVO.Domain.Features.Monitoring.Notifications.Entities;
 using ONEVO.Domain.Features.TimeAttendance.Entities;
 using ONEVO.Infrastructure.Persistence;
+using ONEVO.Infrastructure.Services.SharedPlatform.Jobs;
 
 namespace ONEVO.Infrastructure.Services.Monitoring.Notifications;
 
@@ -23,6 +24,7 @@ namespace ONEVO.Infrastructure.Services.Monitoring.Notifications;
 public sealed class LocationRuleEvaluatorJob : BackgroundService
 {
     private static readonly TimeSpan EvaluationInterval = TimeSpan.FromMinutes(5);
+    public static readonly JobSchedule Schedule = JobSchedule.Every("location-rule-evaluator", EvaluationInterval);
     // A GPS fix is captured roughly every 15 minutes (DeviceStateCollector) - 30 minutes of
     // lookback tolerates one missed tick without losing coverage.
     private static readonly TimeSpan LookbackWindow = TimeSpan.FromMinutes(30);
@@ -47,7 +49,7 @@ public sealed class LocationRuleEvaluatorJob : BackgroundService
         {
             do
             {
-                try { await RunOnceAsync(stoppingToken); }
+                try { await _services.RunExclusiveAsync(Schedule, ct => RunOnceAsync(ct), stoppingToken); }
                 catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested) { break; }
                 catch (Exception ex) { _logger.LogWarning(ex, "Location rule evaluation iteration failed; will retry next cycle."); }
             } while (await timer.WaitForNextTickAsync(stoppingToken));
