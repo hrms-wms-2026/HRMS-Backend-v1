@@ -7,20 +7,13 @@ access_grant_requests.action_type | todo | not reviewed yet: task-39f
 access_grant_requests.approval_status | todo | not reviewed yet: task-39f
 agent_commands.command_type | todo | not reviewed yet: task-39f
 agent_commands.status | todo | not reviewed yet: task-39f
-attendance_alert_deductions.status | todo | not reviewed yet: task-39f
-attendance_alerts.status | todo | not reviewed yet: task-39f
 attendance_corrections.correction_type | todo | not reviewed yet: task-39f
 attendance_corrections.status | todo | not reviewed yet: task-39f
-attendance_records.status | todo | not reviewed yet: task-39f
 attendance_records.work_time_type | todo | not reviewed yet: task-39f
 audit_logs.resource_type | todo | not reviewed yet: task-39f
 biometric_enrollment_attempts.challenge_type | todo | not reviewed yet: task-39f
-biometric_enrollment_attempts.status | todo | not reviewed yet: task-39f
-biometric_profiles.status | todo | not reviewed yet: task-39f
 break_records.break_type | todo | not reviewed yet: task-39f
-bulk_onboarding_batch_rows.status | todo | not reviewed yet: task-39f
 bulk_onboarding_batches.default_employment_type | todo | not reviewed yet: task-39f
-bulk_onboarding_batches.status | todo | not reviewed yet: task-39f
 calendar_event_meetings.owner_kind | todo | not reviewed yet: task-39f
 calendar_event_meetings.status | todo | not reviewed yet: task-39f
 calendar_event_participant_rsvp_history.from_status | todo | not reviewed yet: task-39f
@@ -43,8 +36,6 @@ employee_checklist_tasks.owner_type | todo | not reviewed yet: task-39f
 employee_checklist_tasks.status | todo | not reviewed yet: task-39f
 entity_assets.created_by_type | todo | not reviewed yet: task-39f
 entity_assets.owner_type | todo | not reviewed yet: task-39f
-exceptions.status | todo | not reviewed yet: task-39f
-exceptions.type | todo | not reviewed yet: task-39f
 external_calendar_connections.status | todo | not reviewed yet: task-39f
 external_calendar_event_links.sync_status | todo | not reviewed yet: task-39f
 feature_access_grants.grantee_type | todo | not reviewed yet: task-39f
@@ -56,11 +47,7 @@ global_app_catalog.logo_content_type | free | a MIME type, not a closed list
 idempotency_records.status | todo | not reviewed yet: task-39f
 inbox_decision_journal.kind | todo | not reviewed yet: task-39f
 invitation_tokens.status | todo | not reviewed yet: task-39f
-leave_balance_audits.change_type | todo | not reviewed yet: task-39f
 leave_policy_assignments.target_kind | todo | not reviewed yet: task-39f
-leave_request_approvers.status | todo | not reviewed yet: task-39f
-leave_request_day_allocations.status | todo | not reviewed yet: task-39f
-leave_requests.status | todo | not reviewed yet: task-39f
 legal_acceptance_records.document_type | todo | not reviewed yet: task-39f
 legal_document_versions.document_type | todo | not reviewed yet: task-39f
 legal_document_versions.status | todo | not reviewed yet: task-39f
@@ -74,7 +61,6 @@ monitoring_evidence_assets.evidence_type | todo | not reviewed yet: task-39f
 monitoring_evidence_assets.trigger_type | todo | not reviewed yet: task-39f
 monitoring_face_scans.content_type | free | a MIME type, not a closed list
 monitoring_face_scans.status | todo | not reviewed yet: task-39f
-monitoring_notifications.type | todo | not reviewed yet: task-39f
 monitoring_policy_overrides.scope_type | todo | not reviewed yet: task-39f
 notification_deliveries.related_entity_type | todo | not reviewed yet: task-39f
 notification_deliveries.status | todo | not reviewed yet: task-39f
@@ -84,8 +70,6 @@ offboarding_records.status | todo | not reviewed yet: task-39f
 offboarding_task_bypass_requests.prior_task_status | todo | not reviewed yet: task-39f
 offboarding_task_bypass_requests.status | todo | not reviewed yet: task-39f
 onboarding_drafts.employment_type | todo | not reviewed yet: task-39f
-onboarding_drafts.status | todo | not reviewed yet: task-39f
-outbox_messages.status | todo | not reviewed yet: task-39f
 outbox_messages.type | todo | not reviewed yet: task-39f
 personal_calendar_events.event_status | todo | not reviewed yet: task-39f
 personal_calendar_events.source_type | todo | not reviewed yet: task-39f
@@ -94,7 +78,6 @@ platform_users.invite_status | todo | not reviewed yet: task-39f
 platform_users.mfa_status | todo | not reviewed yet: task-39f
 platform_users.status | todo | not reviewed yet: task-39f
 position_assignments.assignment_kind | todo | not reviewed yet: task-39f
-position_assignments.assignment_status | todo | not reviewed yet: task-39f
 positions.position_type | todo | not reviewed yet: task-39f
 presence_sessions.status | todo | not reviewed yet: task-39f
 project_member_invitations.invite_type | todo | not reviewed yet: task-39f
@@ -103,7 +86,6 @@ release_calendar.reminder_type | todo | not reviewed yet: task-39f
 seat_increase_requests.status | todo | not reviewed yet: task-39f
 sprint_activity_logs.from_status | todo | not reviewed yet: task-39f
 sprint_activity_logs.to_status | todo | not reviewed yet: task-39f
-sprints.status | todo | not reviewed yet: task-39f
 subscription_invoices.status | todo | not reviewed yet: task-39f
 support_ticket_attachments.content_type | free | a MIME type, not a closed list
 support_tickets.status | todo | not reviewed yet: task-39f
@@ -112,11 +94,8 @@ tasks.task_kind | todo | not reviewed yet: task-39f
 tenant_configuration_template_applications.template_type | todo | not reviewed yet: task-39f
 tenant_one_time_charges.status | todo | not reviewed yet: task-39f
 tenant_setup_selections.status | todo | not reviewed yet: task-39f
-tenant_status_histories.from_status | todo | not reviewed yet: task-39f
-tenant_status_histories.to_status | todo | not reviewed yet: task-39f
 tenant_subscriptions.maintenance_status | todo | not reviewed yet: task-39f
 tenant_subscriptions.status | todo | not reviewed yet: task-39f
-tenants.status | todo | not reviewed yet: task-39f
 user_mfa.method_type | todo | not reviewed yet: task-39f
 user_permission_overrides.grant_type | todo | not reviewed yet: task-39f
 wm_approval_requests.action_type | todo | not reviewed yet: task-39f
