@@ -1,7 +1,7 @@
 using Microsoft.Data.SqlClient;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging.Abstractions;
-using ONEVO.Application.Features.Auth.Permission.Lifecycle;
+using ONEVO.Application.Common.Authorization;
 using ONEVO.Infrastructure.ExternalServices.Messaging;
 using ONEVO.Infrastructure.Identity.CurrentUser;
 using ONEVO.Infrastructure.Identity.Tenancy;
@@ -110,7 +110,7 @@ public sealed class PermissionLifecycleSqlServerTests(SqlServerFixture fixture) 
             new DomainEventDispatchInterceptor(new NoOpPublisher()),
             tenant);
         return await new PermissionCatalogSynchronizer(db, clock, NullLogger.Instance).SyncAsync(
-            catalogue.Select(c => new PermissionDefinition(c, c, "core_hr")).ToList(), rules);
+            catalogue.Select(c => new PermissionDefinition(c, "core_hr", c, PermissionKind.Assignable)).ToList(), rules);
     }
 
     [Fact]
@@ -155,7 +155,7 @@ public sealed class PermissionLifecycleSqlServerTests(SqlServerFixture fixture) 
         await GrantAsync(await RoleAsync("R", false), code);
 
         await Assert.ThrowsAsync<PermissionRetirementRefusedException>(() => SyncAsync(
-            new([], [], [new PermissionRetirement("chat:read", RetirementStage.Removed, Day, "test")]),
+            new([], [], [new PermissionRetirement("chat:read", RetirementStage.Removed, "test")]),
             "chat:write"));
 
         Assert.Equal(1, await CountAsync("SELECT COUNT(*) FROM role_permissions"));

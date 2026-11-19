@@ -2,6 +2,7 @@ using MediatR;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using ONEVO.Api.Filters;
+using ONEVO.Application.Common.Authorization;
 using ONEVO.Application.Features.Monitoring.Meetings.Queries.GetMeetingSignals;
 
 namespace ONEVO.Api.Controllers.Tenant.Monitoring.Meetings;
@@ -16,7 +17,7 @@ public class MonitoringMeetingController : ControllerBase
     public MonitoringMeetingController(IMediator mediator) => _mediator = mediator;
 
     [HttpGet("signals")]
-    [RequirePermission("monitoring:read")]
+    [RequirePermission(PermissionCatalog.Monitoring.Read)]
     public async Task<IActionResult> GetSignals(
         [FromQuery] Guid employeeId,
         [FromQuery] DateOnly date,

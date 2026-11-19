@@ -1,3 +1,4 @@
+using ONEVO.Application.Common.Authorization;
 using ONEVO.Application.Common.RepositoryInterfaces;
 using ONEVO.Application.Common.ServiceInterfaces;
 using ONEVO.Application.Features.Auth.Permission;
@@ -30,7 +31,7 @@ public sealed class DefaultRoleSeeder : IDefaultRoleSeeder
         var explicitPermissions = subscribedPermissions
             .Concat(baselinePermissions)
             .DistinctBy(p => p.Id)
-            .Where(p => p.Code != "*" && !ModuleAutoGrants.Contains(p.Code))
+            .Where(p => p.Code != PermissionCatalog.SuperAdmin && !ModuleAutoGrants.Contains(p.Code))
             .ToList();
 
         var owner = new Role

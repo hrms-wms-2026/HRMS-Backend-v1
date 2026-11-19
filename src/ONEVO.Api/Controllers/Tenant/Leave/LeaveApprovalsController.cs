@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using ONEVO.Api.Contracts.Leave.Approvals;
 using ONEVO.Api.Filters;
+using ONEVO.Application.Common.Authorization;
 using ONEVO.Application.Features.Leave.Approval.Commands;
 using ONEVO.Application.Features.Leave.Approval.Queries;
 
@@ -18,7 +19,7 @@ public sealed class LeaveApprovalsController : ControllerBase
     public LeaveApprovalsController(IMediator mediator) => _mediator = mediator;
 
     [HttpGet("pending-approvals")]
-    [RequirePermission("leave:approve")]
+    [RequirePermission(PermissionCatalog.Leave.Approve)]
     public async Task<IActionResult> PendingApprovals(
         [FromQuery] string? search,
         [FromQuery] Guid? departmentId,
@@ -32,7 +33,7 @@ public sealed class LeaveApprovalsController : ControllerBase
     }
 
     [HttpGet("all")]
-    [RequirePermission("leave:read")]
+    [RequirePermission(PermissionCatalog.Leave.Read)]
     public async Task<IActionResult> All(
         [FromQuery] string? search,
         [FromQuery] Guid? departmentId,
@@ -47,7 +48,7 @@ public sealed class LeaveApprovalsController : ControllerBase
     }
 
     [HttpGet("{requestId:guid}/approval")]
-    [RequirePermission("leave:approve")]
+    [RequirePermission(PermissionCatalog.Leave.Approve)]
     public async Task<IActionResult> ApprovalDetail(Guid requestId, CancellationToken ct = default)
     {
         var result = await _mediator.Send(new GetLeaveApprovalDetailQuery(requestId), ct);
@@ -56,7 +57,7 @@ public sealed class LeaveApprovalsController : ControllerBase
 
     /// <summary>HR's read-only view of any request from the All Requests ledger.</summary>
     [HttpGet("{requestId:guid}/detail")]
-    [RequirePermission("leave:read")]
+    [RequirePermission(PermissionCatalog.Leave.Read)]
     public async Task<IActionResult> Detail(Guid requestId, CancellationToken ct = default)
     {
         var result = await _mediator.Send(new GetLeaveApprovalDetailQuery(requestId, OrgWideRead: true), ct);
@@ -64,7 +65,7 @@ public sealed class LeaveApprovalsController : ControllerBase
     }
 
     [HttpPost("{requestId:guid}/approve")]
-    [RequirePermission("leave:approve")]
+    [RequirePermission(PermissionCatalog.Leave.Approve)]
     public async Task<IActionResult> Approve(Guid requestId, [FromBody] ApproveLeaveRequestRequest? request, CancellationToken ct = default)
     {
         var result = await _mediator.Send(new ApproveLeaveRequestCommand(requestId, request?.Comment), ct);
@@ -72,7 +73,7 @@ public sealed class LeaveApprovalsController : ControllerBase
     }
 
     [HttpPost("{requestId:guid}/reject")]
-    [RequirePermission("leave:approve")]
+    [RequirePermission(PermissionCatalog.Leave.Approve)]
     public async Task<IActionResult> Reject(Guid requestId, [FromBody] RejectLeaveRequestRequest request, CancellationToken ct = default)
     {
         var result = await _mediator.Send(new RejectLeaveRequestCommand(requestId, request.Reason), ct);
@@ -80,7 +81,7 @@ public sealed class LeaveApprovalsController : ControllerBase
     }
 
     [HttpPost("{requestId:guid}/change-decision")]
-    [RequirePermission("leave:approve")]
+    [RequirePermission(PermissionCatalog.Leave.Approve)]
     public async Task<IActionResult> ChangeDecision(Guid requestId, [FromBody] ChangeLeaveDecisionRequest request, CancellationToken ct = default)
     {
         var result = await _mediator.Send(new ChangeLeaveDecisionCommand(requestId, request.Decision, request.Comment), ct);

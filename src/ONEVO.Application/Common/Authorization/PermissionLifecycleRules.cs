@@ -1,9 +1,4 @@
-namespace ONEVO.Application.Features.Auth.Permission.Lifecycle;
-
-/// <summary>A catalogue entry as the synchronizer writes it to the permissions table.</summary>
-public sealed record PermissionDefinition(string Code, string Description, string Module)
-{
-}
+namespace ONEVO.Application.Common.Authorization;
 
 /// <summary>
 /// Old code becomes new code. The permissions row is updated in place, so role grants and user
@@ -67,12 +62,11 @@ public enum RetirementStage
 }
 
 /// <summary>
-/// Retires a code that is no longer in the catalogue. The sync refuses when roles or overrides still
-/// hold the code, unless <see cref="DropGrants"/> says losing that access is intended. To keep the
-/// access under another code, declare a <see cref="PermissionRename"/> instead.
+/// Retires a code. Built from the catalogue entries of kind SoftRetired and Retired. The sync refuses
+/// when roles or overrides still hold the code, unless <see cref="DropGrants"/> says losing that access
+/// is intended. To keep the access under another code, declare a <see cref="PermissionRename"/> instead.
 /// </summary>
-public sealed record PermissionRetirement(
-    string Code, RetirementStage Stage, DateOnly Date, string Reason, bool DropGrants = false)
+public sealed record PermissionRetirement(string Code, RetirementStage Stage, string Reason, bool DropGrants = false)
 {
 }
 

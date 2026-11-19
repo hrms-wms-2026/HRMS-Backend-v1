@@ -2,6 +2,7 @@ using MediatR;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using ONEVO.Api.Filters;
+using ONEVO.Application.Common.Authorization;
 using ONEVO.Application.Features.Monitoring.DailyReport.Queries.ExportEmployeeDailyReport;
 using ONEVO.Application.Features.Monitoring.DailyReport.Queries.GetEmployeeDailyReport;
 
@@ -23,7 +24,7 @@ public class MonitoringDailyReportController : ControllerBase
 
     /// <summary>Combined daily report as JSON, including live 15-minute screenshot URLs.</summary>
     [HttpGet]
-    [RequirePermission("monitoring:read")]
+    [RequirePermission(PermissionCatalog.Monitoring.Read)]
     public async Task<IActionResult> Get(
         [FromQuery] Guid employeeId,
         [FromQuery] DateOnly date,
@@ -40,7 +41,7 @@ public class MonitoringDailyReportController : ControllerBase
 
     /// <summary>Same report as a downloadable .xlsx (Summary / Top Apps / Screenshots sheets).</summary>
     [HttpGet("export")]
-    [RequirePermission("monitoring:read")]
+    [RequirePermission(PermissionCatalog.Monitoring.Read)]
     public async Task<IActionResult> Export(
         [FromQuery] Guid employeeId,
         [FromQuery] DateOnly date,

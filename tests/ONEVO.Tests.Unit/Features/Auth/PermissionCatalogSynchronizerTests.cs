@@ -4,7 +4,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
 using ONEVO.Application.Common.ServiceInterfaces;
-using ONEVO.Application.Features.Auth.Permission.Lifecycle;
+using ONEVO.Application.Common.Authorization;
 using ONEVO.Domain.Features.Auth.Entities;
 using ONEVO.Infrastructure.Identity.Time;
 using ONEVO.Infrastructure.Persistence;
@@ -37,7 +37,7 @@ public class PermissionCatalogSynchronizerTests
     private static Task<PermissionSyncReport> SyncAsync(
         ApplicationDbContext db, PermissionLifecycleRules rules, params string[] catalogue) =>
         new PermissionCatalogSynchronizer(db, new SystemDateTimeProvider(), NullLogger.Instance)
-            .SyncAsync(catalogue.Select(c => new PermissionDefinition(c, $"{c} description", "core_hr")).ToList(), rules);
+            .SyncAsync(catalogue.Select(c => new PermissionDefinition(c, "core_hr", $"{c} description", PermissionKind.Assignable)).ToList(), rules);
 
     private static Permission AddPermission(ApplicationDbContext db, string code)
     {
@@ -247,7 +247,7 @@ public class PermissionCatalogSynchronizerTests
         Grant(db, AddRole(db, TenantB, "R2"), code);
         Override(db, TenantB, code);
         await db.SaveChangesAsync();
-        var rules = new PermissionLifecycleRules([], [], [new PermissionRetirement("chat:read", stage, Day, "unused")]);
+        var rules = new PermissionLifecycleRules([], [], [new PermissionRetirement("chat:read", stage, "unused")]);
 
         var act = () => SyncAsync(db, rules);
 
@@ -267,7 +267,7 @@ public class PermissionCatalogSynchronizerTests
         AddPermission(db, "chat:read");
         await db.SaveChangesAsync();
         var rules = new PermissionLifecycleRules(
-            [], [], [new PermissionRetirement("chat:read", RetirementStage.Removed, Day, "unused")]);
+            [], [], [new PermissionRetirement("chat:read", RetirementStage.Removed, "unused")]);
 
         var report = await SyncAsync(db, rules);
 
@@ -285,7 +285,7 @@ public class PermissionCatalogSynchronizerTests
         Grant(db, role, code);
         await db.SaveChangesAsync();
         var retire = new PermissionLifecycleRules(
-            [], [], [new PermissionRetirement("chat:read", RetirementStage.SoftRetired, Day, "unused", DropGrants: true)]);
+            [], [], [new PermissionRetirement("chat:read", RetirementStage.SoftRetired, "unused", DropGrants: true)]);
 
         var report = await SyncAsync(db, retire, "chat:write");
 

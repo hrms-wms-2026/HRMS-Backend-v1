@@ -2,7 +2,7 @@ using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using ONEVO.Application.Common.ServiceInterfaces;
-using ONEVO.Application.Features.Auth.Permission.Lifecycle;
+using ONEVO.Application.Common.Authorization;
 using ONEVO.Domain.Features.Auth.Entities;
 using ONEVO.Infrastructure.Persistence.SqlServer;
 using ONEVO.Infrastructure.Services.DevPlatform.Tenancy;
@@ -359,7 +359,7 @@ public sealed class PermissionCatalogSynchronizer
 
             Record(run, $"{verb}:{retirement.Code}", verb, retirement.Code, null, new
             {
-                retirement.Reason, retirement.Date, retirement.DropGrants,
+                retirement.Reason, retirement.DropGrants,
                 holders.RoleGrants, holders.Overrides, tenants = holders.Tenants,
             });
         }

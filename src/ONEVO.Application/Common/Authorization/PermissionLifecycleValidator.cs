@@ -1,4 +1,4 @@
-namespace ONEVO.Application.Features.Auth.Permission.Lifecycle;
+namespace ONEVO.Application.Common.Authorization;
 
 /// <summary>
 /// Checks the lifecycle declarations against the catalogue. A unit test runs it on the real lists,

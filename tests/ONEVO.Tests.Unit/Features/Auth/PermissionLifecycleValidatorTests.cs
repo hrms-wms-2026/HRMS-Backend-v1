@@ -1,6 +1,5 @@
 using FluentAssertions;
-using ONEVO.Application.Features.Auth.Permission.Lifecycle;
-using ONEVO.Infrastructure.Persistence.Seeders;
+using ONEVO.Application.Common.Authorization;
 using Xunit;
 
 namespace ONEVO.Tests.Unit.Features.Auth;
@@ -11,8 +10,8 @@ public class PermissionLifecycleValidatorTests
 
     private static readonly PermissionDefinition[] Catalogue =
     [
-        new("a:new", "d", "m"),
-        new("b:live", "d", "m"),
+        new("a:new", "m", "d", PermissionKind.Assignable),
+        new("b:live", "m", "d", PermissionKind.Assignable),
     ];
 
     private static IReadOnlyList<string> Validate(
@@ -24,7 +23,7 @@ public class PermissionLifecycleValidatorTests
     [Fact]
     public void TheRealDeclarations_AreValidAgainstTheRealCatalogue()
     {
-        PermissionLifecycleValidator.Validate(PermissionSeeder.Catalogue, PermissionLifecycle.Rules).Should().BeEmpty();
+        PermissionLifecycleValidator.Validate(ONEVO.Application.Common.Authorization.PermissionCatalog.Seeded, ONEVO.Application.Common.Authorization.PermissionCatalog.Lifecycle).Should().BeEmpty();
     }
 
     [Fact]
@@ -33,7 +32,7 @@ public class PermissionLifecycleValidatorTests
         Validate(
             [new PermissionRename("a:old", "a:new", Day, "r")],
             [new PermissionDefaultGrant("a:new", [DefaultGrantTarget.Owner], Day, "r")],
-            [new PermissionRetirement("c:gone", RetirementStage.SoftRetired, Day, "r")]).Should().BeEmpty();
+            [new PermissionRetirement("c:gone", RetirementStage.SoftRetired, "r")]).Should().BeEmpty();
     }
 
     [Theory]
@@ -55,11 +54,11 @@ public class PermissionLifecycleValidatorTests
     [Fact]
     public void RetiringALiveOrRenamedCode_IsReported()
     {
-        Validate(retirements: [new PermissionRetirement("b:live", RetirementStage.Removed, Day, "r")])
+        Validate(retirements: [new PermissionRetirement("b:live", RetirementStage.Removed, "r")])
             .Should().Contain(e => e.Contains("still in the catalogue"));
         Validate(
                 [new PermissionRename("a:old", "a:new", Day, "r")],
-                retirements: [new PermissionRetirement("a:old", RetirementStage.Removed, Day, "r")])
+                retirements: [new PermissionRetirement("a:old", RetirementStage.Removed, "r")])
             .Should().Contain(e => e.Contains("both renamed and retired"));
     }
 

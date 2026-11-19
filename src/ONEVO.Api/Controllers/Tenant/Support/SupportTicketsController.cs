@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using ONEVO.Api.Contracts.Support;
 using ONEVO.Api.Filters;
+using ONEVO.Application.Common.Authorization;
 using ONEVO.Application.Common.Models;
 using ONEVO.Application.Features.DevPlatform.Support.Services;
 using ONEVO.Application.Features.DevPlatform.Support.Tenant;
@@ -16,7 +17,7 @@ namespace ONEVO.Api.Controllers.Tenant.Support;
 [ApiController]
 [Route("api/v1/support/tickets")]
 [Authorize(Policy = "TenantPolicy")]
-[RequirePermission("support:manage")]
+[RequirePermission(PermissionCatalog.Support.Manage)]
 public sealed class SupportTicketsController : ControllerBase
 {
     private const long MaxUploadRequestBytes = 26 * 1024 * 1024;

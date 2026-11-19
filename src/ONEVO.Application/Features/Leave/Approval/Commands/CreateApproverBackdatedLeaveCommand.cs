@@ -1,4 +1,5 @@
 using MediatR;
+using ONEVO.Application.Common.Authorization;
 using ONEVO.Application.Common.Models;
 using ONEVO.Application.Common.RepositoryInterfaces;
 using ONEVO.Application.Common.ServiceInterfaces;
@@ -32,7 +33,7 @@ public sealed record CreateApproverBackdatedLeaveCommand(Guid EmployeeId, Guid L
 
 public sealed class CreateApproverBackdatedLeaveCommandHandler : IRequestHandler<CreateApproverBackdatedLeaveCommand, Result<Guid>>
 {
-    public const string ApprovePermission = "leave:approve";
+    public const string ApprovePermission = PermissionCatalog.Leave.Approve;
     public const string NotAnApprover = "Only a leave approver of this employee can turn a day into leave.";
     public const string NotPast = "Only a past day can be turned into leave.";
 
