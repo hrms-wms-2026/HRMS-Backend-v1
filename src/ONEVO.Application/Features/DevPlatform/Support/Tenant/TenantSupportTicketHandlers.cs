@@ -9,6 +9,7 @@ using ONEVO.Application.Features.DevPlatform.Support.Mappers;
 using ONEVO.Application.Features.DevPlatform.Support.RepositoryInterfaces;
 using ONEVO.Application.Features.DevPlatform.Support.Services;
 using ONEVO.Domain.Features.DevPlatform.Support.Entities;
+using ONEVO.Application.Features.DevPlatform.Support.Validation;
 
 namespace ONEVO.Application.Features.DevPlatform.Support.Tenant;
 
@@ -74,7 +75,7 @@ public sealed class GetTenantSupportTicketQueryHandler
 }
 
 public sealed record CreateTenantSupportTicketCommand(string? Subject, string? Description, string? Priority, string? Category)
-    : IRequest<Result<TenantSupportTicketDto>>;
+    : IRequest<Result<TenantSupportTicketDto>>, ISupportTicketInput;
 
 public sealed class CreateTenantSupportTicketCommandHandler
     : IRequestHandler<CreateTenantSupportTicketCommand, Result<TenantSupportTicketDto>>
@@ -135,7 +136,7 @@ public sealed class CreateTenantSupportTicketCommandHandler
 /// </summary>
 public sealed record UpdateTenantSupportTicketCommand(
     Guid TicketId, string? Subject, string? Description, string? Priority, string? Category)
-    : IRequest<Result<TenantSupportTicketDto>>;
+    : IRequest<Result<TenantSupportTicketDto>>, ISupportTicketInput;
 
 public sealed class UpdateTenantSupportTicketCommandHandler
     : IRequestHandler<UpdateTenantSupportTicketCommand, Result<TenantSupportTicketDto>>
