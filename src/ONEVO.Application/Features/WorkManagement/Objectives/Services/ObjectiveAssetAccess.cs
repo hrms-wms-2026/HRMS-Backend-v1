@@ -1,3 +1,4 @@
+using ONEVO.Application.Common.Authorization;
 using ONEVO.Application.Common.Models;
 using ONEVO.Application.Common.ServiceInterfaces;
 using ONEVO.Application.Features.Auth.Permission.ServiceInterfaces;
@@ -59,7 +60,7 @@ public sealed class ObjectiveAssetAccess
             return Result<ObjectiveAssetCaller>.NotFound("Objective not found.");
 
         var permissions = await _permissionResolver.ResolveAsync(userId, tenantId, null, ct);
-        var isFullAdmin = permissions.Contains("*");
+        var isFullAdmin = permissions.Contains(PermissionCatalog.SuperAdmin);
         if (!isFullAdmin && !await _readAccess.CanReadAsync(tenantId, objective, employeeId.Value, ct))
             return Result<ObjectiveAssetCaller>.Forbidden("You do not have access to this milestone.");
 
