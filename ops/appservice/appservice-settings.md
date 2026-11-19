@@ -81,7 +81,7 @@ Copy the trailing options (Encrypt, TrustServerCertificate, timeouts) from the V
 | `Email__FromName` | as on the VM (default `CROWNUS`) |
 | `Email__ReplyToEmail` | as on the VM, if set |
 | `Planner__Enabled` | `true` if the VM enables the Planner |
-| `ASPNETCORE__Swagger__Enabled` | leave unset (off) unless the VM sets it |
+| `Swagger__Enabled` | leave unset (off) unless the VM sets it |
 | `AllowedOrigins__0` ... | not needed when the SPAs are served same-origin; set only if the VM has extra origins |
 | `AdminCookieDomain` | leave empty (host-only cookie) in single-host mode |
 | `Urls__WebhookBaseUrl` | `https://<host>` if the VM sets it |

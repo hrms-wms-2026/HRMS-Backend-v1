@@ -82,8 +82,14 @@ public sealed class SingleHostTenantIsolationTests : IAsyncLifetime
 
         var me = await GetMeAsync(sessionCookie, TenantB);
 
-        me.StatusCode.Should().BeOneOf(HttpStatusCode.Unauthorized, HttpStatusCode.Forbidden);
+        me.StatusCode.Should().Be(HttpStatusCode.Forbidden);
         var body = await me.Content.ReadAsStringAsync();
+        using (var json = JsonDocument.Parse(body))
+        {
+            // The web app's re-login flow depends on this exact contract.
+            json.RootElement.GetProperty("detail").GetString()
+                .Should().Be("Token tenant does not match request host tenant.");
+        }
         body.Should().NotContain(TenantB);
         body.Should().NotContain($"\"slug\":\"{TenantB}\"");
     }

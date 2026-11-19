@@ -22,7 +22,7 @@ param(
     [string]$AdminRepo,
 
     # Folder the zip is written to.
-    [string]$OutDir = 'C:\onevoNew',
+    [string]$OutDir = (Split-Path (Resolve-Path (Join-Path $PSScriptRoot '..\..')).Path -Parent),
 
     # Output zip file name; default crownus-appservice-<yyyy-MM-dd>.zip
     [string]$ZipName = ("crownus-appservice-{0}.zip" -f (Get-Date -Format 'yyyy-MM-dd'))
