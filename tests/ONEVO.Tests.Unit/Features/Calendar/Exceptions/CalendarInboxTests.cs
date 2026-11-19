@@ -10,12 +10,15 @@ using ONEVO.Application.Features.Calendar.Inbox;
 using ONEVO.Application.Features.Calendar.RepositoryInterfaces;
 using ONEVO.Application.Features.Conversations.Contracts;
 using ONEVO.Application.Features.Conversations.RepositoryInterfaces;
+using ONEVO.Application.Features.CoreHr.EmployeeAuthority.Models;
+using ONEVO.Application.Features.CoreHr.EmployeeAuthority.ServiceInterfaces;
 using ONEVO.Application.Features.Inbox.Contracts;
 using ONEVO.Application.Features.Inbox.Escalation;
 using ONEVO.Application.Features.Monitoring.Exceptions.Commands.EscalateException;
 using ONEVO.Application.Features.Monitoring.Exceptions.Inbox;
 using ONEVO.Application.Features.Monitoring.Exceptions.RepositoryInterfaces;
 using ONEVO.Application.Features.Monitoring.Exceptions.ServiceInterfaces;
+using ONEVO.Application.Features.Monitoring.Exceptions.Services;
 using ONEVO.Domain.Features.Calendar.Entities;
 using ONEVO.Domain.Features.CoreHr.Entities;
 using ONEVO.Domain.Features.Monitoring.Exceptions.Entities;
@@ -109,6 +112,61 @@ public sealed class CalendarInboxTests
         _incidents.Verify(x => x.ListForExceptionAsync(It.IsAny<Guid>(), It.IsAny<Guid>(), It.IsAny<CancellationToken>()), Times.Never);
         _events.Verify(x => x.ListRsvpHistoryAsync(It.IsAny<Guid>(), It.IsAny<Guid>(), It.IsAny<IReadOnlyCollection<Guid>>(),
             It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    private readonly Mock<IEmployeeAuthorityResolver> _authority = new();
+
+    private CalendarInboxSourceProvider RoutedProvider() => new(_exceptions.Object, _scope.Object, _employees.Object, _incidents.Object,
+        _events.Object, Actions(), _conversations.Object, new ExceptionCaseRouting(_employees.Object, _authority.Object, new InMemoryInboxDecisionJournal()));
+
+    private void RoutedSetup(bool subjectHasApprover, params Guid[] approverOf)
+    {
+        _subject.LegalEntityId = Guid.NewGuid();
+        _exceptions.Setup(e => e.ListActiveInboxEmployeeIdsAsync(TenantId, true, It.IsAny<CancellationToken>())).ReturnsAsync([_subject.Id]);
+        _authority.Setup(a => a.ResolveApprovalInboxScopeAsync(It.IsAny<EmployeeApprovalInboxScopeRequest>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((EmployeeApprovalInboxScopeRequest r, CancellationToken _) => r.CandidateEmployeeIds.Where(approverOf.Contains).ToList());
+        _authority.Setup(a => a.ResolveApproverAsync(It.IsAny<EmployeeApprovalRouteRequest>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(subjectHasApprover
+                ? Result<EmployeeApprovalRoute>.Success(new EmployeeApprovalRoute(Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid(),
+                    "attendance:approve", EmployeeAuthorityPurpose.ExceptionAlertReview, EmployeeApprovalRouteSource.ReportingLine, null))
+                : Result<EmployeeApprovalRoute>.UnprocessableEntity("No eligible approver was found for this employee and action."));
+    }
+
+    [Fact]
+    public async Task Routed_count_is_one_calendar_aggregate_and_loads_no_case()
+    {
+        ReviewerScope();
+        RoutedSetup(subjectHasApprover: true, _subject.Id);
+        _exceptions.Setup(e => e.CountActiveInboxAsync(TenantId, It.Is<ExceptionInboxCountCriteria>(c =>
+                c.Calendar && c.CallerEmployeeId == _manager && c.RoutedEmployeeIds.Contains(_subject.Id)
+                && c.HrFallbackEmployeeIds.Count == 0 && !c.IncludeLegacyHrEscalations), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(1);
+
+        var counts = await RoutedProvider().CountAsync(TenantId, _manager, default);
+
+        counts.Should().BeEquivalentTo(new InboxSourceCounts(0, 1, new Dictionary<string, int>
+        {
+            [CalendarInboxKinds.MeetingException] = 1,
+        }));
+        _exceptions.Verify(e => e.GetListAsync(It.IsAny<Guid>(), It.IsAny<ExceptionListFilter>(), It.IsAny<int>(), It.IsAny<int>(),
+            It.IsAny<CancellationToken>()), Times.Never);
+        _exceptions.Verify(e => e.GetByIdAsync(It.IsAny<Guid>(), It.IsAny<Guid>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task Routed_count_never_falls_back_to_HR_for_calendar_cases()
+    {
+        ReviewerScope(isHr: true);
+        RoutedSetup(subjectHasApprover: false);
+        _exceptions.Setup(e => e.CountActiveInboxAsync(TenantId, It.Is<ExceptionInboxCountCriteria>(c =>
+                c.Calendar && c.RoutedEmployeeIds.Count == 0 && c.HrFallbackEmployeeIds.Count == 0
+                && !c.IncludeLegacyHrEscalations && c.JournaledEscalatedCaseIds.Count == 0), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(0);
+
+        var counts = await RoutedProvider().CountAsync(TenantId, _manager, default);
+
+        counts.OpenAlerts.Should().Be(0);
+        _exceptions.Verify(e => e.CountActiveInboxAsync(TenantId, It.IsAny<ExceptionInboxCountCriteria>(), It.IsAny<CancellationToken>()), Times.Once);
     }
 
     [Fact]

@@ -69,10 +69,40 @@ public sealed class CalendarInboxSourceProvider(
 
     public async Task<InboxSourceCounts> CountAsync(Guid tenantId, Guid callerEmployeeId, CancellationToken ct)
     {
-        var count = (await VisibleActiveCasesAsync(tenantId, callerEmployeeId, ct)).Count;
+        // Production always injects the routing service; the list fallback only keeps routing-less wiring (the broad
+        // scope branch of VisibleActiveCasesAsync) consistent with its own list.
+        var count = routing is null
+            ? (await VisibleActiveCasesAsync(tenantId, callerEmployeeId, ct)).Count
+            : await RoutedCountAsync(tenantId, callerEmployeeId, routing, ct);
         return new InboxSourceCounts(0, count, count == 0
             ? new Dictionary<string, int>()
             : new Dictionary<string, int> { [CalendarInboxKinds.MeetingException] = count });
+    }
+
+    /// <summary>The same visibility as <see cref="VisibleActiveCasesAsync"/> with routing (own, approver-routed, held by
+    /// escalation, chat-added; never HR) as one aggregate COUNT - no case, employee or incident is loaded.</summary>
+    private async Task<int> RoutedCountAsync(Guid tenantId, Guid callerEmployeeId, ExceptionCaseRouting caseRouting, CancellationToken ct)
+    {
+        var candidateEmployeeIds = await exceptions.ListActiveInboxEmployeeIdsAsync(tenantId, calendar: true, ct);
+        var reviewScope = candidateEmployeeIds.Count == 0
+            ? null
+            : await scope.ResolveAsync(forAction: true, candidateEmployeeIds, ct);
+        var route = reviewScope is null
+            ? ExceptionInboxCountRoute.Empty
+            : await caseRouting.CountRouteAsync(tenantId, candidateEmployeeIds, reviewScope, hrFallback: false, ct);
+        var addedCaseIds = (await conversations.ListAddedSubjectsAsync(tenantId, callerEmployeeId, Source, ct))
+            .Select(subject => subject.Id)
+            .Distinct()
+            .ToList();
+        return await exceptions.CountActiveInboxAsync(tenantId, new ExceptionInboxCountCriteria(
+            callerEmployeeId,
+            route.RoutedEmployeeIds,
+            route.HrFallbackEmployeeIds,
+            route.HeldCaseIds,
+            addedCaseIds,
+            route.IncludeLegacyHrEscalations,
+            route.JournaledEscalatedCaseIds,
+            Calendar: true), ct);
     }
 
     public async Task<IReadOnlyList<InboxItem>> ListAsync(Guid tenantId, InboxQuery query, Guid callerEmployeeId, CancellationToken ct)

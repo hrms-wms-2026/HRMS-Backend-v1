@@ -204,6 +204,36 @@ public sealed class EfExceptionRepositoryTests
             .Should().BeEquivalentTo([caller, routedEmployee, heldEmployee, addedEmployee, legacyEmployee]);
     }
 
+    [Fact]
+    public async Task CountActiveInboxAsync_HR_fallback_counts_open_cases_of_no_approver_employees_except_journaled_escalations()
+    {
+        await using var db = BuildInMemoryDb();
+        var tenantId = Guid.NewGuid();
+        var noApprover = Guid.NewGuid();
+        DomainException Case(ExceptionStatus status) => new()
+        {
+            Id = Guid.NewGuid(), TenantId = tenantId, EmployeeId = noApprover, Type = ExceptionType.SustainedLowActivity, Status = status,
+            Title = "t", Description = "d", DetectedAt = DayStart
+        };
+        var open = Case(ExceptionStatus.Open);
+        var acknowledged = Case(ExceptionStatus.Acknowledged);
+        var escalatedElsewhere = Case(ExceptionStatus.Escalated);
+        db.Exceptions.AddRange(open, acknowledged, escalatedElsewhere);
+        await db.SaveChangesAsync();
+
+        var count = await new EfExceptionRepository(db).CountActiveInboxAsync(tenantId, new ExceptionInboxCountCriteria(
+            CallerEmployeeId: Guid.NewGuid(),
+            RoutedEmployeeIds: [],
+            HrFallbackEmployeeIds: [noApprover],
+            HeldCaseIds: [],
+            AddedCaseIds: [],
+            IncludeLegacyHrEscalations: false,
+            JournaledEscalatedCaseIds: [escalatedElsewhere.Id],
+            Calendar: false), CancellationToken.None);
+
+        count.Should().Be(2, "HR keeps the open and acknowledged cases; the journaled escalation went to someone else");
+    }
+
     private static ApplicationDbContext BuildInMemoryDb()
     {
         var options = new DbContextOptionsBuilder<ApplicationDbContext>()

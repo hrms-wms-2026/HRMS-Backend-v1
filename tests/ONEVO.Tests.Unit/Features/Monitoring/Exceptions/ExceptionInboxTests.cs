@@ -177,6 +177,33 @@ public class ExceptionInboxTests
     }
 
     [Fact]
+    public async Task Count_gives_HR_the_no_approver_fallback_and_legacy_escalations_minus_journaled_ones()
+    {
+        var journaled = Guid.NewGuid();
+        _journal.Add(TenantId, new ItemRef("monitoring", "exception_case", journaled), InboxJournalActions.Escalate, Stranger, Now.AddHours(-1));
+        _exceptions.Setup(x => x.ListActiveInboxEmployeeIdsAsync(TenantId, false, It.IsAny<CancellationToken>()))
+            .ReturnsAsync([Subject]);
+        ScopeIs(isHr: true, Subject);
+        ApproverOf();
+        _authority.Setup(a => a.ResolveApproverAsync(It.IsAny<EmployeeApprovalRouteRequest>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(Result<EmployeeApprovalRoute>.UnprocessableEntity("No eligible approver was found for this employee and action."));
+        _exceptions.Setup(x => x.CountActiveInboxAsync(
+                TenantId,
+                It.Is<ExceptionInboxCountCriteria>(c =>
+                    c.RoutedEmployeeIds.Count == 0
+                    && c.HrFallbackEmployeeIds.SequenceEqual(new[] { Subject })
+                    && c.IncludeLegacyHrEscalations
+                    && c.JournaledEscalatedCaseIds.SequenceEqual(new[] { journaled })
+                    && !c.Calendar),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(2);
+
+        var counts = await Provider().CountAsync(TenantId, Reviewer, default);
+
+        counts.OpenAlerts.Should().Be(2);
+    }
+
+    [Fact]
     public async Task Count_does_not_treat_broad_scope_as_exact_routing()
     {
         _exceptions.Setup(x => x.ListActiveInboxEmployeeIdsAsync(TenantId, false, It.IsAny<CancellationToken>()))
