@@ -159,11 +159,6 @@ namespace ONEVO.Infrastructure.Migrations
                 column: "employee_id");
 
             migrationBuilder.CreateIndex(
-                name: "ix_task_drafts_project_id",
-                table: "task_drafts",
-                column: "project_id");
-
-            migrationBuilder.CreateIndex(
                 name: "ix_task_comments_employee_id",
                 table: "task_comments",
                 column: "employee_id");
@@ -192,11 +187,6 @@ namespace ONEVO.Infrastructure.Migrations
                 name: "ix_task_assignments_employee_id",
                 table: "task_assignments",
                 column: "employee_id");
-
-            migrationBuilder.CreateIndex(
-                name: "ix_task_assignments_user_id",
-                table: "task_assignments",
-                column: "user_id");
 
             migrationBuilder.CreateIndex(
                 name: "ix_sprints_project_id",
@@ -347,11 +337,6 @@ namespace ONEVO.Infrastructure.Migrations
                 name: "ix_employee_hierarchy_closure_descendant_employee_id",
                 table: "employee_hierarchy_closure",
                 column: "descendant_employee_id");
-
-            migrationBuilder.CreateIndex(
-                name: "ix_employee_hierarchy_closure_source_position_assignment_id",
-                table: "employee_hierarchy_closure",
-                column: "source_position_assignment_id");
 
             migrationBuilder.CreateIndex(
                 name: "ix_clock_in_late_deduction_rules_time_off_type_id",
@@ -594,13 +579,6 @@ namespace ONEVO.Infrastructure.Migrations
                 principalColumn: "id");
 
             migrationBuilder.AddForeignKey(
-                name: "fk_employee_hierarchy_closure_position_assignments_source_position_assignment_id",
-                table: "employee_hierarchy_closure",
-                column: "source_position_assignment_id",
-                principalTable: "position_assignments",
-                principalColumn: "id");
-
-            migrationBuilder.AddForeignKey(
                 name: "fk_employee_work_locations_employees_employee_id",
                 table: "employee_work_locations",
                 column: "employee_id",
@@ -619,13 +597,6 @@ namespace ONEVO.Infrastructure.Migrations
                 table: "employees",
                 column: "legal_entity_id",
                 principalTable: "legal_entities",
-                principalColumn: "id");
-
-            migrationBuilder.AddForeignKey(
-                name: "fk_employees_users_user_id",
-                table: "employees",
-                column: "user_id",
-                principalTable: "users",
                 principalColumn: "id");
 
             migrationBuilder.AddForeignKey(
@@ -749,13 +720,6 @@ namespace ONEVO.Infrastructure.Migrations
                 principalColumn: "id");
 
             migrationBuilder.AddForeignKey(
-                name: "fk_task_assignments_users_user_id",
-                table: "task_assignments",
-                column: "user_id",
-                principalTable: "users",
-                principalColumn: "id");
-
-            migrationBuilder.AddForeignKey(
                 name: "fk_task_categories_projects_project_id",
                 table: "task_categories",
                 column: "project_id",
@@ -788,13 +752,6 @@ namespace ONEVO.Infrastructure.Migrations
                 table: "task_comments",
                 column: "employee_id",
                 principalTable: "employees",
-                principalColumn: "id");
-
-            migrationBuilder.AddForeignKey(
-                name: "fk_task_drafts_projects_project_id",
-                table: "task_drafts",
-                column: "project_id",
-                principalTable: "projects",
                 principalColumn: "id");
 
             migrationBuilder.AddForeignKey(
@@ -1029,10 +986,6 @@ namespace ONEVO.Infrastructure.Migrations
                 table: "employee_hierarchy_closure");
 
             migrationBuilder.DropForeignKey(
-                name: "fk_employee_hierarchy_closure_position_assignments_source_position_assignment_id",
-                table: "employee_hierarchy_closure");
-
-            migrationBuilder.DropForeignKey(
                 name: "fk_employee_work_locations_employees_employee_id",
                 table: "employee_work_locations");
 
@@ -1042,10 +995,6 @@ namespace ONEVO.Infrastructure.Migrations
 
             migrationBuilder.DropForeignKey(
                 name: "fk_employees_legal_entities_legal_entity_id",
-                table: "employees");
-
-            migrationBuilder.DropForeignKey(
-                name: "fk_employees_users_user_id",
                 table: "employees");
 
             migrationBuilder.DropForeignKey(
@@ -1117,10 +1066,6 @@ namespace ONEVO.Infrastructure.Migrations
                 table: "task_assignments");
 
             migrationBuilder.DropForeignKey(
-                name: "fk_task_assignments_users_user_id",
-                table: "task_assignments");
-
-            migrationBuilder.DropForeignKey(
                 name: "fk_task_categories_projects_project_id",
                 table: "task_categories");
 
@@ -1139,10 +1084,6 @@ namespace ONEVO.Infrastructure.Migrations
             migrationBuilder.DropForeignKey(
                 name: "fk_task_comments_employees_employee_id",
                 table: "task_comments");
-
-            migrationBuilder.DropForeignKey(
-                name: "fk_task_drafts_projects_project_id",
-                table: "task_drafts");
 
             migrationBuilder.DropForeignKey(
                 name: "fk_task_edit_logs_employees_employee_id",
@@ -1325,10 +1266,6 @@ namespace ONEVO.Infrastructure.Migrations
                 table: "task_edit_logs");
 
             migrationBuilder.DropIndex(
-                name: "ix_task_drafts_project_id",
-                table: "task_drafts");
-
-            migrationBuilder.DropIndex(
                 name: "ix_task_comments_employee_id",
                 table: "task_comments");
 
@@ -1350,10 +1287,6 @@ namespace ONEVO.Infrastructure.Migrations
 
             migrationBuilder.DropIndex(
                 name: "ix_task_assignments_employee_id",
-                table: "task_assignments");
-
-            migrationBuilder.DropIndex(
-                name: "ix_task_assignments_user_id",
                 table: "task_assignments");
 
             migrationBuilder.DropIndex(
@@ -1474,10 +1407,6 @@ namespace ONEVO.Infrastructure.Migrations
 
             migrationBuilder.DropIndex(
                 name: "ix_employee_hierarchy_closure_descendant_employee_id",
-                table: "employee_hierarchy_closure");
-
-            migrationBuilder.DropIndex(
-                name: "ix_employee_hierarchy_closure_source_position_assignment_id",
                 table: "employee_hierarchy_closure");
 
             migrationBuilder.DropIndex(

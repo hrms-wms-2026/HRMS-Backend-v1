@@ -6,7 +6,7 @@ Task: `docs/Improvements/person-1-security-and-auth/task-39 Foreign keys and che
 
 | Item | Before | After |
 |---|---|---|
-| GUID `_id` columns without a foreign key (including `tenant_id`) | 477 | 414 |
+| GUID `_id` columns without a foreign key (including `tenant_id`) | 477 | 418 |
 | of which `tenant_id` | 163 | 163 (task 39d) |
 | Status/type text columns without a check constraint | 124 | 103 |
 | Cascade deletes from `employees` | 7 | 0 |
@@ -14,11 +14,11 @@ Task: `docs/Improvements/person-1-security-and-auth/task-39 Foreign keys and che
 The review counted 313 id columns without a key; the EF model gives 314, because one column was added since.
 
 - **Inventory and ratchet**: `tests/ONEVO.Tests.Architecture/Schema/SchemaIntegrityInventoryTests.cs` with two allow-lists. A new column without a key or constraint fails the architecture tests unless it is listed with a reason. To rewrite the lists from the model, run that class with `ONEVO_SCHEMA_INVENTORY_WRITE=1`.
-- **63 foreign keys**, all `NO ACTION` (one is `Restrict` to match its table; same DDL): `src/ONEVO.Infrastructure/Persistence/Integrity/ReferenceForeignKeys.cs`. They cover core HR (11), leave (2), time and attendance (13) and work management (37). There are no navigation properties, so the domain model is unchanged. EF added 62 indexes, so every new key has an index that starts with it.
+- **59 foreign keys**, all `NO ACTION` (one is `Restrict` to match its table; same DDL): `src/ONEVO.Infrastructure/Persistence/Integrity/ReferenceForeignKeys.cs`. They cover core HR (9), leave (2), time and attendance (13) and work management (35). There are no navigation properties, so the domain model is unchanged. EF added 59 indexes, so every new key has an index that starts with it.
 - **21 check constraints** (`col IN (...)`): `src/ONEVO.Infrastructure/Persistence/Integrity/StatusCheckConstraints.cs`. 8 of them cover enum-backed columns: `tenants.status`, `tenant_status_histories.from_status` and `to_status`, `exceptions.status` and `type`, `monitoring_notifications.type`, and `biometric_*.status`. The other 13 use constants classes: `leave_requests`, `attendance_records` and `outbox_messages` (named in task 39), plus leave approvers, day allocations, balance audit change types, attendance alerts and deductions, position assignments, onboarding drafts, bulk onboarding batches and rows, and sprints.
 - **Enum sync test**: `StatusCheckConstraintTests.MigrationsAllowEveryValueTheCodeCanWrite` compares each constraint in the migration snapshot with the enum or constants. It fails when code gains a value that the migrations do not allow.
 - **Delete behaviour**: 7 keys from `employees` changed from CASCADE to NO ACTION. `ForeignKeyRulesTests` guards the rule, and also checks that every foreign key has an index that starts with it.
-- **Migration**: `20261119140707_AddReferenceForeignKeysAndStatusChecks39a`. It changes no tables or columns. It was created with `dotnet ef migrations add` and has not been applied to any shared database.
+- **Migration**: `20261119161942_AddReferenceForeignKeysAndStatusChecks39a`. It changes no tables or columns. It was created with `dotnet ef migrations add` and has not been applied to any shared database.
 
 ## Delete behaviour
 
@@ -45,7 +45,7 @@ Keys left out on purpose, because the code hard-deletes the parent (details in t
   WHERE c.employee_id IS NOT NULL AND NOT EXISTS (SELECT 1 FROM employees p WHERE p.id = c.employee_id);
   ```
 
-  For a check constraint, count the rows where `status NOT IN (...)`. All 63 keys use tables whose RLS predicate allows admin mode, so the query sees every row.
+  For a check constraint, count the rows where `status NOT IN (...)`. All 59 keys use tables whose RLS predicate allows admin mode, so the query sees every row.
 
 ## Gate
 
@@ -61,3 +61,21 @@ These are the task files 39b to 39g in `docs/Improvements/person-1-security-and-
 - 39e: the other modules (124 columns).
 - 39f: the remaining 97 check constraints, starting with the task 37 workflow tables.
 - 39g: review of the 45 remaining cascade deletes.
+
+## Integration failures found and fixed
+
+The first full gate failed with 337+ integration failures, all foreign key violations from test fixtures (no check constraint failed). Runs of the affected classes found them layer by layer, since each test stops at its first bad insert:
+
+| Key | Failures | Cause | Change |
+|---|---|---|---|
+| `fk_employees_users_user_id` | 433 | ~26 fixtures insert employees with a random `UserId` and no `users` row | Key moved to task 39b |
+| `fk_projects_project_categories_category_id` | 302 | `MyTeamDb.AddProject` (used by the meeting, planner and My Team suites) set a random `CategoryId` | Fixture now inserts a `project_categories` row; key kept |
+| `fk_task_assignments_users_user_id` | 86 | Assignments copy the fixture employees' random user ids | Key moved to task 39b |
+| `fk_employee_hierarchy_closure_..._source_position_assignment_id` | 26 | Six test files write closure rows with made-up assignment ids | Key moved to task 39b |
+| `fk_task_drafts_projects_project_id` | 2 | Drafts stored for projects that do not exist | Key moved to task 39b |
+| `fk_employee_hierarchy_closure_employees_ancestor_employee_id` | 1 | `PositionAssignmentRlsIntegrationTests` used a random ancestor | Fixture uses a real employee; key kept |
+| `fk_task_comments_employees_employee_id` | 1 | `TaskCommentsIntegrationTests` gave a comment a random author | Fixture inserts the author employee; key kept |
+
+The unit gate also failed once: `EfPositionRepositoryTests` requires every key of `management_coverage_records` to be `Restrict`, so the new key on that table uses `Restrict` (the same `NO ACTION` DDL).
+
+No test was weakened. `MeetingIntegrityTests` sets random objective ids on purpose, but it turns constraints off first (`RowFactory.DisableConstraintsAsync`), so it is not affected.

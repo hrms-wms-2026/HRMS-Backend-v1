@@ -148,6 +148,7 @@ employee_dependents.created_by_id | audit | AuditableEntityInterceptor writes Gu
 employee_dependents.tenant_id | tenant | foreign key to tenants, added in batches: task-39d
 employee_emergency_contacts.created_by_id | audit | AuditableEntityInterceptor writes Guid.Empty for system writes: task-39c
 employee_emergency_contacts.tenant_id | tenant | foreign key to tenants, added in batches: task-39d
+employee_hierarchy_closure.source_position_assignment_id | reference | derived row rebuilt from position_assignments; fixtures write it with made-up ids: fix them, then add the key (task-39b)
 employee_hierarchy_closure.tenant_id | tenant | foreign key to tenants, added in batches: task-39d
 employee_monitoring_overrides.employee_id | reference | not reviewed yet: task-39e
 employee_monitoring_overrides.set_by_id | reference | not reviewed yet: task-39e
@@ -159,6 +160,7 @@ employee_work_sessions.user_id | reference | not reviewed yet: task-39e
 employees.created_by_id | audit | AuditableEntityInterceptor writes Guid.Empty for system writes: task-39c
 employees.nationality_id | reference | not reviewed yet: task-39b
 employees.tenant_id | tenant | foreign key to tenants, added in batches: task-39d
+employees.user_id | reference | about 26 integration fixtures insert employees with a random user id: fix them, then add the key (task-39b)
 entity_assets.created_by_id | audit | AuditableEntityInterceptor writes Guid.Empty for system writes: task-39c
 entity_assets.owner_id | polymorphic | the type column next to it names the table, so no foreign key is possible
 entity_assets.tenant_id | tenant | foreign key to tenants, added in batches: task-39d
@@ -334,6 +336,7 @@ sprints.tenant_id | tenant | foreign key to tenants, added in batches: task-39d
 support_ticket_attachments.tenant_id | tenant | foreign key to tenants, added in batches: task-39d
 support_ticket_comments.tenant_id | tenant | foreign key to tenants, added in batches: task-39d
 task_assignments.assigned_by_id | reference | not reviewed yet: task-39b
+task_assignments.user_id | reference | fixtures copy the random user id of fixture employees, as for employees.user_id: fix them, then add the key (task-39b)
 task_categories.created_by_id | audit | AuditableEntityInterceptor writes Guid.Empty for system writes: task-39c
 task_categories.tenant_id | tenant | foreign key to tenants, added in batches: task-39d
 task_clocking_sessions.created_by_id | audit | AuditableEntityInterceptor writes Guid.Empty for system writes: task-39c
@@ -346,6 +349,7 @@ task_comments.created_by_id | audit | AuditableEntityInterceptor writes Guid.Emp
 task_comments.tenant_id | tenant | foreign key to tenants, added in batches: task-39d
 task_drafts.created_by_id | audit | AuditableEntityInterceptor writes Guid.Empty for system writes: task-39c
 task_drafts.owner_user_id | reference | not reviewed yet: task-39b
+task_drafts.project_id | reference | integration tests store drafts for projects that do not exist: fix them, then add the key (task-39b)
 task_drafts.tenant_id | tenant | foreign key to tenants, added in batches: task-39d
 task_edit_logs.created_by_id | audit | AuditableEntityInterceptor writes Guid.Empty for system writes: task-39c
 task_edit_logs.edit_request_id | reference | not reviewed yet: task-39b

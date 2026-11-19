@@ -12,7 +12,7 @@ using ONEVO.Infrastructure.Persistence;
 namespace ONEVO.Infrastructure.Migrations
 {
     [DbContext(typeof(ApplicationDbContext))]
-    [Migration("20261119140707_AddReferenceForeignKeysAndStatusChecks39a")]
+    [Migration("20261119161942_AddReferenceForeignKeysAndStatusChecks39a")]
     partial class AddReferenceForeignKeysAndStatusChecks39a
     {
         /// <inheritdoc />
@@ -3967,9 +3967,6 @@ namespace ONEVO.Infrastructure.Migrations
 
                     b.HasIndex("DescendantEmployeeId")
                         .HasDatabaseName("ix_employee_hierarchy_closure_descendant_employee_id");
-
-                    b.HasIndex("SourcePositionAssignmentId")
-                        .HasDatabaseName("ix_employee_hierarchy_closure_source_position_assignment_id");
 
                     b.HasIndex("TenantId", "DescendantEmployeeId")
                         .HasDatabaseName("ix_employee_hierarchy_closure_tenant_id_descendant_employee_id");
@@ -16108,9 +16105,6 @@ namespace ONEVO.Infrastructure.Migrations
                         .IsUnique()
                         .HasDatabaseName("ix_task_assignments_one_per_task");
 
-                    b.HasIndex("UserId")
-                        .HasDatabaseName("ix_task_assignments_user_id");
-
                     b.ToTable("task_assignments", (string)null);
                 });
 
@@ -16528,9 +16522,6 @@ namespace ONEVO.Infrastructure.Migrations
 
                     b.HasKey("Id")
                         .HasName("pk_task_drafts");
-
-                    b.HasIndex("ProjectId")
-                        .HasDatabaseName("ix_task_drafts_project_id");
 
                     b.HasIndex("TenantId", "OwnerUserId")
                         .HasDatabaseName("ix_task_drafts_tenant_id_owner_user_id");
@@ -17659,13 +17650,6 @@ namespace ONEVO.Infrastructure.Migrations
                         .OnDelete(DeleteBehavior.NoAction)
                         .HasConstraintName("fk_employees_legal_entities_legal_entity_id");
 
-                    b.HasOne("ONEVO.Domain.Features.InfrastructureModule.Entities.User", null)
-                        .WithMany()
-                        .HasForeignKey("UserId")
-                        .OnDelete(DeleteBehavior.NoAction)
-                        .IsRequired()
-                        .HasConstraintName("fk_employees_users_user_id");
-
                     b.HasOne("ONEVO.Domain.Features.TimeAttendance.Entities.WorkMode", null)
                         .WithMany()
                         .HasForeignKey("WorkModeId")
@@ -17763,13 +17747,6 @@ namespace ONEVO.Infrastructure.Migrations
                         .OnDelete(DeleteBehavior.NoAction)
                         .IsRequired()
                         .HasConstraintName("fk_employee_hierarchy_closure_employees_descendant_employee_id");
-
-                    b.HasOne("ONEVO.Domain.Features.CoreHr.Entities.PositionAssignment", null)
-                        .WithMany()
-                        .HasForeignKey("SourcePositionAssignmentId")
-                        .OnDelete(DeleteBehavior.NoAction)
-                        .IsRequired()
-                        .HasConstraintName("fk_employee_hierarchy_closure_position_assignments_source_position_assignment_id");
                 });
 
             modelBuilder.Entity("ONEVO.Domain.Features.CoreHr.Entities.OffboardingRecord", b =>
@@ -19701,13 +19678,6 @@ namespace ONEVO.Infrastructure.Migrations
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired()
                         .HasConstraintName("fk_task_assignments_work_tasks_task_id");
-
-                    b.HasOne("ONEVO.Domain.Features.InfrastructureModule.Entities.User", null)
-                        .WithMany()
-                        .HasForeignKey("UserId")
-                        .OnDelete(DeleteBehavior.NoAction)
-                        .IsRequired()
-                        .HasConstraintName("fk_task_assignments_users_user_id");
                 });
 
             modelBuilder.Entity("ONEVO.Domain.Features.WorkManagement.Tasks.Entities.TaskCategory", b =>
@@ -19799,16 +19769,6 @@ namespace ONEVO.Infrastructure.Migrations
                         .OnDelete(DeleteBehavior.NoAction)
                         .IsRequired()
                         .HasConstraintName("fk_task_comment_reactions_employees_employee_id");
-                });
-
-            modelBuilder.Entity("ONEVO.Domain.Features.WorkManagement.Tasks.Entities.TaskDraft", b =>
-                {
-                    b.HasOne("ONEVO.Domain.Features.WorkManagement.Projects.Entities.Project", null)
-                        .WithMany()
-                        .HasForeignKey("ProjectId")
-                        .OnDelete(DeleteBehavior.NoAction)
-                        .IsRequired()
-                        .HasConstraintName("fk_task_drafts_projects_project_id");
                 });
 
             modelBuilder.Entity("ONEVO.Domain.Features.WorkManagement.Tasks.Entities.TaskEditLog", b =>

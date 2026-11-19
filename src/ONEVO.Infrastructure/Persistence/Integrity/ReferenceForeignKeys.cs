@@ -43,12 +43,13 @@ public static class ReferenceForeignKeys
     // Task 39a: core HR and org structure.
     private static void ApplyCoreHr(ModelBuilder b)
     {
-        Fk<Employee, User>(b, x => x.UserId);
+        // employees.user_id waits for task 39b: about 26 integration fixtures insert employees without a users row.
         Fk<Employee, Department>(b, x => x.DepartmentId);
         Fk<Employee, LegalEntity>(b, x => x.LegalEntityId);
         Fk<EmployeeHierarchyClosure, Employee>(b, x => x.AncestorEmployeeId);
         Fk<EmployeeHierarchyClosure, Employee>(b, x => x.DescendantEmployeeId);
-        Fk<EmployeeHierarchyClosure, PositionAssignment>(b, x => x.SourcePositionAssignmentId);
+        // employee_hierarchy_closure.source_position_assignment_id waits for task 39b: the closure is rebuilt from
+        // position_assignments, and integration fixtures write closure rows with made-up assignment ids.
         Fk<PositionAssignment, Employee>(b, x => x.ReportsToEmployeeId);
         // Restrict, like the other keys of this table (EfPositionRepositoryTests).
         Fk<ManagementCoverageRecord, Employee>(b, x => x.ResponsibleEmployeeId, DeleteBehavior.Restrict);
@@ -85,7 +86,8 @@ public static class ReferenceForeignKeys
     }
 
     // Task 39a: work management. Parents only: tasks, sprints, task categories and task statuses are
-    // hard-deleted, so keys pointing at them wait for task 39b.
+    // hard-deleted, so keys pointing at them wait for task 39b. task_drafts.project_id also waits: its
+    // integration tests store drafts for projects that do not exist.
     private static void ApplyWorkManagement(ModelBuilder b)
     {
         Fk<WorkTask, Project>(b, x => x.ProjectId);
@@ -99,9 +101,8 @@ public static class ReferenceForeignKeys
         Fk<TaskCategory, Project>(b, x => x.ProjectId);
         Fk<WorkTaskStatus, Project>(b, x => x.ProjectId);
         Fk<WorkTaskStatus, Objective>(b, x => x.ObjectiveId);
-        Fk<TaskDraft, Project>(b, x => x.ProjectId);
         Fk<TaskAssignment, Employee>(b, x => x.EmployeeId);
-        Fk<TaskAssignment, User>(b, x => x.UserId);
+        // task_assignments.user_id waits for task 39b, with employees.user_id (same fixture cause).
         Fk<TaskComment, Employee>(b, x => x.EmployeeId);
         Fk<TaskCommentLog, Employee>(b, x => x.EmployeeId);
         Fk<TaskCommentReaction, Employee>(b, x => x.EmployeeId);

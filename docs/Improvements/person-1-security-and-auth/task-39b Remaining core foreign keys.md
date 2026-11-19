@@ -10,7 +10,7 @@
 
 ## What is left
 
-39 columns in the core modules are marked `task-39b` in `tests/ONEVO.Tests.Architecture/Schema/missing-foreign-keys.txt`. Task 39a left them out because each needs a decision first:
+43 columns in the core modules are marked `task-39b` in `tests/ONEVO.Tests.Architecture/Schema/missing-foreign-keys.txt`. Task 39a left them out because each needs a decision first:
 
 - `attendance_alert_deductions.alert_id`: `AttendanceAlertMaterializer` deletes an alert whose day no longer qualifies, but keeps the refunded deduction. Decide: soft-delete the alert, or make `alert_id` nullable with `SET NULL`.
 - `leave_requests`, `leave_entitlements` and `leave_balance_audits` `.leave_policy_version_id`: `DeleteLeavePolicyVersion` and `AddLeavePolicyVersion` hard-delete a future version that a leave request may already use. Block that delete when the version is referenced, then add the keys.
@@ -32,3 +32,12 @@
 ## Done when
 
 - Every `task-39b` line is gone from the allow-list: the column has a key, or it moves to `polymorphic` or `external` with a reason.
+
+## Keys taken out of 39a because test fixtures break them
+
+The integration suite showed that these keys are right for the application but break test fixtures, which insert rows that point at nothing. Fix the fixtures first, then add the keys (they were in `ReferenceForeignKeys` during 39a; the code comments say where):
+
+- `employees.user_id` → `users`: 433 test failures. About 26 fixtures create employees with `UserId = Guid.NewGuid()` and no `users` row (`MyTeamDb`, `CalendarNotificationDb`, `EmployeesListIntegrationTests`, the position-assignment tests and others). A shared helper that inserts the user with the employee fixes most of them.
+- `task_assignments.user_id` → `users`: 86 failures. Same cause: assignments copy the fixture employee's random user id.
+- `employee_hierarchy_closure.source_position_assignment_id` → `position_assignments`: 26 failures. Six test files write closure rows with made-up assignment ids. The closure is rebuilt from `position_assignments` by `EfEmployeeHierarchyClosureRepository.RebuildAsync`, so the fixtures can call that instead.
+- `task_drafts.project_id` → `projects`: 2 failures in `TaskDraftRepositoryIntegrationTests`, which stores drafts for projects that do not exist.

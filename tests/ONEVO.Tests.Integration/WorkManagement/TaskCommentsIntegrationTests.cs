@@ -122,9 +122,24 @@ public sealed class TaskCommentsIntegrationTestsFixture : IAsyncLifetime
         await switcher.SwitchToTenantAsync(new TenantRegistryEntry(tenantId, tenantId.ToString(), TenantStatus.Active, null));
 
         var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+        // A real employee row: task_comments.employee_id has a foreign key to employees (task 39a).
+        var author = new ONEVO.Domain.Features.CoreHr.Entities.Employee
+        {
+            Id = Guid.NewGuid(),
+            TenantId = tenantId,
+            UserId = Guid.NewGuid(),
+            EmployeeNumber = $"OTHER-{Guid.NewGuid():N}"[..20],
+            FirstName = "Other",
+            LastName = "Author",
+            Email = $"other-{Guid.NewGuid():N}@example.com",
+            HireDate = DateOnly.FromDateTime(DateTime.UtcNow),
+            EmploymentStatusId = ONEVO.Domain.Lookups.EmploymentStatusIds.Active,
+            CreatedAt = DateTimeOffset.UtcNow
+        };
+        db.Employees.Add(author);
         var comment = new ONEVO.Domain.Features.WorkManagement.Tasks.Entities.TaskComment
         {
-            Id = Guid.NewGuid(), TenantId = tenantId, TaskId = taskId, EmployeeId = Guid.NewGuid(),
+            Id = Guid.NewGuid(), TenantId = tenantId, TaskId = taskId, EmployeeId = author.Id,
             Content = content, CreatedById = Guid.NewGuid(), CreatedAt = DateTimeOffset.UtcNow
         };
         db.Set<ONEVO.Domain.Features.WorkManagement.Tasks.Entities.TaskComment>().Add(comment);
