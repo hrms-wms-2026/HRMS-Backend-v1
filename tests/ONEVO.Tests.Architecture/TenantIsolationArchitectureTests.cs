@@ -239,6 +239,10 @@ public class TenantIsolationArchitectureTests
             // Meetings-as-tasks reads: IgnoreQueryFilters([ExcludeMeetings]) only - the named meeting filter, never
             // the tenant filter - behind MeetingVisibility or IMeetingAccessResolver, in EfMeetingRepository.
             "EfMeetingRepository.cs",
+            // Permission catalogue sync: reads the global permissions table (no tenant_id) past its
+            // soft-retired filter only, so it can rename, restore or remove retired codes. Tenant-owned
+            // grant tables are never read with IgnoreQueryFilters there.
+            "PermissionCatalogSynchronizer.cs",
         };
 
         var srcDirectory = FindSrcDirectory();

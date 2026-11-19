@@ -1,35 +1,23 @@
-using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
-using ONEVO.Domain.Features.Auth.Entities;
+using ONEVO.Application.Common.ServiceInterfaces;
+using ONEVO.Application.Features.Auth.Permission.Lifecycle;
+using ONEVO.Infrastructure.Identity.Time;
 using ONEVO.Infrastructure.Persistence;
 
 namespace ONEVO.Infrastructure.Persistence.Seeders;
 
+/// <summary>
+/// Start-up hook for PermissionCatalogSynchronizer: writes the catalogue below and applies
+/// PermissionLifecycle (renames, default grants, retirements). The run is idempotent and serialized
+/// across instances by an app lock, so running it at every start is safe. Set
+/// PermissionCatalog:SyncOnStartup=false to leave it to the deploy step (task 09).
+/// </summary>
 public class PermissionSeeder : IHostedService
 {
-    private static readonly HashSet<string> RetiredPermissionCodes = new(StringComparer.Ordinal)
-    {
-        "agent:command", "agent:manage", "agent:register", "agent:view-health",
-        "projects:access", "projects:read",
-        "tasks:read", "tasks:read-own", "tasks:write", "tasks:approve", "tasks:delete",
-        "time:read", "time:write", "time:approve",
-        "okr:read", "okr:write", "wiki:read", "wiki:write",
-        "sprints:read", "sprints:manage",
-        "workspaces:read", "workspaces:create", "workspaces:manage",
-        "resources:read", "resources:manage", "roadmaps:read", "roadmaps:write",
-        // Never enforced by any endpoint or screen. settings:billing duplicated billing:manage,
-        // settings:branding is covered by legal_entity:update, settings:read by legal_entity:read.
-        "settings:read", "settings:admin", "settings:billing", "settings:branding",
-        "settings:integrations", "settings:alerts", "settings:system",
-        // Employee visibility is relationship-based (management coverage), not a permission:
-        // a manager sees the people their position covers without any code.
-        "employees:read", "employees:read-team", "attendance:read-team",
-        // Invitation resend/revoke is allowed for the person who added the employee, or for
-        // users:manage (Settings > Users) - see EmployeeInvitationAccess.
-        "invitations:manage"
-    };
+    public const string SyncOnStartupKey = "PermissionCatalog:SyncOnStartup";
 
     private readonly IServiceProvider _services;
     private readonly ILogger<PermissionSeeder> _logger;
@@ -40,14 +28,31 @@ public class PermissionSeeder : IHostedService
         _logger = logger;
     }
 
+    /// <summary>The permission catalogue as it is written to the permissions table.</summary>
+    public static IReadOnlyList<PermissionDefinition> Catalogue { get; } = GetAllPermissions();
+
     public async Task StartAsync(CancellationToken cancellationToken)
     {
+        var configuration = _services.GetService<IConfiguration>();
+        if (configuration is not null && !configuration.GetValue(SyncOnStartupKey, true))
+        {
+            _logger.LogInformation("Permission catalogue sync at start-up is off ({Key}=false).", SyncOnStartupKey);
+            return;
+        }
+
         try
         {
             await using var scope = _services.CreateAsyncScope();
+            // role_permissions and user_permission_overrides are under RLS: the sync must see every tenant.
+            scope.ServiceProvider.GetService<IWritableTenantContext>()?.SetAdminMode();
             var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
 
             await SeedPermissionsAsync(db, cancellationToken);
+        }
+        catch (PermissionRetirementRefusedException ex)
+        {
+            _logger.LogCritical(ex, "Permission catalogue sync refused a retirement. Startup will stop.");
+            throw;
         }
         catch (Exception ex)
         {
@@ -63,56 +68,12 @@ public class PermissionSeeder : IHostedService
 
     private async Task SeedPermissionsAsync(ApplicationDbContext db, CancellationToken ct)
     {
-        var defined = GetAllPermissions();
-        var existingRows = await db.Permissions.ToListAsync(ct);
-        var retiredRows = existingRows
-            .Where(p => RetiredPermissionCodes.Contains(p.Code))
-            .ToList();
-        if (retiredRows.Count > 0)
-        {
-            // Role and user-override rows cascade from permissions. Keeping retirement here makes
-            // the seeder converge existing databases instead of only affecting fresh installs.
-            db.Permissions.RemoveRange(retiredRows);
-            existingRows = existingRows.Except(retiredRows).ToList();
-        }
-
-        var existing = existingRows
-            .Select(p => p.Code)
-            .ToHashSet(StringComparer.Ordinal);
-
-        var definedByCode = defined.ToDictionary(p => p.Code, StringComparer.Ordinal);
-        var updated = 0;
-        foreach (var row in existingRows)
-        {
-            if (!definedByCode.TryGetValue(row.Code, out var expected))
-                continue;
-
-            if (row.Module == expected.Module && row.Description == expected.Description)
-                continue;
-
-            row.Module = expected.Module;
-            row.Description = expected.Description;
-            updated++;
-        }
-
-        var toAdd = defined
-            .Where(p => !existing.Contains(p.Code))
-            .ToList();
-
-        if (toAdd.Count == 0 && updated == 0 && retiredRows.Count == 0)
-        {
-            _logger.LogInformation("Permissions already seeded â€” skipping.");
-            return;
-        }
-
-        await db.Permissions.AddRangeAsync(toAdd, ct);
-        await db.SaveChangesAsync(ct);
-        _logger.LogInformation(
-            "Seeded {Count} new permissions, updated {UpdatedCount}, and retired {RetiredCount} legacy permissions.",
-            toAdd.Count, updated, retiredRows.Count);
+        var clock = _services.GetService<IDateTimeProvider>() ?? new SystemDateTimeProvider();
+        var synchronizer = new PermissionCatalogSynchronizer(db, clock, _logger);
+        await synchronizer.SyncAsync(Catalogue, PermissionLifecycle.Rules, ct);
     }
 
-    private static List<Permission> GetAllPermissions() =>
+    private static List<PermissionDefinition> GetAllPermissions() =>
     [
         // System
         Perm("*", "Super Admin bypass â€” all access.", "system"),
@@ -262,12 +223,7 @@ public class PermissionSeeder : IHostedService
         Perm("projects:create", "Create projects where the caller has local creation authority.", "projects"),
     ];
 
-    private static Permission Perm(string code, string description, string module) => new()
-    {
-        Id = Guid.NewGuid(),
-        Code = code,
-        Description = description,
-        Module = module
-    };
+    private static PermissionDefinition Perm(string code, string description, string module) =>
+        new(code, description, module);
 }
 
