@@ -17,6 +17,7 @@ public class MonitoringMeetingController : ControllerBase
 
     [HttpGet("signals")]
     [RequirePermission("monitoring:read")]
+    [RequireVisibleEmployee("employeeId")]
     public async Task<IActionResult> GetSignals(
         [FromQuery] Guid employeeId,
         [FromQuery] DateOnly date,

@@ -29,6 +29,7 @@ public class MonitoringActivityController : ControllerBase
     /// </summary>
     [HttpGet("snapshots")]
     [RequirePermission("monitoring:read")]
+    [RequireVisibleEmployee("employeeId")]
     public async Task<IActionResult> GetSnapshots(
         [FromQuery] Guid employeeId,
         [FromQuery] DateOnly date,
@@ -55,6 +56,7 @@ public class MonitoringActivityController : ControllerBase
     /// </summary>
     [HttpGet("daily-summary")]
     [RequirePermission("monitoring:read")]
+    [RequireVisibleEmployee("employeeId")]
     public async Task<IActionResult> GetDailySummary(
         [FromQuery] Guid employeeId,
         [FromQuery] DateOnly date,
@@ -77,6 +79,7 @@ public class MonitoringActivityController : ControllerBase
     /// </summary>
     [HttpGet("daily-range")]
     [RequirePermission("monitoring:read")]
+    [RequireVisibleEmployee("employeeId")]
     public async Task<IActionResult> GetDailyRange(
         [FromQuery] Guid employeeId,
         [FromQuery] DateOnly from,
