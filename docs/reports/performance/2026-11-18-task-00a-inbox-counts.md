@@ -150,8 +150,9 @@ The page sends `/inbox/counts` twice on every load; the second request starts wh
 | Reload 1 (clean run) | 105 ms | 186 ms | 15 |
 | Reload 2 (clean run) | 93 ms | 175 ms | 15 |
 
-Both clean runs are under 200 ms for both requests. The duplicate request is a frontend issue outside Task 00a; removing
-it would also stop the second request waiting on the first.
+Both clean runs are under 200 ms for both requests. The duplicate came from the frontend's rail-badge readiness effect,
+which ran again when modules arrived after sign-in. Fixed on frontend branch `fix/inbox-counts-once`: with it the page
+sends one `/inbox/counts` per load, 96-120 ms on reloads (two runs of three loads).
 
 ## Verification status
 
