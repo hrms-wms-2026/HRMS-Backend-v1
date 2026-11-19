@@ -126,6 +126,9 @@ if (ONEVO.Application.Common.Tenancy.TenancyModeReader.Read(app.Configuration)
 // First, so scheme, host and client IP are the real client's for everything below
 // (HTTPS redirect, HSTS, logging, CORS, rate limiting, tenant resolution).
 app.UseForwardedHeaders();
+// Optional (Hosting:ServeSpas): SPA static files short-circuit here, before tenant resolution,
+// auth and rate limiting. The index.html fallback is mapped below as an anonymous endpoint.
+app.UseSpaHosting();
 app.UseMiddleware<ExceptionHandlerMiddleware>();
 app.UseMiddleware<CorrelationIdMiddleware>();
 app.UseMiddleware<SecurityHeadersMiddleware>();
@@ -176,6 +179,7 @@ app.MapHealthChecks("/health/ready", new HealthCheckOptions
 {
     Predicate = check => check.Tags.Contains("ready")
 });
+app.MapSpaHostingFallbacks();
 
 app.Run();
 
