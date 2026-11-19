@@ -3,7 +3,7 @@
   Builds the Azure App Service zip package: API publish + web app + admin console.
 
 .DESCRIPTION
-  1. dotnet publish src/ONEVO.Api (Release) into a fresh folder under $env:TEMP.
+  1. dotnet publish src/ONEVO.Api (Release) into a fresh folder under the system temp folder.
   2. ng build web and admin with configuration 'singlehost' (-Mode SingleHost) or 'production' (-Mode Subdomain).
   3. Copies web dist/.../browser to <pkg>/wwwroot/web and admin to <pkg>/wwwroot/admin-console.
   4. Verifies the admin index.html base href matches the mode (/admin-console/ vs /).
@@ -30,7 +30,7 @@ param(
 
 $ErrorActionPreference = 'Stop'
 
-$BackendRepo = (Resolve-Path (Join-Path $PSScriptRoot '..\..')).Path
+$BackendRepo = (Resolve-Path (Join-Path (Join-Path $PSScriptRoot '..') '..')).Path
 if (-not $OutDir) { $OutDir = Split-Path $BackendRepo -Parent }
 $Parent = Split-Path $BackendRepo -Parent
 $Suffix = if ((Split-Path $BackendRepo -Leaf) -like '*-singlehost') { '-singlehost' } else { '' }
@@ -63,7 +63,7 @@ function Get-BrowserDist([string]$repo) {
 }
 
 $stamp = Get-Date -Format 'yyyyMMdd-HHmmss'
-$Work = Join-Path $env:TEMP "crownus-appservice-$stamp"
+$Work = Join-Path ([System.IO.Path]::GetTempPath()) "crownus-appservice-$stamp"
 $Pkg = Join-Path $Work 'publish'
 New-Item -ItemType Directory -Path $Pkg -Force | Out-Null
 
@@ -82,7 +82,7 @@ function Build-Ng([string]$repo, [string]$label) {
     Step "ng build $label (configuration $NgConfig)"
     Push-Location $repo
     try {
-        $ngJs = Join-Path $repo 'node_modules\@angular\cli\bin\ng.js'
+        $ngJs = Join-Path $repo 'node_modules/@angular/cli/bin/ng.js'
         if (-not (Test-Path $ngJs)) { Fail "Angular CLI not found at $ngJs" }
         & node $ngJs build --configuration $NgConfig | Out-Host   # Out-Host keeps build output out of the function's return value
         Assert-Exit "ng build ($label)"
@@ -94,8 +94,8 @@ $WebDist = Build-Ng $WebRepo 'web'
 $AdminDist = Build-Ng $AdminRepo 'admin console'
 
 # 3. Copy into wwwroot
-$WebTarget = Join-Path $Pkg 'wwwroot\web'
-$AdminTarget = Join-Path $Pkg 'wwwroot\admin-console'
+$WebTarget = Join-Path $Pkg 'wwwroot/web'
+$AdminTarget = Join-Path $Pkg 'wwwroot/admin-console'
 New-Item -ItemType Directory -Path $WebTarget, $AdminTarget -Force | Out-Null
 Copy-Item (Join-Path $WebDist '*') $WebTarget -Recurse -Force
 Copy-Item (Join-Path $AdminDist '*') $AdminTarget -Recurse -Force
@@ -111,7 +111,7 @@ if ($actualBase -ne $ExpectedAdminBase) {
 Step "Admin base href OK: $actualBase"
 
 # 5. Web index.html inline script hashes must be in SecurityHeadersMiddleware.SpaCsp
-$mw = Get-Content (Join-Path $BackendRepo 'src\ONEVO.Api\Middleware\SecurityHeadersMiddleware.cs') -Raw
+$mw = Get-Content (Join-Path $BackendRepo 'src/ONEVO.Api/Middleware/SecurityHeadersMiddleware.cs') -Raw
 $cspHashes = [regex]::Matches($mw, "'sha256-([A-Za-z0-9+/=]+)'") | ForEach-Object { $_.Groups[1].Value }
 if (-not $cspHashes) { Fail 'No sha256 hashes found in SecurityHeadersMiddleware.SpaCsp (parser out of date?)' }
 function Get-Sha256B64([string]$text) {
@@ -153,7 +153,8 @@ $zipStream = [System.IO.File]::Open($Zip, [System.IO.FileMode]::CreateNew)
 try {
     $archive = New-Object System.IO.Compression.ZipArchive($zipStream, [System.IO.Compression.ZipArchiveMode]::Create)
     try {
-        $root = (Resolve-Path $Pkg).Path.TrimEnd('\') + '\'
+        $sep = [System.IO.Path]::DirectorySeparatorChar
+        $root = (Resolve-Path $Pkg).Path.TrimEnd($sep) + $sep
         foreach ($f in Get-ChildItem $Pkg -Recurse -File) {
             $entry = $f.FullName.Substring($root.Length).Replace('\', '/')
             [void][System.IO.Compression.ZipFileExtensions]::CreateEntryFromFile($archive, $f.FullName, $entry, [System.IO.Compression.CompressionLevel]::Optimal)
@@ -169,3 +170,19 @@ Write-Host "Package: $Zip"
 Write-Host ("Size:    {0:N1} MB ({1} bytes)" -f ($size / 1MB), $size)
 Write-Host "SHA-256: $hash"
 Write-Host "Staging folder kept at $Work (safe to delete)."
+
+# GitHub Actions: expose the zip to later steps and the run summary.
+if ($env:GITHUB_OUTPUT) {
+    Add-Content -Path $env:GITHUB_OUTPUT -Value "zip_path=$Zip"
+    Add-Content -Path $env:GITHUB_OUTPUT -Value "zip_sha256=$hash"
+}
+if ($env:GITHUB_STEP_SUMMARY) {
+    Add-Content -Path $env:GITHUB_STEP_SUMMARY -Value @(
+        '### App Service package',
+        '',
+        "- Mode: ``$Mode`` (ng configuration ``$NgConfig``)",
+        ("- Zip: ``$ZipName`` ({0:N1} MB)" -f ($size / 1MB)),
+        "- SHA-256: ``$hash``",
+        ''
+    )
+}
