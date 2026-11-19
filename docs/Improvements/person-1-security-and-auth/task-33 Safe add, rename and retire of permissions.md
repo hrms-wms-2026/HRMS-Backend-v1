@@ -105,3 +105,58 @@ switch off.
 
 `retired_at` column on `permissions` and the `permission_changes` table. Created last, on the latest
 base (task 32 and `origin/development` merged): `20261119155238_AddPermissionLifecycle`.
+
+## Results (2026-11-20)
+
+Branch `claude/improve-task-33-permission-lifecycle-ff0d24`, on `origin/development` (cd3b2d83d) with task 32
+merged in (`claude/improve-task-32-permission-catalogue-f80579` at f56f9fd6d). Not pushed.
+
+What is built:
+
+- **Rename keeps grants.** `PermissionCatalog.Renames` updates `permissions.code` in place, so role grants and
+  user overrides (which point at the row id) follow it. If the new code already exists, grants are merged without
+  duplicates (an override already on the new code wins) and the old row is removed. Codes inside `role_templates`
+  are renamed too. Chains and cycles are checked before anything runs.
+- **Add backfills tenants.** `PermissionCatalog.DefaultGrants` gives a new code to each tenant's Owner role, roles
+  made from a role template, or roles that hold another code. It runs once per database (ledger key
+  `default-grant:<code>` in `permission_changes`), so an admin who later removes the code is not overruled.
+- **Retire is two-stage and guarded.** `PermissionKind.SoftRetired` sets `permissions.retired_at`. A global query
+  filter hides the code from the resolver, role screen, entitlement and assignability, and grants are kept so it
+  can be restored. `PermissionKind.Retired` deletes the row. Both stages count the grants and overrides still
+  holding the code and refuse (`PermissionRetirementRefusedException`, logged per tenant) unless the definition
+  sets `DropGrants: true`.
+- **Safe to run at every start-up.** One transaction through the execution strategy, serialized by the
+  `permission-catalog-sync` app lock, run in admin tenant mode, and idempotent. A refused step rolls the whole run
+  back. `PermissionCatalog:SyncOnStartup` turns it off per instance for task 09's deploy step.
+- **Migration** `20261119155238_AddPermissionLifecycle` adds the `permissions.retired_at` column and the global
+  `permission_changes` table (unique `change_key`, JSON check on `detail`). It was created with `dotnet ef` on the
+  merged base, and the snapshot was not hand-edited. `permission_changes` is global (no tenant column), so it needs
+  no RLS entry. Not applied to any shared database.
+- **Docs:** `docs/api/permission-changelog.md`, `docs/development/permission-lifecycle-checklists.md`, and
+  `docs/reports/security/2026-11-19-unreferenced-permission-decisions.md`. That report proposes: merge 4
+  (`time_off:*` into `leave:*`, keeping `leave:*`), 25 planned, 9 retire. These are proposals that need product
+  owner sign-off.
+
+Tests: `PermissionCatalogSynchronizerTests` and `PermissionLifecycleValidatorTests` (unit) cover rename in place,
+merge, template rename, idempotence, one-time default grants for each target, refused retirement with the exact
+message, removal, soft-retire and restore, and invalid declarations. `PermissionLifecycleSqlServerTests`
+(integration, real SQL Server with RLS and the delete cascade live) proves that a rename keeps role grants and
+overrides, that a default grant reaches an existing tenant's Owner role, and that a refused retirement rolls back
+the whole run.
+
+Gate (`verify.ps1 <worktree full path> -Full`):
+
+- `verify-20261119-213947`: build PASS, unit 8092/0, architecture 723/0, integration 893 passed / 396 failed /
+  1 skipped. Load only. Four mssql containers from parallel gates were running. The first failing test passed
+  alone, and the 34 failed classes re-run together gave 378 passed / 0 failed.
+- `verify-20261120-001315`: build PASS, unit 8092/0, architecture 723/0, integration 1288 passed / 1 failed /
+  1 skipped. The one failure was `QueryTranslationSweepTests.EveryQueryMethod_RunsOnSqlServer`, which allows 60 s
+  per query method. The integration step took 1 h 26 m (load), and the test passed alone in 2 m 12 s. No code
+  change was needed.
+
+Follow-ups:
+
+- Product owner sign-off on the 38 decisions. The `time_off` merge also needs the `ModuleCatalogSeeder` ownership
+  change.
+- Task 09: call the synchronizer from the deploy step and set `SyncOnStartup=false` on the API instances.
+- Task 25 (frontend): use renamed codes when the first rename lands.
