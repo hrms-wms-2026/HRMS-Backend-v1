@@ -353,6 +353,10 @@ public class ApplicationDbContext : DbContext
         => Set<ONEVO.Domain.Features.TimeAttendance.Alerts.AttendanceAlertDeduction>();
     public DbSet<ONEVO.Domain.Features.Inbox.Entities.InboxDecisionJournalEntry> InboxDecisionJournal
         => Set<ONEVO.Domain.Features.Inbox.Entities.InboxDecisionJournalEntry>();
+    public DbSet<ONEVO.Domain.Features.Inbox.Entities.InboxEntry> InboxEntries
+        => Set<ONEVO.Domain.Features.Inbox.Entities.InboxEntry>();
+    public DbSet<ONEVO.Domain.Features.Inbox.Entities.InboxEntryAssignee> InboxEntryAssignees
+        => Set<ONEVO.Domain.Features.Inbox.Entities.InboxEntryAssignee>();
     public DbSet<ONEVO.Domain.Features.Conversations.Entities.ConversationMessageMention> ConversationMessageMentions
         => Set<ONEVO.Domain.Features.Conversations.Entities.ConversationMessageMention>();
     public DbSet<ONEVO.Domain.Features.Conversations.Entities.ConversationMessageReaction> ConversationMessageReactions

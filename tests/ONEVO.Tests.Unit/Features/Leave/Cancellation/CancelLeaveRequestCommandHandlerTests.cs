@@ -404,7 +404,8 @@ public class CancelLeaveRequestCommandHandlerTests
                 outbox.Object,
                 Notifications.Object,
                 clock.Object,
-                Options.Create(new LeaveCancellationOptions { FallbackTimezone = "UTC" }));
+                Options.Create(new LeaveCancellationOptions { FallbackTimezone = "UTC" }),
+                new ONEVO.Application.Features.Leave.Inbox.LeaveInboxEntrySync(Moq.Mock.Of<ONEVO.Application.Features.Inbox.Contracts.IInboxEntryStore>(), Moq.Mock.Of<ONEVO.Application.Features.Leave.Approval.RepositoryInterfaces.ILeaveApprovalRepository>()));
         }
 
         public static Harness Create(

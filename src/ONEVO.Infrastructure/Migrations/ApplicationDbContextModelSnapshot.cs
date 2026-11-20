@@ -6833,6 +6833,163 @@ namespace ONEVO.Infrastructure.Migrations
                         });
                 });
 
+            modelBuilder.Entity("ONEVO.Domain.Features.Inbox.Entities.InboxEntry", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier")
+                        .HasColumnName("id");
+
+                    b.Property<string>("Category")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)")
+                        .HasColumnName("category");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("datetimeoffset")
+                        .HasColumnName("created_at");
+
+                    b.Property<DateTimeOffset?>("DecidedAt")
+                        .HasColumnType("datetimeoffset")
+                        .HasColumnName("decided_at");
+
+                    b.Property<Guid?>("DecidedByEmployeeId")
+                        .HasColumnType("uniqueidentifier")
+                        .HasColumnName("decided_by_employee_id");
+
+                    b.Property<string>("Kind")
+                        .IsRequired()
+                        .HasMaxLength(40)
+                        .HasColumnType("nvarchar(40)")
+                        .HasColumnName("kind");
+
+                    b.Property<Guid?>("RequestedByEmployeeId")
+                        .HasColumnType("uniqueidentifier")
+                        .HasColumnName("requested_by_employee_id");
+
+                    b.Property<string>("Source")
+                        .IsRequired()
+                        .HasMaxLength(40)
+                        .HasColumnType("nvarchar(40)")
+                        .HasColumnName("source");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)")
+                        .HasColumnName("status");
+
+                    b.Property<Guid?>("SubjectEmployeeId")
+                        .HasColumnType("uniqueidentifier")
+                        .HasColumnName("subject_employee_id");
+
+                    b.Property<Guid>("SubjectId")
+                        .HasColumnType("uniqueidentifier")
+                        .HasColumnName("subject_id");
+
+                    b.Property<string>("Summary")
+                        .HasMaxLength(400)
+                        .HasColumnType("nvarchar(400)")
+                        .HasColumnName("summary");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uniqueidentifier")
+                        .HasColumnName("tenant_id");
+
+                    b.Property<string>("Title")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)")
+                        .HasColumnName("title");
+
+                    b.Property<DateTimeOffset>("UpdatedAt")
+                        .HasColumnType("datetimeoffset")
+                        .HasColumnName("updated_at");
+
+                    b.HasKey("Id")
+                        .HasName("pk_inbox_items");
+
+                    b.HasIndex("TenantId", "RequestedByEmployeeId", "Status", "UpdatedAt")
+                        .IsDescending(false, false, false, true)
+                        .HasDatabaseName("ix_inbox_items_tenant_id_requested_by_status_updated_at");
+
+                    b.HasIndex("TenantId", "Source", "Kind", "SubjectId")
+                        .IsUnique()
+                        .HasDatabaseName("ux_inbox_items_tenant_id_source_kind_subject_id");
+
+                    b.ToTable("inbox_items", null, t =>
+                        {
+                            t.HasCheckConstraint("ck_inbox_items_category", "category IN ('request', 'alert', 'invitation')");
+
+                            t.HasCheckConstraint("ck_inbox_items_status", "status IN ('pending', 'approved', 'rejected', 'cancelled', 'resolved')");
+                        });
+                });
+
+            modelBuilder.Entity("ONEVO.Domain.Features.Inbox.Entities.InboxEntryAssignee", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier")
+                        .HasColumnName("id");
+
+                    b.Property<Guid>("EmployeeId")
+                        .HasColumnType("uniqueidentifier")
+                        .HasColumnName("employee_id");
+
+                    b.Property<Guid>("InboxEntryId")
+                        .HasColumnType("uniqueidentifier")
+                        .HasColumnName("inbox_entry_id");
+
+                    b.Property<string>("Kind")
+                        .IsRequired()
+                        .HasMaxLength(40)
+                        .HasColumnType("nvarchar(40)")
+                        .HasColumnName("kind");
+
+                    b.Property<int>("SequenceOrder")
+                        .HasColumnType("int")
+                        .HasColumnName("sequence_order");
+
+                    b.Property<string>("Source")
+                        .IsRequired()
+                        .HasMaxLength(40)
+                        .HasColumnType("nvarchar(40)")
+                        .HasColumnName("source");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)")
+                        .HasColumnName("status");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uniqueidentifier")
+                        .HasColumnName("tenant_id");
+
+                    b.Property<DateTimeOffset>("UpdatedAt")
+                        .HasColumnType("datetimeoffset")
+                        .HasColumnName("updated_at");
+
+                    b.HasKey("Id")
+                        .HasName("pk_inbox_item_assignees");
+
+                    b.HasIndex("InboxEntryId", "EmployeeId")
+                        .IsUnique()
+                        .HasDatabaseName("ux_inbox_item_assignees_inbox_entry_id_employee_id");
+
+                    b.HasIndex("TenantId", "EmployeeId", "Status", "UpdatedAt")
+                        .IsDescending(false, false, false, true)
+                        .HasDatabaseName("ix_inbox_item_assignees_tenant_id_employee_id_status_updated_at");
+
+                    SqlServerIndexBuilderExtensions.IncludeProperties(b.HasIndex("TenantId", "EmployeeId", "Status", "UpdatedAt"), new[] { "Source", "Kind", "InboxEntryId" });
+
+                    b.ToTable("inbox_item_assignees", null, t =>
+                        {
+                            t.HasCheckConstraint("ck_inbox_item_assignees_status", "status IN ('pending', 'waiting', 'approved', 'rejected', 'skipped', 'cancelled')");
+                        });
+                });
+
             modelBuilder.Entity("ONEVO.Domain.Features.InfrastructureModule.Entities.Tenant", b =>
                 {
                     b.Property<Guid>("Id")
@@ -17997,6 +18154,16 @@ namespace ONEVO.Infrastructure.Migrations
                         .HasConstraintName("fk_platform_service_keys_platform_users_updated_by_id");
                 });
 
+            modelBuilder.Entity("ONEVO.Domain.Features.Inbox.Entities.InboxEntryAssignee", b =>
+                {
+                    b.HasOne("ONEVO.Domain.Features.Inbox.Entities.InboxEntry", null)
+                        .WithMany("Assignees")
+                        .HasForeignKey("InboxEntryId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_inbox_item_assignees_inbox_entries_inbox_entry_id");
+                });
+
             modelBuilder.Entity("ONEVO.Domain.Features.InfrastructureModule.Entities.TenantStatusHistory", b =>
                 {
                     b.HasOne("ONEVO.Domain.Features.DevPlatform.PlatformAccess.Entities.PlatformUser", null)
@@ -19290,6 +19457,11 @@ namespace ONEVO.Infrastructure.Migrations
                     b.Navigation("Attachments");
 
                     b.Navigation("Comments");
+                });
+
+            modelBuilder.Entity("ONEVO.Domain.Features.Inbox.Entities.InboxEntry", b =>
+                {
+                    b.Navigation("Assignees");
                 });
 
             modelBuilder.Entity("ONEVO.Domain.Features.SharedPlatform.Entities.ModuleCatalogItem", b =>

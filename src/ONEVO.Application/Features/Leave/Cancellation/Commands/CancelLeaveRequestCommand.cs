@@ -21,6 +21,7 @@ using ONEVO.Application.Features.OrgStructure.Mappers;
 using ONEVO.Domain.Features.Leave.BalanceAudit.Entities;
 using ONEVO.Domain.Features.Leave.Common;
 using ONEVO.Domain.Features.Leave.Request.Entities;
+using ONEVO.Application.Features.Leave.Inbox;
 
 namespace ONEVO.Application.Features.Leave.Cancellation.Commands;
 
@@ -60,6 +61,7 @@ public sealed class CancelLeaveRequestCommandHandler
     private readonly INotificationDispatcher _notifications;
     private readonly IDateTimeProvider _clock;
     private readonly LeaveCancellationOptions _options;
+    private readonly LeaveInboxEntrySync _inboxEntries;
 
     public CancelLeaveRequestCommandHandler(
         ICurrentUser currentUser,
@@ -74,7 +76,8 @@ public sealed class CancelLeaveRequestCommandHandler
         IOutboxWriter outbox,
         INotificationDispatcher notifications,
         IDateTimeProvider clock,
-        IOptions<LeaveCancellationOptions> options)
+        IOptions<LeaveCancellationOptions> options,
+        LeaveInboxEntrySync inboxEntries)
     {
         _currentUser = currentUser;
         _employees = employees;
@@ -88,6 +91,7 @@ public sealed class CancelLeaveRequestCommandHandler
         _outbox = outbox;
         _notifications = notifications;
         _clock = clock;
+        _inboxEntries = inboxEntries;
         _options = options.Value;
     }
 
@@ -247,6 +251,7 @@ public sealed class CancelLeaveRequestCommandHandler
 
         await NotifyAsync(state, currentEmployee.Id, isHrCancel, isPartial, openApproverIds, restoredUsedHours, trimmedReason, ct);
 
+        await _inboxEntries.StageAsync(_currentUser.TenantId, state.Request.Id, ct);
         try
         {
             await _repository.SaveChangesAsync(ct);

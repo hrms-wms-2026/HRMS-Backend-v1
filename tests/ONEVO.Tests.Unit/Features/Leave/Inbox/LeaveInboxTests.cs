@@ -151,7 +151,7 @@ public class LeaveInboxTests
         employees.Setup(x => x.GetByUserIdAsync(f.Harness.TenantId, f.Harness.UserId, It.IsAny<CancellationToken>())).ReturnsAsync(approver);
         var decisions = new LeaveApprovalDecisionService(f.CurrentUser.Object, f.Harness.Clock.Object, employees.Object, f.Repository.Object,
             Mock.Of<IOutboxWriter>(), Mock.Of<INotificationDispatcher>(), Mock.Of<ILeaveRequestConflictProvider>(),
-            Options.Create(new LeaveApprovalOptions()));
+            Options.Create(new LeaveApprovalOptions()), new ONEVO.Application.Features.Leave.Inbox.LeaveInboxEntrySync(Moq.Mock.Of<ONEVO.Application.Features.Inbox.Contracts.IInboxEntryStore>(), Moq.Mock.Of<ONEVO.Application.Features.Leave.Approval.RepositoryInterfaces.ILeaveApprovalRepository>()));
         var uow = new FakeUnitOfWork();
         var handler = new ApproveEditedLeaveRequestCommandHandler(f.CurrentUser.Object, employees.Object, f.Repository.Object,
             new LeaveRequestRangeEditor(f.CurrentUser.Object, f.Harness.Clock.Object, f.Repository.Object, f.Harness.Sut, new LeaveRequestDayAllocationBuilder()),
@@ -421,7 +421,7 @@ public class LeaveInboxTests
             currentUser.Setup(x => x.HasPermission("leave:approve")).Returns(CanApprove);
             return new LeaveDecisionReverter(Journal, new FakeUnitOfWork(), Clock, Approvals.Object,
                 new LeaveRequestRangeEditor(currentUser.Object, Clock, Approvals.Object, null!, new LeaveRequestDayAllocationBuilder()), currentUser.Object,
-                Notifications.Object);
+                Notifications.Object, new ONEVO.Application.Features.Leave.Inbox.LeaveInboxEntrySync(Moq.Mock.Of<ONEVO.Application.Features.Inbox.Contracts.IInboxEntryStore>(), Moq.Mock.Of<ONEVO.Application.Features.Leave.Approval.RepositoryInterfaces.ILeaveApprovalRepository>()));
         }
 
         public Task<Result<InboxActionResult>> Revert()

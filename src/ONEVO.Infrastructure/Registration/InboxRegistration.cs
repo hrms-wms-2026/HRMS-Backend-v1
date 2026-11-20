@@ -21,6 +21,8 @@ internal static class InboxRegistration
 {
     internal static IServiceCollection AddInbox(this IServiceCollection services, IConfiguration configuration)
     {
+        // Task 37: the shared inbox header (inbox_items) on the request's unit of work.
+        services.AddScoped<ONEVO.Application.Features.Inbox.Contracts.IInboxEntryStore, ONEVO.Infrastructure.Persistence.Repositories.Inbox.EfInboxEntryStore>();
         // Monitoring exception cases in the Inbox (plan X1).
         services.AddInboxKind(ONEVO.Application.Features.Monitoring.Exceptions.Inbox.ExceptionInboxKinds.Descriptor);
         services.AddScoped<ONEVO.Application.Features.Monitoring.Exceptions.Inbox.ExceptionCaseActions>();

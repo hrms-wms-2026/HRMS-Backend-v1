@@ -4,6 +4,8 @@ using ONEVO.Application.Common.RepositoryInterfaces;
 using ONEVO.Application.Common.ServiceInterfaces;
 using ONEVO.Application.Features.Inbox.Services;
 using ONEVO.Application.Features.Leave.Approval.Commands;
+using ONEVO.Application.Features.Leave.Approval.RepositoryInterfaces;
+using ONEVO.Application.Features.Leave.Inbox;
 using ONEVO.Application.Features.Leave.Cancellation.Helpers;
 using ONEVO.Application.Features.Leave.Request.DTOs.Responses;
 using ONEVO.Application.Features.Leave.Request.Helpers;
@@ -26,6 +28,7 @@ public sealed class SubmitLeaveRequestCommandHandler
     private readonly LeaveApprovalDecisionService _decisions;
     private readonly IUnitOfWork _unitOfWork;
     private readonly IInboxChangeNotifier? _inbox;
+    private readonly LeaveInboxEntrySync _inboxEntries;
 
     public SubmitLeaveRequestCommandHandler(
         ICurrentUser currentUser,
@@ -35,6 +38,7 @@ public sealed class SubmitLeaveRequestCommandHandler
         LeaveRequestDayAllocationBuilder allocationBuilder,
         LeaveApprovalDecisionService decisions,
         IUnitOfWork unitOfWork,
+        LeaveInboxEntrySync inboxEntries,
         IInboxChangeNotifier? inbox = null)
     {
         _currentUser = currentUser;
@@ -45,6 +49,7 @@ public sealed class SubmitLeaveRequestCommandHandler
         _decisions = decisions;
         _unitOfWork = unitOfWork;
         _inbox = inbox;
+        _inboxEntries = inboxEntries;
     }
 
     public async Task<Result<LeaveRequestResponse>> Handle(SubmitLeaveRequestCommand command, CancellationToken ct)
@@ -135,6 +140,9 @@ public sealed class SubmitLeaveRequestCommandHandler
         {
             await _unitOfWork.ExecuteInTransactionAsync(async transactionCt =>
             {
+                // Task 37: the inbox header is staged first, so the request's own save writes it in this transaction.
+                await _inboxEntries.StageAsync(new LeaveApprovalState(request, draft.Entitlement, draft.TargetEmployee,
+                    draft.LeaveType.Name, draft.LeaveType.Code, draft.ApprovalMode, approvers), transactionCt);
                 await _requests.AddPendingRequestAsync(
                     new LeaveRequestWriteSet(request, approvers, documents, dayAllocations, draft.Entitlement),
                     transactionCt);

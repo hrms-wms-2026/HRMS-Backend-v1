@@ -348,7 +348,8 @@ public class LeaveApprovalDecisionServiceTests
             Sut = new LeaveApprovalDecisionService(
                 currentUser.Object, clock.Object, employees.Object, repo.Object,
                 outbox.Object, notifications.Object, conflicts.Object,
-                Options.Create(new LeaveApprovalOptions { AllowSelfApproval = false }));
+                Options.Create(new LeaveApprovalOptions { AllowSelfApproval = false }),
+                new ONEVO.Application.Features.Leave.Inbox.LeaveInboxEntrySync(Moq.Mock.Of<ONEVO.Application.Features.Inbox.Contracts.IInboxEntryStore>(), Moq.Mock.Of<ONEVO.Application.Features.Leave.Approval.RepositoryInterfaces.ILeaveApprovalRepository>()));
         }
 
         public static Harness Create(
