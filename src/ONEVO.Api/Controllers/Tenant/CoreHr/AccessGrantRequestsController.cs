@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using ONEVO.Api.Contracts.CoreHr.AccessGrantRequests;
 using ONEVO.Api.Filters;
+using ONEVO.Application.Common.Authorization;
 using ONEVO.Application.Features.CoreHr.Onboarding.Commands.ApproveAccessGrantRequest;
 using ONEVO.Application.Features.CoreHr.Onboarding.Commands.RejectAccessGrantRequest;
 using ONEVO.Application.Features.CoreHr.Onboarding.Queries.ListOnboardingAccessGrantRequests;
@@ -35,7 +36,7 @@ public class AccessGrantRequestsController : ControllerBase
     /// mapped to their stored literal values; an unrecognized value is a 400, not a silent
     /// fallback.</summary>
     [HttpGet]
-    [RequirePermission("employees:write")]
+    [RequirePermission(PermissionCatalog.Employees.Write)]
     public async Task<IActionResult> List(
         [FromQuery] string? status = "pending",
         [FromQuery] string? actionType = "onboarding",
@@ -53,7 +54,7 @@ public class AccessGrantRequestsController : ControllerBase
     }
 
     [HttpGet("pending-for-me")]
-    [RequirePermission("roles:manage")]
+    [RequirePermission(PermissionCatalog.Roles.Manage)]
     public async Task<IActionResult> PendingForMe(CancellationToken ct = default)
     {
         var result = await _mediator.Send(new ListPendingAccessGrantRequestsForMeQuery(), ct);
@@ -65,7 +66,7 @@ public class AccessGrantRequestsController : ControllerBase
     /// role, and invitation (queued via outbox) in one transaction, and marks both the request
     /// and the draft decided.</summary>
     [HttpPost("{id:guid}/approve-and-send-invite")]
-    [RequirePermission("roles:manage")]
+    [RequirePermission(PermissionCatalog.Roles.Manage)]
     public async Task<IActionResult> ApproveAndSendInvite(Guid id, CancellationToken ct = default)
     {
         var result = await _mediator.Send(new ApproveAccessGrantRequestCommand(id), ct);
@@ -78,7 +79,7 @@ public class AccessGrantRequestsController : ControllerBase
     /// again (which submits a fresh request); the rejection itself remains visible on the
     /// request's own status.</summary>
     [HttpPost("{id:guid}/reject")]
-    [RequirePermission("roles:manage")]
+    [RequirePermission(PermissionCatalog.Roles.Manage)]
     public async Task<IActionResult> Reject(Guid id, [FromBody] RejectAccessGrantRequestRequest? request, CancellationToken ct = default)
     {
         var result = await _mediator.Send(new RejectAccessGrantRequestCommand(id, request?.DecisionNote), ct);

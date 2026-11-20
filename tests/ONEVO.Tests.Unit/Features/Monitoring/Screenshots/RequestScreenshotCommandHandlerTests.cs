@@ -3,6 +3,7 @@ using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
 using ONEVO.Application.Common.RepositoryInterfaces;
 using ONEVO.Application.Common.ServiceInterfaces;
+using ONEVO.Application.Features.CoreHr.Employee.Access;
 using ONEVO.Application.Features.Monitoring.ActivityMonitoring.ServiceInterfaces;
 using ONEVO.Application.Features.Monitoring.CheckIn.ServiceInterfaces;
 using ONEVO.Application.Features.Monitoring.PermissionConsent.RepositoryInterfaces;
@@ -28,6 +29,7 @@ public class RequestScreenshotCommandHandlerTests
     private readonly Mock<IMonitoringPermissionConsentRepository> _consents = new();
     private readonly FakeDateTimeProvider _clock = new();
     private readonly FakeUnitOfWork _uow = new();
+    private readonly Mock<IEmployeeViewAccess> _viewAccess = new();
 
     private readonly Guid _tenantId = Guid.NewGuid();
     private readonly Guid _userId = Guid.NewGuid();
@@ -60,6 +62,9 @@ public class RequestScreenshotCommandHandlerTests
             .ReturnsAsync(_employeeId);
         _consents.Setup(c => c.GetLatestAsync(_tenantId, _employeeId, It.IsAny<CancellationToken>()))
             .ReturnsAsync(Consent(screenMonitoring: true));
+
+        // The caller covers the device's employee unless a test says otherwise.
+        _viewAccess.Setup(v => v.CanViewAsync(_employeeId, It.IsAny<CancellationToken>())).ReturnsAsync(true);
     }
 
     private MonitoringPermissionConsent Consent(bool screenMonitoring) => new()
@@ -90,7 +95,8 @@ public class RequestScreenshotCommandHandlerTests
         _consents.Object,
         _clock,
         _uow,
-        NullLogger<RequestScreenshotCommandHandler>.Instance);
+        NullLogger<RequestScreenshotCommandHandler>.Instance,
+        _viewAccess.Object);
 
     [Fact]
     public async Task Handle_DeviceNotFound_Returns404()
@@ -186,5 +192,22 @@ public class RequestScreenshotCommandHandlerTests
         _employeeIdentity.Verify(r => r.ResolveEmployeeIdAsync(
             _tenantId, _userId, _legalEntityId, It.IsAny<CancellationToken>()), Times.Once);
         _consents.Verify(c => c.GetLatestAsync(_tenantId, _employeeId, It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Fact]
+    public async Task Handle_DeviceOfEmployeeOutsideCoverage_Returns404_BeforeToggleAndConsentChecks()
+    {
+        SetupActiveDeviceWithScreenshotsEnabled();
+        _viewAccess.Setup(v => v.CanViewAsync(_employeeId, It.IsAny<CancellationToken>())).ReturnsAsync(false);
+
+        var result = await CreateHandler().Handle(new RequestScreenshotCommand(_deviceId, null), default);
+
+        result.IsSuccess.Should().BeFalse();
+        result.StatusCode.Should().Be(404);
+        result.Error.Should().Be(MonitoringErrors.AgentDeviceNotFound);
+        _toggles.Verify(t => t.IsEnabledAsync(
+            It.IsAny<Guid>(), It.IsAny<Guid>(), It.IsAny<MonitoringCapability>(), It.IsAny<CancellationToken>()), Times.Never);
+        _consents.Verify(c => c.GetLatestAsync(It.IsAny<Guid>(), It.IsAny<Guid>(), It.IsAny<CancellationToken>()), Times.Never);
+        _commands.Verify(r => r.Add(It.IsAny<AgentCommand>()), Times.Never);
     }
 }

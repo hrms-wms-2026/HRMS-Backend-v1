@@ -1,3 +1,4 @@
+using ONEVO.Application.Common.Authorization;
 using ONEVO.Application.Common.Models;
 using ONEVO.Application.Features.CoreHr.EmployeeAuthority.Models;
 using ONEVO.Application.Features.CoreHr.EmployeeAuthority.ServiceInterfaces;
@@ -14,7 +15,9 @@ public sealed class WorkApprovalEngine : IWorkApprovalEngine
 {
     /// <summary>Every Work Management user holds it, so the HR fallback resolves the reporting-line
     /// manager instead of failing on a permission most managers were never granted.</summary>
-    public const string HrFallbackPermission = "projects:access";
+    /// <remarks>projects:access is retired, so no user holds it any more. Kept as-is in task 32 (value
+    /// unchanged); task 33 must decide the replacement. See the task 32 results.</remarks>
+    public const string HrFallbackPermission = PermissionCatalog.Retired.ProjectsAccess;
 
     private readonly IWorkHierarchyService _hierarchy;
     private readonly IWorkApprovalRequestRepository _requests;

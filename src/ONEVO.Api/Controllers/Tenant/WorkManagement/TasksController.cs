@@ -72,6 +72,7 @@ public class TasksController : ControllerBase
     }
 
     [HttpPost("tasks/pending-uploads")]
+    [RequestSizeLimit(ONEVO.Api.Configuration.RequestBodyLimits.DocumentUpload)]
     public async Task<IActionResult> CreatePendingUpload([FromForm] TaskPendingUploadFormRequest request, CancellationToken ct)
     {
         await using var stream = request.File.OpenReadStream();

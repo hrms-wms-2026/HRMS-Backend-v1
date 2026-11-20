@@ -2,6 +2,7 @@ using MediatR;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using ONEVO.Api.Filters;
+using ONEVO.Application.Common.Authorization;
 using ONEVO.Application.Features.SharedPlatform.TenantIntegrations.Commands.CompleteGitHubUserOAuth;
 using ONEVO.Application.Features.SharedPlatform.TenantIntegrations.Commands.DisconnectOwnUserIntegration;
 using ONEVO.Application.Features.SharedPlatform.TenantIntegrations.Commands.RefreshOwnGitHubConnection;
@@ -110,7 +111,7 @@ public sealed class GitHubIntegrationController : ControllerBase
     }
 
     [HttpGet("tenant/status")]
-    [RequirePermission("integrations:manage")]
+    [RequirePermission(PermissionCatalog.Integrations.Manage)]
     public async Task<IActionResult> TenantStatus(CancellationToken ct)
     {
         var result = await _mediator.Send(new GetGitHubTenantApprovalQuery(), ct);
@@ -123,7 +124,7 @@ public sealed class GitHubIntegrationController : ControllerBase
     }
 
     [HttpPost("tenant/enable")]
-    [RequirePermission("integrations:manage")]
+    [RequirePermission(PermissionCatalog.Integrations.Manage)]
     public async Task<IActionResult> EnableTenant(CancellationToken ct)
     {
         var result = await _mediator.Send(new SetGitHubTenantApprovalCommand(true), ct);
@@ -136,7 +137,7 @@ public sealed class GitHubIntegrationController : ControllerBase
     }
 
     [HttpPost("tenant/disable")]
-    [RequirePermission("integrations:manage")]
+    [RequirePermission(PermissionCatalog.Integrations.Manage)]
     public async Task<IActionResult> DisableTenant(CancellationToken ct)
     {
         var result = await _mediator.Send(new SetGitHubTenantApprovalCommand(false), ct);

@@ -2,6 +2,7 @@ using MediatR;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using ONEVO.Api.Filters;
+using ONEVO.Application.Common.Authorization;
 using ONEVO.Application.Features.CoreHr.Onboarding.Queries.GetOnboardingChecklistTemplateMatches;
 
 namespace ONEVO.Api.Controllers.Tenant.CoreHr;
@@ -22,7 +23,7 @@ public class OnboardingChecklistTemplatesController : ControllerBase
     /// ordered position match, then department match, then company/default. Same read gate as
     /// ChecklistTemplatesController.List.</summary>
     [HttpGet("matches")]
-    [RequireAnyPermission("employees:write", "employees:offboard", "checklists:manage")]
+    [RequireAnyPermission(PermissionCatalog.Employees.Write, PermissionCatalog.Employees.Offboard, PermissionCatalog.Checklists.Manage)]
     public async Task<IActionResult> Matches(
         [FromQuery] Guid legalEntityId, [FromQuery] Guid? departmentId, [FromQuery] Guid? positionId, CancellationToken ct = default)
     {

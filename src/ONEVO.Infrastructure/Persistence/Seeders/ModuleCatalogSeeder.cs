@@ -2,6 +2,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
+using ONEVO.Application.Common.Authorization;
 using ONEVO.Domain.Features.SharedPlatform.Entities;
 using ONEVO.Application.Features.DevPlatform.PlatformAccess.Helpers;
 using System.Text.Json;
@@ -225,71 +226,71 @@ public class ModuleCatalogSeeder : IHostedService
         var ownershipToSeed = new[]
         {
             // auth
-            new { Module = "auth", Perm = "users:read" },
-            new { Module = "auth", Perm = "users:manage" },
+            new { Module = "auth", Perm = PermissionCatalog.Users.Read },
+            new { Module = "auth", Perm = PermissionCatalog.Users.Manage },
 
             // configuration
-            new { Module = "configuration", Perm = "billing:read" },
-            new { Module = "configuration", Perm = "billing:manage" },
-            new { Module = "configuration", Perm = "support:manage" },
+            new { Module = "configuration", Perm = PermissionCatalog.Billing.Read },
+            new { Module = "configuration", Perm = PermissionCatalog.Billing.Manage },
+            new { Module = "configuration", Perm = PermissionCatalog.Support.Manage },
 
             // roles
-            new { Module = "roles", Perm = "roles:manage" },
+            new { Module = "roles", Perm = PermissionCatalog.Roles.Manage },
 
             // notifications
-            new { Module = "notifications", Perm = "notifications:manage" },
+            new { Module = "notifications", Perm = PermissionCatalog.Notifications.Manage },
 
             // org_structure
-            new { Module = "org_structure", Perm = "org:read" },
-            new { Module = "org_structure", Perm = "org:manage" },
-            new { Module = "org_structure", Perm = "legal_entity:create" },
-            new { Module = "org_structure", Perm = "legal_entity:read" },
-            new { Module = "org_structure", Perm = "legal_entity:update" },
-            new { Module = "org_structure", Perm = "legal_entity:delete" },
+            new { Module = "org_structure", Perm = PermissionCatalog.Org.Read },
+            new { Module = "org_structure", Perm = PermissionCatalog.Org.Manage },
+            new { Module = "org_structure", Perm = PermissionCatalog.LegalEntity.Create },
+            new { Module = "org_structure", Perm = PermissionCatalog.LegalEntity.Read },
+            new { Module = "org_structure", Perm = PermissionCatalog.LegalEntity.Update },
+            new { Module = "org_structure", Perm = PermissionCatalog.LegalEntity.Delete },
 
             // core_hr
-            new { Module = "core_hr", Perm = "employees:write" },
-            new { Module = "core_hr", Perm = "employees:offboard" },
-            new { Module = "core_hr", Perm = "checklists:manage" },
-            new { Module = "core_hr", Perm = "employees:delete" },
+            new { Module = "core_hr", Perm = PermissionCatalog.Employees.Write },
+            new { Module = "core_hr", Perm = PermissionCatalog.Employees.Offboard },
+            new { Module = "core_hr", Perm = PermissionCatalog.Checklists.Manage },
+            new { Module = "core_hr", Perm = PermissionCatalog.Employees.Delete },
 
             // time_off
-            new { Module = "time_off", Perm = "time_off:read" },
-            new { Module = "time_off", Perm = "time_off:create" },
-            new { Module = "time_off", Perm = "time_off:approve" },
-            new { Module = "time_off", Perm = "time_off:manage" },
+            new { Module = "time_off", Perm = PermissionCatalog.TimeOff.Read },
+            new { Module = "time_off", Perm = PermissionCatalog.TimeOff.Create },
+            new { Module = "time_off", Perm = PermissionCatalog.TimeOff.Approve },
+            new { Module = "time_off", Perm = PermissionCatalog.TimeOff.Manage },
 
             // calendar
-            new { Module = "calendar", Perm = "calendar:read" },
-            new { Module = "calendar", Perm = "calendar:write" },
-            new { Module = "calendar", Perm = "calendar:admin" },
+            new { Module = "calendar", Perm = PermissionCatalog.Calendar.Read },
+            new { Module = "calendar", Perm = PermissionCatalog.Calendar.Write },
+            new { Module = "calendar", Perm = PermissionCatalog.Calendar.Admin },
 
             // time_attendance
-            new { Module = "time_attendance", Perm = "attendance:read" },
-            new { Module = "time_attendance", Perm = "attendance:write" },
-            new { Module = "time_attendance", Perm = "attendance:approve" },
+            new { Module = "time_attendance", Perm = PermissionCatalog.Attendance.Read },
+            new { Module = "time_attendance", Perm = PermissionCatalog.Attendance.Write },
+            new { Module = "time_attendance", Perm = PermissionCatalog.Attendance.Approve },
 
             // monitoring
-            new { Module = "monitoring", Perm = "monitoring:read" },
-            new { Module = "monitoring", Perm = "monitoring:configure" },
-            new { Module = "monitoring", Perm = "monitoring:screenshots:request" },
+            new { Module = "monitoring", Perm = PermissionCatalog.Monitoring.Read },
+            new { Module = "monitoring", Perm = PermissionCatalog.Monitoring.Configure },
+            new { Module = "monitoring", Perm = PermissionCatalog.Monitoring.ScreenshotsRequest },
 
             // verification
-            new { Module = "verification", Perm = "verification:view" },
-            new { Module = "verification", Perm = "verification:review" },
-            new { Module = "verification", Perm = "verification:configure" },
+            new { Module = "verification", Perm = PermissionCatalog.Verification.View },
+            new { Module = "verification", Perm = PermissionCatalog.Verification.Review },
+            new { Module = "verification", Perm = PermissionCatalog.Verification.Configure },
 
             // analytics
-            new { Module = "analytics", Perm = "analytics:view" },
-            new { Module = "analytics", Perm = "analytics:export" },
-            new { Module = "analytics", Perm = "analytics:write" },
-            new { Module = "analytics", Perm = "reports:create" },
+            new { Module = "analytics", Perm = PermissionCatalog.Analytics.View },
+            new { Module = "analytics", Perm = PermissionCatalog.Analytics.Export },
+            new { Module = "analytics", Perm = PermissionCatalog.Analytics.Write },
+            new { Module = "analytics", Perm = PermissionCatalog.Reports.Create },
 
             // work_management - ordinary access is relationship based
-            new { Module = "projects", Perm = "projects:create" },
+            new { Module = "projects", Perm = PermissionCatalog.Projects.Create },
 
             // integrations
-            new { Module = "integrations", Perm = "integrations:manage" }
+            new { Module = "integrations", Perm = PermissionCatalog.Integrations.Manage }
         };
 
         var existingPermissions = await db.Permissions.Select(p => p.Code).ToListAsync(ct);
