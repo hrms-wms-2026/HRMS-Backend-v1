@@ -6,6 +6,7 @@ using Microsoft.AspNetCore.Mvc.Abstractions;
 using Microsoft.AspNetCore.Mvc.Controllers;
 using Microsoft.AspNetCore.Mvc.Filters;
 using Microsoft.AspNetCore.Routing;
+using Microsoft.Extensions.Configuration;
 using ONEVO.Api.Configuration;
 using ONEVO.Api.Filters;
 using ONEVO.Api.Middleware;
@@ -22,7 +23,7 @@ public sealed class Task23SecurityHardeningTests
     {
         var context = new DefaultHttpContext();
         context.Request.Path = "/api/v1/auth/me";
-        var middleware = new SecurityHeadersMiddleware(_ => Task.CompletedTask);
+        var middleware = new SecurityHeadersMiddleware(_ => Task.CompletedTask, Settings());
 
         await middleware.InvokeAsync(context);
 
@@ -37,6 +38,47 @@ public sealed class Task23SecurityHardeningTests
         foreach (var feature in new[] { "camera=()", "microphone=()", "geolocation=()", "payment=()", "usb=()" })
             Assert.Contains(feature, permissions);
     }
+
+    [Fact]
+    public async Task SecurityHeaders_SpaPageWhenServingSpas_GetsSpaCspWithoutTheApiOnlyPolicies()
+    {
+        var context = new DefaultHttpContext();
+        context.Request.Path = "/dashboard";
+        var middleware = new SecurityHeadersMiddleware(_ => Task.CompletedTask, Settings(serveSpas: true));
+
+        await middleware.InvokeAsync(context);
+
+        var headers = context.Response.Headers;
+        Assert.Equal("nosniff", headers["X-Content-Type-Options"]);
+        Assert.Equal("DENY", headers["X-Frame-Options"]);
+        Assert.Equal(SecurityHeadersMiddleware.SpaCsp, headers["Content-Security-Policy"]);
+        Assert.False(headers.ContainsKey("Permissions-Policy"));
+        Assert.False(headers.ContainsKey("Cross-Origin-Opener-Policy"));
+        Assert.False(headers.ContainsKey("Cross-Origin-Resource-Policy"));
+    }
+
+    [Fact]
+    public async Task SecurityHeaders_ApiPathWhenServingSpas_KeepsTheFullApiHeaderSet()
+    {
+        var context = new DefaultHttpContext();
+        context.Request.Path = "/api/v1/auth/me";
+        var middleware = new SecurityHeadersMiddleware(_ => Task.CompletedTask, Settings(serveSpas: true));
+
+        await middleware.InvokeAsync(context);
+
+        var headers = context.Response.Headers;
+        Assert.Equal("default-src 'none'; frame-ancestors 'none'", headers["Content-Security-Policy"]);
+        Assert.Equal(SecurityHeadersMiddleware.PermissionsPolicy, headers["Permissions-Policy"]);
+        Assert.Equal("same-origin", headers["Cross-Origin-Resource-Policy"]);
+    }
+
+    private static IConfiguration Settings(bool serveSpas = false) =>
+        new ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?>
+            {
+                [ONEVO.Api.Extensions.SpaHostingExtensions.ServeSpasKey] = serveSpas ? "true" : "false",
+            })
+            .Build();
 
     // ── RequestBodySizeLimitMiddleware ───────────────────────────────────────
 
