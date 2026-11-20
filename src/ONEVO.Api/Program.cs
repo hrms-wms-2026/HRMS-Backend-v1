@@ -84,27 +84,8 @@ builder.Services.AddControllers()
 builder.Services.AddHttpContextAccessor();
 builder.Services.AddApiAuthentication(builder.Environment, builder.Configuration);
 builder.Services.AddApiAuthorization();
-var signalR = builder.Services.AddSignalR();
-builder.Services.AddSingleton<
-    ONEVO.Application.Features.Monitoring.Settings.ServiceInterfaces.ITrayPolicyRefreshNotifier,
-    ONEVO.Api.Hubs.SignalRTrayPolicyRefreshNotifier>();
-// Inbox realtime: replaces Infrastructure's null publisher with the InboxHub-backed one.
-Microsoft.Extensions.DependencyInjection.Extensions.ServiceCollectionDescriptorExtensions.Replace(
-    builder.Services,
-    ServiceDescriptor.Scoped<
-        ONEVO.Application.Features.Conversations.Contracts.IInboxRealtimePublisher,
-        ONEVO.Api.Hubs.SignalRInboxRealtimePublisher>());
-builder.Services.AddSingleton<
-    ONEVO.Application.Features.Monitoring.TrayActivation.ServiceInterfaces.ITrayPushNotifier,
-    ONEVO.Api.Hubs.SignalRTrayPushNotifier>();
-builder.Services.AddSingleton<ONEVO.Api.Hubs.TrayConnectionTracker>();
-builder.Services.AddSingleton<
-    ONEVO.Application.Features.Monitoring.TrayActivation.ServiceInterfaces.ITrayConnectionPresence>(
-    sp => sp.GetRequiredService<ONEVO.Api.Hubs.TrayConnectionTracker>());
-builder.Services.AddSingleton<ONEVO.Api.Middleware.WebActivityTracker>();
-builder.Services.AddSingleton<
-    ONEVO.Application.Features.Monitoring.TrayActivation.ServiceInterfaces.IWebActivityPresence>(
-    sp => sp.GetRequiredService<ONEVO.Api.Middleware.WebActivityTracker>());
+// SignalR, hub-backed notifiers and presence trackers (Extensions/RealtimeExtensions.cs).
+var signalR = builder.Services.AddApiRealtime();
 builder.Services.AddApiSwagger();
 builder.Services.AddApiCors(builder.Configuration);
 builder.Services.AddApiRateLimiting(builder.Configuration);

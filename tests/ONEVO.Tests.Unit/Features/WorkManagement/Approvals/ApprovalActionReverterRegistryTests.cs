@@ -42,7 +42,7 @@ public class ApprovalActionReverterRegistryTests
         act.Should().Throw<InvalidOperationException>();
     }
 
-    /// <summary>Mirrors the 18 IApprovalActionReverter registrations in DependencyInjection.cs exactly -
+    /// <summary>Mirrors the 18 IApprovalActionReverter registrations in Registration/WorkManagementRegistration.cs exactly -
     /// a forgotten reverter class (not just a forgotten DI line) fails here instead of in production,
     /// where a missing reverter degrades gracefully to 422 (RevertWorkApprovalRequestCommandHandler's
     /// "no reverter registered" branch) but never corrupts data.</summary>
