@@ -33,7 +33,7 @@
 
 ## Status (2026-11-19)
 
-Built and verified, in review: PR #240 (`feature/testing` to `development`, together with tasks 15, 19 and 27), not merged yet. Report: `docs/reports/security/2026-11-18-task-23-headers-uploads-limits.md` (arrives with PR #240).
+Built and verified, in review: PR #240 (`feature/testing` to `development`, with the other person-1 tasks 15, 19, 19b, 23, 27, 32, 33, 39a and 44), not merged yet. Report: `docs/reports/security/2026-11-18-task-23-headers-uploads-limits.md` (arrives with PR #240).
 
 - Step 5 changed: Swagger was removed in every environment instead of being put behind admin sign-in. The API description is generated at build time and committed as `docs/api/openapi/tenant-v1.json` and `admin-v1.json` (see `docs/api/openapi/README.md`). The team uses Postman.
 - Step 6: the header scan was run on the local host. Run it again against the UAT URL once UAT is up.

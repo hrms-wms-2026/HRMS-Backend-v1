@@ -10,7 +10,7 @@ Written 2026-11-15 from a read-only scan of the whole backend on branch `feature
 - If a task turns out bigger than a day, split it and keep the same number with a suffix (for example `task-08b`).
 - When a task is finished, add a `## Status` section to its file and update the status table below.
 
-## Status (2026-11-19)
+## Status (2026-11-20)
 
 Only tasks that have started are listed. Every other task is not started.
 
@@ -21,11 +21,18 @@ Only tasks that have started are listed. Every other task is not started.
 | 11 | Secrets out of the repository and scans in CI | On hold, needs the repository owner's agreement | - |
 | 15 | Deny by default for every endpoint | In review | PR #240, not merged |
 | 19 | Validation coverage and shared rules | In review | PR #240, not merged |
-| 19b | Validation coverage for the remaining commands | Not started, follow-up of 19 | file arrives with PR #240 |
+| 19b | Validation coverage for the remaining commands (the allow-list is now empty) | In review | PR #240, not merged |
 | 23 | Security headers, upload checks and request limits (Swagger removed) | In review | PR #240, not merged |
-| 27 | Cross-tenant and object access tests for UAT | In review | PR #240, not merged |
+| 27 | Cross-tenant and object access tests for UAT | In review. Open product decision: the tenant-wide productivity report | PR #240, not merged |
+| 32 | One permission catalogue in code (`PermissionCatalog`) | In review | PR #240, not merged |
+| 33 | Safe add, rename and retire of permissions (migration `AddPermissionLifecycle`) | In review | PR #240, not merged |
+| 39a | Foreign keys and status check constraints, first part (migration `AddReferenceForeignKeysAndStatusChecks39a`) | In review | PR #240, not merged |
+| 39b to 39g | Rest of task 39, see the files in the person-1 folder | Not started | files arrive with PR #240 |
+| 44 | Sensitive data in API responses (steps 1, 2 and 4) | In review. Row 4 and step 3 need owner decisions | PR #240, not merged |
 
-Next for person-1: 32, 33, 39, 44 (do step 1 of 44 before UAT opens).
+The two new migrations in PR #240 are created, not applied. Apply them to each shared database after the merge.
+
+Person-1 tasks still open: 11 (on hold), 39b to 39g, and the owner decisions in 27 and 44.
 
 Since task 15, the "No fallback authorization policy" finding in the table below is fixed (once PR #240 is merged). Since task 23, the API has no Swagger in any environment; the API description is in `docs/api/openapi/`.
 
@@ -222,7 +229,8 @@ Build in this order. Each person works through their own folder from the lowest 
 - 27: [Cross-tenant and object access tests for UAT](<person-1-security-and-auth/task-27 Cross-tenant and object access tests for UAT.md>)
 - 32: [One permission catalogue in code](<person-1-security-and-auth/task-32 One permission catalogue in code.md>)
 - 33: [Safe add, rename and retire of permissions](<person-1-security-and-auth/task-33 Safe add, rename and retire of permissions.md>)
-- 39: [Foreign keys and check constraints](<person-1-security-and-auth/task-39 Foreign keys and check constraints.md>)
+- 39 (39a): [Foreign keys and check constraints](<person-1-security-and-auth/task-39 Foreign keys and check constraints.md>)
+- 39b to 39g: follow-ups of 39 (remaining core keys, audit column keys, tenant keys, other modules, remaining check constraints, cascade delete review), files arrive with PR #240
 - 44: [Sensitive data in API responses](<person-1-security-and-auth/task-44 Sensitive data in API responses.md>)
 
 ### person-3-api-and-pagination
