@@ -129,6 +129,10 @@ the team:
 | Outbox has failed messages (task 31) | `AppMetrics \| where Name == "crownus.outbox.failed" \| summarize v = max(Max) \| where v > 0` | every 15 min over 15 min | 1 row |
 | Outbox stuck: oldest pending over 10 minutes (task 31) | `AppMetrics \| where Name == "crownus.outbox.oldest_pending_age" \| summarize v = max(Max) \| where v > 600` | every 5 min over 10 min | 1 row |
 
+Failed outbox rows are kept until someone clears them (task 31), so the failed-messages alert keeps firing every
+15 minutes until they are looked at and deleted or re-queued. That is intended: a failed message is a lost email or
+notification. Set the rule's action to notify once per 24 hours (alert processing rule) to avoid a mail per run.
+
 The thresholds come from the task. Test each alert once by lowering its threshold, then set it back; write the date
 in the release ticket.
 
