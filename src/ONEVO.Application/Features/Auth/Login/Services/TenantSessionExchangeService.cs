@@ -1,7 +1,9 @@
+using Microsoft.AspNetCore.Http.Extensions;
 using Microsoft.Extensions.Configuration;
 using ONEVO.Application.Common.Models;
 using ONEVO.Application.Common.RepositoryInterfaces;
 using ONEVO.Application.Common.ServiceInterfaces;
+using ONEVO.Application.Common.Tenancy;
 using ONEVO.Application.Features.Auth.Login.DTOs.Responses;
 using ONEVO.Application.Features.Auth.Login.Mappers;
 using ONEVO.Application.Features.Auth.Login.RepositoryInterfaces;
@@ -141,6 +143,17 @@ public sealed class TenantSessionExchangeService : ITenantSessionExchangeService
         var appBaseUrl = _configuration["Urls:AppBaseUrl"];
         if (string.IsNullOrWhiteSpace(appBaseUrl) || !Uri.TryCreate(appBaseUrl, UriKind.Absolute, out var baseUri))
             throw new InvalidOperationException("Urls:AppBaseUrl must be configured to build a tenant continue URL.");
+
+        if (TenancyModeReader.Read(_configuration) == TenancyMode.SingleHost)
+        {
+            // One host serves every tenant: the tenant travels as ?tenant=<slug> (read by the web
+            // app on page load) instead of a subdomain.
+            var query = new QueryBuilder { { "code", rawCode }, { "tenant", slug } };
+            return new UriBuilder(baseUri.Scheme, rootDomain, baseUri.Port, "/auth/continue")
+            {
+                Query = query.ToQueryString().Value!.TrimStart('?')
+            }.Uri.ToString();
+        }
 
         var builder = new UriBuilder(baseUri.Scheme, $"{slug}.{rootDomain}", baseUri.Port, "/auth/continue")
         {

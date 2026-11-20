@@ -151,6 +151,12 @@ if (generatingOpenApiDocuments)
 
 var app = builder.Build();
 
+if (ONEVO.Application.Common.Tenancy.TenancyModeReader.Read(app.Configuration)
+    == ONEVO.Application.Common.Tenancy.TenancyMode.SingleHost)
+{
+    app.Logger.LogWarning("Tenancy:Mode is SingleHost - test mode only; tenant comes from the X-Crownus-Tenant header.");
+}
+
 // First, so scheme, host and client IP are the real client's for everything below
 // (HTTPS redirect, HSTS, logging, CORS, rate limiting, tenant resolution).
 app.UseForwardedHeaders();
@@ -168,6 +174,10 @@ app.UseSerilogRequestLogging(opts =>
 
 if (!app.Environment.IsDevelopment())
     app.UseHttpsRedirection();
+// Optional (Hosting:ServeSpas): SPA static files are served here, after the security headers,
+// HSTS and HTTPS redirect, but before routing, tenant resolution, auth, rate limiting and CSRF.
+// The index.html fallback is mapped below as an anonymous endpoint.
+app.UseSpaHosting();
 app.UseCors("AllowFrontend");
 app.UseRouting();
 // Task 23: 1 MB default body limit, larger only where an endpoint declares [RequestSizeLimit].
@@ -213,6 +223,7 @@ app.MapHealthChecks("/health/ready", new HealthCheckOptions
     Predicate = check => check.Tags.Contains("ready")
 })
     .AllowAnonymous();
+app.MapSpaHostingFallbacks();
 
 app.Run();
 

@@ -1,6 +1,8 @@
 using System.Globalization;
 using System.Text.Json;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Options;
+using ONEVO.Application.Common.Tenancy;
 
 namespace ONEVO.Infrastructure.ExternalServices.Email;
 
@@ -20,7 +22,21 @@ public class EmailTemplateRenderer : IEmailTemplateRenderer
 {
     private readonly EmailOptions _options;
 
-    public EmailTemplateRenderer(IOptions<EmailOptions> options) => _options = options.Value;
+    private readonly TenancyMode _tenancyMode;
+
+    /// <summary>Subdomain tenancy (the default).</summary>
+    public EmailTemplateRenderer(IOptions<EmailOptions> options)
+    {
+        _options = options.Value;
+        _tenancyMode = TenancyMode.Subdomain;
+    }
+
+    /// <summary>Preferred by DI: reads Tenancy:Mode so SingleHost links carry ?tenant=.</summary>
+    public EmailTemplateRenderer(IOptions<EmailOptions> options, IConfiguration configuration)
+    {
+        _options = options.Value;
+        _tenancyMode = TenancyModeReader.Read(configuration);
+    }
 
     public RenderedEmail Render(string templateId, object data)
     {
@@ -101,7 +117,7 @@ public class EmailTemplateRenderer : IEmailTemplateRenderer
         appBaseUrl = ApplyTenantSlug(appBaseUrl, tenantSlug);
         var resetUrl = string.IsNullOrWhiteSpace(appBaseUrl)
             ? $"[reset_url placeholder - set Email:AppBaseUrl] token={token}"
-            : $"{appBaseUrl.TrimEnd('/')}/auth/reset-password?token={Uri.EscapeDataString(token)}";
+            : WithTenantQuery($"{appBaseUrl.TrimEnd('/')}/auth/reset-password?token={Uri.EscapeDataString(token)}", tenantSlug);
 
         var subject = "Reset your CROWNUS password";
         var html = $"""
@@ -180,7 +196,7 @@ public class EmailTemplateRenderer : IEmailTemplateRenderer
         appBaseUrl = ApplyTenantSlug(appBaseUrl, tenantSlug);
         var inviteUrl = string.IsNullOrWhiteSpace(appBaseUrl)
             ? $"[invite_url placeholder - set Email:AppBaseUrl] token={token}"
-            : $"{appBaseUrl.TrimEnd('/')}/auth/invitations/{Uri.EscapeDataString(token)}";
+            : WithTenantQuery($"{appBaseUrl.TrimEnd('/')}/auth/invitations/{Uri.EscapeDataString(token)}", tenantSlug);
 
         var subject = "You're invited to CROWNUS — set up your account";
 
@@ -224,7 +240,7 @@ public class EmailTemplateRenderer : IEmailTemplateRenderer
         appBaseUrl = ApplyTenantSlug(appBaseUrl, tenantSlug);
         var approvalsUrl = string.IsNullOrWhiteSpace(appBaseUrl)
             ? "[approvals_url placeholder - set Email:AppBaseUrl]"
-            : $"{appBaseUrl.TrimEnd('/')}/people/approvals";
+            : WithTenantQuery($"{appBaseUrl.TrimEnd('/')}/people/approvals", tenantSlug);
 
         var subject = $"Approval needed: {Escape(employeeName)}'s {Escape(changeReason)} to {Escape(positionName)}";
         var html = $"""
@@ -314,8 +330,11 @@ public class EmailTemplateRenderer : IEmailTemplateRenderer
     /// the token was issued for. Reuses the app's own host shape (subdomain-of-root, same
     /// scheme/port as configured) rather than inventing a second convention.
     /// </summary>
-    private static string ApplyTenantSlug(string appBaseUrl, string tenantSlug)
+    private string ApplyTenantSlug(string appBaseUrl, string tenantSlug)
     {
+        if (_tenancyMode == TenancyMode.SingleHost)
+            return appBaseUrl; // one host: the tenant travels as ?tenant= (see WithTenantQuery)
+
         if (string.IsNullOrWhiteSpace(appBaseUrl) || string.IsNullOrWhiteSpace(tenantSlug))
             return appBaseUrl;
 
@@ -324,6 +343,16 @@ public class EmailTemplateRenderer : IEmailTemplateRenderer
 
         var builder = new UriBuilder(parsed) { Host = $"{tenantSlug}.{parsed.Host}" };
         return builder.Uri.ToString();
+    }
+
+    /// <summary>SingleHost only: appends tenant=&lt;slug&gt; to the final URL's query (merging with an existing one).</summary>
+    private string WithTenantQuery(string url, string tenantSlug)
+    {
+        if (_tenancyMode != TenancyMode.SingleHost || string.IsNullOrWhiteSpace(tenantSlug))
+            return url;
+
+        var separator = url.Contains('?') ? '&' : '?';
+        return $"{url}{separator}tenant={Uri.EscapeDataString(tenantSlug)}";
     }
 
     /// <summary>The calendar emails (plan C1 P1-3): an invite, or an update / cancellation / removal of an event the recipient

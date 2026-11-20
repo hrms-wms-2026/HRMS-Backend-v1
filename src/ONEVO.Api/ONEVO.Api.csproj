@@ -44,6 +44,10 @@
   </ItemGroup>
 
   <ItemGroup>
+    <InternalsVisibleTo Include="ONEVO.Tests.Unit" />
+  </ItemGroup>
+
+  <ItemGroup>
     <ProjectReference Include="..\ONEVO.Application\ONEVO.Application.csproj" />
     <ProjectReference Include="..\ONEVO.Infrastructure\ONEVO.Infrastructure.csproj" />
   </ItemGroup>
