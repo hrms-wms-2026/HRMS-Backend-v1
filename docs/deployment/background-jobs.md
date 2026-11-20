@@ -50,6 +50,7 @@ what still stops the API from running as a separate web and worker instance.
 | `BulkOnboardingBatchProcessor` | `bulk-onboarding` | 10 s | 2 h | Creates and finalises drafts for bulk onboarding batches | No: both instances would take the oldest pending batch. Released after each pass (no gap) |
 | `OfficeProjectReconciliationStartupService` | `office-project-reconciliation` | once, 30 s after start | 30 min | Backfills each tenant's Office project | Not checked; now leased and kept 30 min, so instances started together run it once |
 | `OutboxProcessor` | none | 1 s poll (setting) | none | Dispatches outbox messages; hourly idempotency purge | Yes: messages are claimed atomically (`OutboxClaimStore`, `UPDLOCK`/`READPAST`), tested in `OutboxClaimLockingTests` and `OutboxClaimOwnershipIntegrationTests` |
+| `OutboxRetentionPurgeJob` | `outbox-retention-purge` | 6 h | 30 min | Deletes `published` outbox rows older than `Outbox:PublishedRetentionDays` (14), 1,000 per statement, logs the count. Keeps `failed` and `pending` rows (task 31) | Yes (delete) |
 | `MeetingOccurrenceGeneratorJob` | `meetings.occurrence-generator` (its own) | 1 h | lease 10 min, renewed | Generates meeting occurrences | Already leased before task 13; unchanged |
 | `MeetingAttendanceJob` | `meetings.attendance` (its own) | 15 min | lease 10 min, renewed | Syncs meeting attendance | Already leased before task 13; unchanged |
 
@@ -62,6 +63,7 @@ long as only the lease decides who runs.
 |---|---|
 | `ConfigurationStartupValidator` | Logs missing settings at start |
 | `MeetingsStartupCheck` | Refuses to start when a Meetings flag lacks what it needs |
+| `OutboxHandlerStartupCheck` | Refuses to start when two outbox handlers claim one message type (task 31); web-only instances write outbox messages too |
 | `ReferenceSeedingLock.Acquire` / `.Release` | Session lock around the seeders (below) |
 | `PermissionSeeder`, `RoleTemplateSeeder`, `LookupDataSeeder`, `NotificationTemplateSeeder`, `PlatformAccessSeeder`, `PositionTemplatePackSeeder`, `ModuleCatalogSeeder`, `PlatformOAuthProviderMetadataSeeder` | Reference data every instance needs. They read what exists and insert what is missing |
 | `DevSmokeTestTenantSeeder`, `WorkManagementDapiDemoSeeder`, `DapiOrgStructureSeeder`, `DapiLeaveSampleSeeder`, `DapiAttendanceDemoSeeder`, `DapiHistorySeeder`, `WorkManagementSampleDataSeeder` | Demo data, Development/Test only |
