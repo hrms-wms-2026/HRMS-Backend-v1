@@ -88,6 +88,7 @@ using ONEVO.Infrastructure.ExternalServices.Calendar;
 using ONEVO.Infrastructure.ExternalServices.Email;
 using ONEVO.Infrastructure.ExternalServices.GitHub;
 using ONEVO.Infrastructure.Configuration;
+using ONEVO.Infrastructure.SharedState;
 using ONEVO.Infrastructure.Persistence;
 using ONEVO.Infrastructure.Persistence.Interceptors;
 using ONEVO.Infrastructure.Persistence.Repositories.Auth.Invite;
@@ -893,7 +894,8 @@ public static class DependencyInjection
         services.AddScoped<IWritableTenantContext>(sp => sp.GetRequiredService<TenantContextAccessor>());
         services.AddScoped<ICurrentUser, CurrentUserService>();
         services.AddScoped<ICurrentPlatformUserContext, CurrentPlatformUserContext>();
-        services.AddSingleton<ICacheService, MemoryCacheService>();
+        services.AddSingleton<MemoryCacheService>();
+        services.AddSingleton<ICacheService>(sp => sp.GetRequiredService<MemoryCacheService>());
         services.AddSingleton<IDateTimeProvider, SystemDateTimeProvider>();
 
         // Monitoring - Tray App Activation
@@ -1014,7 +1016,11 @@ public static class DependencyInjection
         // Admin/platform MFA challenge storage — in-memory for now (v1), no PostgreSQL-backed
         // equivalent yet. Fine for a single-instance local/dev deployment; revisit before running
         // multiple API instances behind a load balancer.
-        services.AddScoped<IPlatformMfaChallengeStore, MemoryPlatformMfaChallengeStore>();
+        // Task 21: shared in Redis when configured, so the password and code steps may hit different instances.
+        if (SharedState.SharedStateRegistration.IsRedisEnabled(configuration))
+            services.AddScoped<IPlatformMfaChallengeStore, SharedState.RedisPlatformMfaChallengeStore>();
+        else
+            services.AddScoped<IPlatformMfaChallengeStore, MemoryPlatformMfaChallengeStore>();
         services.AddScoped<IBaseLoginCandidateRepository, EfBaseLoginCandidateRepository>();
         services.AddScoped<ILoginWorkspaceSelectionChallengeRepository, EfLoginWorkspaceSelectionChallengeRepository>();
         services.AddScoped<IBaseLoginFixedWorkVerifier, BaseLoginFixedWorkVerifier>();
@@ -1022,7 +1028,14 @@ public static class DependencyInjection
         services.AddScoped<ILoginWorkspaceSelectionChallengeCleanupRunner, LoginWorkspaceSelectionChallengeCleanupRunner>();
         services.AddScoped<IPasswordHasher, BCryptPasswordHasher>();
         services.AddScoped<IPermissionResolver, PermissionResolver>();
-        services.AddSingleton<IPermissionVersionService, PermissionVersionService>();
+        // Task 21: shared state for more than one instance (Redis when Redis:ConnectionString is set, else in process).
+        services.AddSharedState(configuration);
+        if (SharedState.SharedStateRegistration.IsRedisEnabled(configuration))
+            services.AddSingleton<IPermissionVersionService, SharedState.RedisPermissionVersionService>();
+        else
+            services.AddSingleton<IPermissionVersionService, PermissionVersionService>();
+        services.AddSingleton<SharedState.IInvalidationHandler, SharedState.SessionTicketInvalidationHandler>();
+        services.AddSingleton<SharedState.IInvalidationHandler, SharedState.MemoryCacheInvalidationHandler>();
         // Improvement task 03: short-lived cache in front of the ticket stores' per-request lookups.
         services.AddMemoryCache();
         services.Configure<ONEVO.Infrastructure.Identity.Sessions.SessionTicketCacheOptions>(
@@ -1030,8 +1043,10 @@ public static class DependencyInjection
         services.AddSingleton<ONEVO.Infrastructure.Identity.Sessions.SessionTicketCache>();
         services.AddSingleton<ONEVO.Infrastructure.Identity.Sessions.ISessionTicketStoreCache>(
             sp => sp.GetRequiredService<ONEVO.Infrastructure.Identity.Sessions.SessionTicketCache>());
-        services.AddSingleton<ISessionTicketCache>(
-            sp => sp.GetRequiredService<ONEVO.Infrastructure.Identity.Sessions.SessionTicketCache>());
+        // Evictions from callers also reach the other instances (task 21); the ticket stores read the local cache.
+        services.AddSingleton<ISessionTicketCache>(sp => new SharedState.BroadcastingSessionTicketCache(
+            sp.GetRequiredService<ONEVO.Infrastructure.Identity.Sessions.SessionTicketCache>(),
+            sp.GetRequiredService<SharedState.ISharedInvalidationBus>()));
         services.AddScoped<ITotpService, OtpNetTotpService>();
         services.AddScoped<ILoginSessionMaterialFactory, LoginSessionMaterialFactory>();
         services.AddScoped<IGoogleIdTokenValidator, GoogleIdTokenValidator>();

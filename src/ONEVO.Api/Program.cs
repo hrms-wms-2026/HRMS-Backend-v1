@@ -84,7 +84,7 @@ builder.Services.AddControllers()
 builder.Services.AddHttpContextAccessor();
 builder.Services.AddApiAuthentication(builder.Environment, builder.Configuration);
 builder.Services.AddApiAuthorization();
-builder.Services.AddSignalR();
+var signalR = builder.Services.AddSignalR();
 builder.Services.AddSingleton<
     ONEVO.Application.Features.Monitoring.Settings.ServiceInterfaces.ITrayPolicyRefreshNotifier,
     ONEVO.Api.Hubs.SignalRTrayPolicyRefreshNotifier>();
@@ -108,7 +108,10 @@ builder.Services.AddSingleton<
 builder.Services.AddApiSwagger();
 builder.Services.AddApiCors(builder.Configuration);
 builder.Services.AddApiRateLimiting(builder.Configuration);
-builder.Services.AddHealthChecks()
+var healthChecks = builder.Services.AddHealthChecks();
+// Task 21: shared state for more than one instance (Redis when Redis:ConnectionString is set).
+builder.Services.AddApiSharedState(signalR, healthChecks, builder.Configuration);
+healthChecks
     .AddCheck("api", () => Microsoft.Extensions.Diagnostics.HealthChecks.HealthCheckResult.Healthy("API is running"))
     .AddAsyncCheck("sqlserver", async () =>
     {
