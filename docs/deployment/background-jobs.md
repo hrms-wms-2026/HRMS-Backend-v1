@@ -79,14 +79,15 @@ while seeding, SQL Server frees the lock with its session (`ReferenceSeedingLock
   (task 09). That pipeline has never run, so moving seeding into it now could leave a release with a new
   permission and no seeding step. Follow-up `task-13b`: move it after the first successful pipeline run, with the
   lock above as the safety net meanwhile.
-- **A worker instance cannot be split off yet.** Some jobs reach browsers and tray devices through SignalR, and
-  SignalR has no backplane (task 21). From a worker, those messages reach only clients connected to the worker:
+- **A worker instance needs the Redis backplane.** Some jobs reach browsers and tray devices through SignalR. Task 21a
+  added a Redis backplane ([shared-state.md](shared-state.md)), but UAT has no Redis yet. Without it, messages from a
+  worker reach only clients connected to the worker:
   - `OutboxProcessor` runs `InboxChangedOutboxHandler` (inbox live updates) and `NotificationTrayPushOutboxHandler`
     (tray notifications);
   - `WellnessRuleEvaluatorJob` pushes to trays directly (`ITrayPushNotifier`).
 
-  Until task 21, run every instance with `BackgroundJobs__Enabled=true` (the default), or run exactly one
-  instance. The leases already make several job-running instances safe.
+  Until Redis is configured, run every instance with `BackgroundJobs__Enabled=true` (the default), or run exactly
+  one instance. The leases already make several job-running instances safe.
 - **Bulk onboarding can create drafts twice after an interrupted pass.** Row statuses are saved at the end of a
   pass, while each draft is saved as it is created. A pass stopped half way (shutdown, or the 2-hour limit)
   creates those drafts again next time. This was true before task 13 for shutdowns; it needs a save per row.

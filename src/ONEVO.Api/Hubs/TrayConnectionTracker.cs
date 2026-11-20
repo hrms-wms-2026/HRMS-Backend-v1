@@ -10,8 +10,9 @@ namespace ONEVO.Api.Hubs;
 /// <para>
 /// Task 21: with Redis configured, each connection is also written to <see cref="ISharedPresenceStore"/> and
 /// refreshed by <see cref="TrayPresenceRefresher"/>, so a tray connected to instance A counts as present on
-/// instance B. If Redis cannot be asked, the answer fails open (present): a Redis outage must not answer
-/// 428 "tray required" to every user whose tray happens to be connected to another instance.
+/// instance B. If Redis cannot be asked, the answer is "not connected here": TrayPresenceEnforcementMiddleware then
+/// falls back to the device's persisted HTTP heartbeat (LastSeenAt within the grace period), which also covers
+/// trays connected to another instance - so a Redis outage neither blocks those users nor lets anyone skip the check.
 /// </para>
 /// </summary>
 public sealed class TrayConnectionTracker(ISharedPresenceStore? shared = null) : ITrayConnectionPresence
@@ -22,7 +23,7 @@ public sealed class TrayConnectionTracker(ISharedPresenceStore? shared = null) :
     {
         if (_byUser.TryGetValue((tenantId, userId), out var local) && !local.IsEmpty)
             return true;
-        return shared is not null && (shared.IsTrayConnected(tenantId, userId) ?? true);
+        return shared?.IsTrayConnected(tenantId, userId) == true;
     }
 
     public void Connected(Guid tenantId, Guid userId, string connectionId)

@@ -141,6 +141,7 @@ builder.Services.AddSingleton<ONEVO.Infrastructure.Observability.IOutboxBacklogS
 var app = builder.Build();
 // Creating the probe registers the crownus.outbox.* gauges, so they report without waiting for a readiness call.
 app.Services.GetRequiredService<ONEVO.Infrastructure.Observability.OutboxBacklogProbe>();
+SharedStateExtensions.WarnIfKeyRingUnencrypted(app);
 
 if (ONEVO.Application.Common.Tenancy.TenancyModeReader.Read(app.Configuration)
     == ONEVO.Application.Common.Tenancy.TenancyMode.SingleHost)
