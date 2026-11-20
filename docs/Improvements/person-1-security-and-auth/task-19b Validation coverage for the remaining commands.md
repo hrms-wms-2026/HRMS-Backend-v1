@@ -243,4 +243,13 @@ I checked the Angular app's `maxlength` and `Validators.maxLength` values agains
 
 ### Verification
 
-See the final gate below.
+Full gate on the worktree path at 5933b38e7, report `dev-env/reports/improve-task-19b-remaining-validators-f22c5c/verify-20261120-001343`:
+
+| Step | Result |
+|---|---|
+| build | pass |
+| unit | 8,186 passed, 0 failed |
+| architecture | 747 passed, 0 failed |
+| integration | 1,251 passed, 0 failed, 1 skipped |
+
+Flaky re-runs: the earlier gate `verify-20261119-194758` had 6 integration failures (3 in `LedProgressDetailIntegrationTests`, 2 in `ExcludeMeetingsIntegrationTests`, 1 in `MeetingReadIntegrationTests`). These tests seed data straight into the database and send no commands, so no validator runs in them. Run on their own, all 28 tests in those classes passed, and the next full gate was green.
