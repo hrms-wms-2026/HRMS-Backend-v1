@@ -49,7 +49,25 @@ Keys left out on purpose, because the code hard-deletes the parent (details in t
 
 ## Gate
 
-Final full gate (`verify.ps1 <worktree> -Full`) on commit 05f22978c: `dev-env/reports/improve-task-39-fk-check-constraints-b63e85/verify-20261120-001923`.
+### After merging feature/testing (474437482)
+
+Gate `verify-20261120-072916` on 17f3f3b8f, with the migration re-created as `20261120015440`:
+
+| Step | Result |
+|---|---|
+| build | PASS |
+| unit | 8343 passed, 0 failed |
+| architecture | 841 passed, 0 failed |
+| integration | 1391 passed, 6 failed, 1 skipped |
+
+The 6 failures, each re-run on its own:
+
+- `PlatformAdminAuthIntegrationTests` (2) and `PermissionLifecycleSqlServerTests` (2): the classes pass when run alone. This full run took 2 h 16 min under load from parallel sessions.
+- `SpaHostingTests.MissingAsset_Is404` (SingleHost and Subdomain): fails alone with 401 instead of 404, and fails the same way on feature/testing 474437482 without this branch. It is not caused by task 39a, which changes nothing in hosting or auth.
+
+### Before the merge
+
+Full gate (`verify.ps1 <worktree> -Full`) on commit 05f22978c: `dev-env/reports/improve-task-39-fk-check-constraints-b63e85/verify-20261120-001923`.
 
 | Step | Result |
 |---|---|
