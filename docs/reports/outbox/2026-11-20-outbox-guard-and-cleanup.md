@@ -49,6 +49,7 @@ Whatever is chosen, the mapping test keeps the rule: a type that stays must keep
 | Outbox integration tests (`SharedPlatform.Outbox*`, SQL Server container) | 26 passed, the 2 new purge tests included |
 | Full unit suite (Release) | 8,162 passed (two counts in `BackgroundJobsRegistrationTests` updated for the new job and check) |
 | Architecture suite | 713 passed |
+| Integration suites that boot the API (Auth, Tenancy, Monitoring, E2E, Hosting, API boot, reference data) | 199 of 200 passed in 30 min. The one failure, `SpaHostingTests.ServeSpasOn_ApiPath_KeepsDenyAllCsp(SingleHost)`, was a SQL "Execution Timeout Expired" while opening a connection. Rerunning `SpaHostingTests` alone: 29 of 30 (22 min), the earlier case passed and a different case failed (`ServeSpasOn_SpaResponses_GetSpaCspAndSecurityHeaders`, Subdomain, admin host; error text not captured). No run on the previous commit for comparison |
 
 ## Not covered
 
