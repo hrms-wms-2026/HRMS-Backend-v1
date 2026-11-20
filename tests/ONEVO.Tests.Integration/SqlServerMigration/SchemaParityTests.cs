@@ -76,6 +76,8 @@ public sealed class SchemaParityTests(SqlServerFixture fixture)
     [
         // 20261112072239_AddPlatformSupport
         "platform_announcements", "support_tickets", "support_ticket_comments", "support_ticket_attachments",
+        // 20261120033318_AddRateLimitSettings
+        "rate_limit_settings", "rate_limit_setting_changes",
     ];
 
     [Fact]
