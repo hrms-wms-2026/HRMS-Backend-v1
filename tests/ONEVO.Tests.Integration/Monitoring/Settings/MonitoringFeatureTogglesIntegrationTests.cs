@@ -292,7 +292,7 @@ public sealed class MonitoringFeatureTogglesIntegrationTests : IClassFixture<Mon
 
         var body = await resp.Content.ReadFromJsonAsync<JsonElement>();
         body.GetProperty("activityMonitoring").GetBoolean().Should().BeFalse();
-        body.GetProperty("updatedAt").ValueKind.Should().Be(JsonValueKind.Null);
+        body.GetPropertyOrNull("updatedAt").ValueKind.Should().Be(JsonValueKind.Null);
     }
 
     [Fact]

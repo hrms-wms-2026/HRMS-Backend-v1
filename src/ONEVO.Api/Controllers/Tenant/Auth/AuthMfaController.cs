@@ -7,9 +7,11 @@ using ONEVO.Application.Features.Auth.Login.Commands.MfaConfirmSetup;
 using ONEVO.Application.Features.Auth.Login.Commands.MfaDisable;
 using ONEVO.Application.Features.Auth.Login.Commands.MfaEnable;
 using ONEVO.Application.Features.Auth.Login.Commands.MfaVerify;
+using ONEVO.Api.Filters;
 
 namespace ONEVO.Api.Controllers.Tenant.Auth;
 
+[NoResponseCompression]
 [ApiController]
 [Route("api/v1/auth")]
 public class AuthMfaController : ControllerBase

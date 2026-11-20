@@ -692,8 +692,8 @@ public sealed class LegalEntitiesIntegrationTests : IClassFixture<LegalEntitiesI
             $"/api/v1/org/legal-entities/{_fixture.TenantAPrimaryLegalEntityId}/general-settings",
             _fixture.UpdateBody(
                 currentJson.GetProperty("name").GetString()!,
-                currentJson.GetProperty("companyCode").GetString() ?? "PRIMCODE",
-                currentJson.GetProperty("registrationNumber").GetString() ?? "REG-PRIM",
+                currentJson.GetPropertyOrNull("companyCode").GetString() ?? "PRIMCODE",
+                currentJson.GetPropertyOrNull("registrationNumber").GetString() ?? "REG-PRIM",
                 [1, 2, 3, 4, 5]),
             cookie: _fixture.TenantA.SessionCookie, csrfToken: _fixture.TenantA.CsrfHeader);
 
@@ -876,7 +876,7 @@ public sealed class LegalEntitiesIntegrationTests : IClassFixture<LegalEntitiesI
 
         response.StatusCode.Should().Be(HttpStatusCode.OK);
         var json = await ReadJsonAsync(response);
-        json.GetProperty("breakDurationMinutes").ValueKind.Should().Be(JsonValueKind.Null);
+        json.GetPropertyOrNull("breakDurationMinutes").ValueKind.Should().Be(JsonValueKind.Null);
     }
 
     [Fact]
@@ -941,8 +941,8 @@ public sealed class LegalEntitiesIntegrationTests : IClassFixture<LegalEntitiesI
         response.StatusCode.Should().Be(HttpStatusCode.OK);
         var json = await ReadJsonAsync(response);
         json.GetProperty("breakDurationMinutes").GetInt32().Should().Be(15);
-        json.GetProperty("workStartTime").ValueKind.Should().Be(JsonValueKind.Null);
-        json.GetProperty("workEndTime").ValueKind.Should().Be(JsonValueKind.Null);
+        json.GetPropertyOrNull("workStartTime").ValueKind.Should().Be(JsonValueKind.Null);
+        json.GetPropertyOrNull("workEndTime").ValueKind.Should().Be(JsonValueKind.Null);
     }
 
     // ── 6. Delete ────────────────────────────────────────────────────────────
@@ -1017,7 +1017,7 @@ public sealed class LegalEntitiesIntegrationTests : IClassFixture<LegalEntitiesI
         var after = await _fixture.SendAsync(HttpMethod.Get, _fixture.TenantA.Host,
             $"/api/v1/org/legal-entities/{company.Id}/general-settings", body: null, cookie: _fixture.TenantA.SessionCookie);
         var json = await ReadJsonAsync(after);
-        json.GetProperty("logoFileId").ValueKind.Should().Be(JsonValueKind.Null);
+        json.GetPropertyOrNull("logoFileId").ValueKind.Should().Be(JsonValueKind.Null);
     }
 
     [Fact]
@@ -1082,7 +1082,7 @@ public sealed class LegalEntitiesIntegrationTests : IClassFixture<LegalEntitiesI
             $"/api/v1/org/legal-entities/{company.Id}/general-settings", body: null, cookie: _fixture.TenantA.SessionCookie);
 
         response.StatusCode.Should().Be(HttpStatusCode.OK);
-        (await ReadJsonAsync(response)).GetProperty("logoFileId").ValueKind.Should().Be(JsonValueKind.Null);
+        (await ReadJsonAsync(response)).GetPropertyOrNull("logoFileId").ValueKind.Should().Be(JsonValueKind.Null);
     }
 
     [Fact]

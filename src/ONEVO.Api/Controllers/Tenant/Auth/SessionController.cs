@@ -4,9 +4,11 @@ using Microsoft.AspNetCore.Mvc;
 using ONEVO.Api.Contracts.Auth.Session;
 using ONEVO.Application.Features.Auth.ActiveCompany.Commands.SwitchActiveCompany;
 using ONEVO.Application.Features.OrgStructure.Queries.ListLegalEntities;
+using ONEVO.Api.Filters;
 
 namespace ONEVO.Api.Controllers.Tenant.Auth;
 
+[NoResponseCompression]
 [ApiController]
 [Route("api/v1/session")]
 [Authorize(Policy = "TenantPolicy")]

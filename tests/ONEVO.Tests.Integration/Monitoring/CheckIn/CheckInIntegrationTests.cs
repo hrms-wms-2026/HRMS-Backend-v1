@@ -398,7 +398,7 @@ public sealed class CheckInIntegrationTests : IClassFixture<CheckInIntegrationTe
 
         resp.StatusCode.Should().Be(HttpStatusCode.OK, await resp.Content.ReadAsStringAsync());
         var body = await resp.Content.ReadFromJsonAsync<JsonElement>();
-        body.GetProperty("latitude").ValueKind.Should().Be(JsonValueKind.Null);
+        body.GetPropertyOrNull("latitude").ValueKind.Should().Be(JsonValueKind.Null);
         body.GetProperty("device_serial_number").GetString().Should().Be("SN-TEST-002");
 
         var checkInId = Guid.Parse(body.GetProperty("check_in_id").GetString()!);

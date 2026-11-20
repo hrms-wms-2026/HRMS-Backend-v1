@@ -16,6 +16,7 @@ public sealed class PermissionsController : ControllerBase
     public PermissionsController(IMediator mediator) => _mediator = mediator;
 
     /// <summary>Permission catalog for the current tenant (assignable + universal read-only).</summary>
+    [ReferenceDataCache]
     [HttpGet]
     [RequirePermission("roles:read")]
     public async Task<IActionResult> ListCatalog(CancellationToken ct)

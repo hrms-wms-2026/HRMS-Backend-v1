@@ -8,9 +8,11 @@ using ONEVO.Application.Features.Monitoring.TrayActivation.Commands.RefreshTrayT
 using ONEVO.Application.Features.Monitoring.TrayActivation.Commands.RevokeDevice;
 using ONEVO.Application.Features.Monitoring.TrayActivation.DTOs.Responses;
 using ONEVO.Application.Features.Monitoring.TrayActivation.Queries.GetTrayPresence;
+using ONEVO.Api.Filters;
 
 namespace ONEVO.Api.Controllers.Tenant.Monitoring.TrayActivation;
 
+[NoResponseCompression]
 [ApiController]
 [Route("api/v1/monitoring/activation")]
 public class MonitoringActivationController : ControllerBase

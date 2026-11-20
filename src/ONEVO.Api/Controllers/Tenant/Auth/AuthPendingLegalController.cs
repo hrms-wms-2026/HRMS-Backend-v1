@@ -5,9 +5,11 @@ using Microsoft.AspNetCore.Mvc;
 using ONEVO.Api.Contracts.Auth;
 using ONEVO.Application.Features.Auth.Legal.Commands.AcceptPendingLegalDocuments;
 using ONEVO.Application.Features.Auth.Legal.Commands.SubmitLegalAcceptance;
+using ONEVO.Api.Filters;
 
 namespace ONEVO.Api.Controllers.Tenant.Auth;
 
+[NoResponseCompression]
 [ApiController]
 public class AuthPendingLegalController : ControllerBase
 {

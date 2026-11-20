@@ -16,6 +16,7 @@ namespace ONEVO.Api.Controllers.Tenant.Auth;
 /// reactivates and signs them out. Invitation resend/revoke stay on the employee endpoints
 /// (POST /employees/{id}/resend-invitation, /revoke-invitation), which accept users:manage too.
 /// </summary>
+[NoResponseCompression]
 [ApiController]
 [Route("api/v1/users")]
 [Authorize(Policy = "TenantPolicy")]

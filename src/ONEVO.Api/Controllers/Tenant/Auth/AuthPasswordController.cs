@@ -10,9 +10,11 @@ using ONEVO.Application.Features.Auth.Login.Commands.ChangePassword;
 using ONEVO.Application.Features.Auth.Login.Commands.ForcePasswordChange;
 using ONEVO.Application.Features.Auth.Login.Commands.RequestPasswordReset;
 using ONEVO.Application.Features.Auth.Login.Commands.ResetPassword;
+using ONEVO.Api.Filters;
 
 namespace ONEVO.Api.Controllers.Tenant.Auth;
 
+[NoResponseCompression]
 [ApiController]
 [Route("api/v1/auth")]
 public class AuthPasswordController : ControllerBase
