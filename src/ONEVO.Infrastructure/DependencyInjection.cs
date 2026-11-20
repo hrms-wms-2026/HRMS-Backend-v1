@@ -1170,6 +1170,8 @@ public static class DependencyInjection
         // Boot-time configuration audit (warns about missing keys; never fatal).
         services.AddHostedService<ConfigurationStartupValidator>();
 
+        Services.SharedPlatform.RateLimiting.RateLimitSettingsRegistration.AddDatabaseRateLimitSettings(services);
+
         return services;
     }
 }
