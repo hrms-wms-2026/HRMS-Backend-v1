@@ -1,4 +1,5 @@
 using Microsoft.Extensions.Options;
+using ONEVO.Application.Common.Authorization;
 using ONEVO.Application.Common.RepositoryInterfaces;
 using ONEVO.Application.Common.ServiceInterfaces;
 using ONEVO.Application.Features.Auth.Permission.RepositoryInterfaces;
@@ -34,8 +35,8 @@ public sealed record LeaveApproverResolutionRow(
 /// </summary>
 public sealed class LeaveApproverResolver : ILeaveApproverResolver
 {
-    public const string HrFallbackPermission = "leave:manage";
-    public const string ApprovePermission = "leave:approve";
+    public const string HrFallbackPermission = PermissionCatalog.Leave.Manage;
+    public const string ApprovePermission = PermissionCatalog.Leave.Approve;
 
     private readonly IEmployeeAuthorityResolver _authority;
     private readonly ILeaveRequestRepository _requests;

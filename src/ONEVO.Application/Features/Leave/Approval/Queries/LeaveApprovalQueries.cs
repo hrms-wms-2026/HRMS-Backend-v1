@@ -1,4 +1,5 @@
 using MediatR;
+using ONEVO.Application.Common.Authorization;
 using ONEVO.Application.Common.Models;
 using ONEVO.Application.Common.RepositoryInterfaces;
 using ONEVO.Application.Common.ServiceInterfaces;
@@ -139,7 +140,7 @@ public sealed class GetLeaveApprovalDetailQueryHandler
         var canDecide = employee is not null
             && state.ApprovalMode is not null
             && state.Request.Status is not (LeaveRequestStatuses.Approved or LeaveRequestStatuses.Rejected or LeaveRequestStatuses.Cancelled)
-            && _currentUser.HasPermission("leave:approve")
+            && _currentUser.HasPermission(PermissionCatalog.Leave.Approve)
             && LeaveApprovalModeEvaluator.IsActionable(
                 state.ApprovalMode,
                 state.Approvers.Select(x => new ApprovalModeRow(x.ApproverEmployeeId, x.SequenceOrder, x.Status)).ToList(),
@@ -159,7 +160,7 @@ public sealed class GetLeaveApprovalDetailQueryHandler
                 state.Entitlement.UsedHours, state.Entitlement.PendingHours);
 
         var canChangeDecision = employee is not null
-            && _currentUser.HasPermission("leave:approve")
+            && _currentUser.HasPermission(PermissionCatalog.Leave.Approve)
             && LeaveDecisionChangeRules.CanChange(state, employee.Id, _clock.UtcNow);
 
         var approverIds = state.Approvers.Select(a => a.ApproverEmployeeId).Distinct().ToList();

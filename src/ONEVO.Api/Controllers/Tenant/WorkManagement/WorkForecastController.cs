@@ -2,6 +2,7 @@ using MediatR;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using ONEVO.Api.Filters;
+using ONEVO.Application.Common.Authorization;
 using ONEVO.Application.Features.TimeAttendance.Team.Queries;
 using ONEVO.Application.Features.WorkManagement.Forecast.Queries.GetModuleForecast;
 
@@ -35,7 +36,7 @@ public sealed class WorkForecastController(IMediator mediator) : ControllerBase
 
     /// <summary>Widget team-employee-forecast: each covered employee's worst deadline window at their task rate.</summary>
     [HttpGet("employees")]
-    [RequirePermission("attendance:read")]
+    [RequirePermission(PermissionCatalog.Attendance.Read)]
     public async Task<IActionResult> Employees(
         [FromQuery] string? status = null,
         [FromQuery] string? sort = "overtime",

@@ -21,6 +21,7 @@ public sealed class MonitoringDeviceAuthorizationController : ControllerBase
     }
 
     [HttpPost("start")]
+    // Public by design: creates a pending request only, a signed-in user must approve it; per-IP /api/v1 rate limit.
     [AllowAnonymous]
     [ONEVO.Api.Middleware.AllowWithoutActiveTray]
     public async Task<IActionResult> Start(
@@ -62,6 +63,7 @@ public sealed class MonitoringDeviceAuthorizationController : ControllerBase
     }
 
     [HttpPost("token")]
+    // Public by design: random device code + fingerprint, server-side slow_down; per-IP /api/v1 rate limit.
     [AllowAnonymous]
     [ONEVO.Api.Middleware.AllowWithoutActiveTray]
     public async Task<IActionResult> Token(

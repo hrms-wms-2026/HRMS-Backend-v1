@@ -28,6 +28,7 @@ public class StripeWebhookController : ControllerBase
     }
 
     [HttpPost]
+    [RequestSizeLimit(ONEVO.Api.Configuration.RequestBodyLimits.StripeWebhook)]
     public async Task<IActionResult> Handle(
         [FromRoute] string gatewayKey,
         CancellationToken ct)
@@ -46,6 +47,7 @@ public class StripeWebhookController : ControllerBase
     }
 
     [HttpPost("/api/payment-gateways/stripe/{gatewayConfigId:guid}/webhook")]
+    [RequestSizeLimit(ONEVO.Api.Configuration.RequestBodyLimits.StripeWebhook)]
     public async Task<IActionResult> HandleByConfigId(
         [FromRoute] Guid gatewayConfigId,
         CancellationToken ct)

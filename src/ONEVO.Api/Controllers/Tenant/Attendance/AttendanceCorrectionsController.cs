@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Mvc;
 using MediatR;
 using ONEVO.Api.Contracts.Attendance.Corrections;
 using ONEVO.Api.Filters;
+using ONEVO.Application.Common.Authorization;
 using ONEVO.Application.Common.Models;
 using ONEVO.Application.Features.TimeAttendance.Commands.AttendanceCorrections;
 using ONEVO.Application.Features.TimeAttendance.Queries.AttendanceCorrections;
@@ -45,7 +46,7 @@ public sealed class AttendanceCorrectionsController(IMediator mediator) : Contro
     }
 
     [HttpGet("approvals")]
-    [RequirePermission("attendance:approve")]
+    [RequirePermission(PermissionCatalog.Attendance.Approve)]
     public async Task<IActionResult> Approvals(
         [FromQuery] DateOnly? from, [FromQuery] DateOnly? to, [FromQuery] string? status,
         CancellationToken ct = default)
@@ -55,7 +56,7 @@ public sealed class AttendanceCorrectionsController(IMediator mediator) : Contro
     }
 
     [HttpPost("{id:guid}/approve")]
-    [RequirePermission("attendance:approve")]
+    [RequirePermission(PermissionCatalog.Attendance.Approve)]
     public async Task<IActionResult> Approve(
         Guid id, [FromBody] ReviewAttendanceCorrectionRequest request, CancellationToken ct = default)
     {
@@ -64,7 +65,7 @@ public sealed class AttendanceCorrectionsController(IMediator mediator) : Contro
     }
 
     [HttpPost("{id:guid}/reject")]
-    [RequirePermission("attendance:approve")]
+    [RequirePermission(PermissionCatalog.Attendance.Approve)]
     public async Task<IActionResult> Reject(
         Guid id, [FromBody] ReviewAttendanceCorrectionRequest request, CancellationToken ct = default)
     {

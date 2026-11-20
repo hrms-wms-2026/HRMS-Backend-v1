@@ -131,6 +131,12 @@ public class TenantProvisioningE2ETests : IAsyncLifetime
         var detail = await GetJsonAsync(TenantHost, $"/api/v1/auth/invitations/{inviteToken}");
         detail.GetProperty("status").GetString().Should().Be("pending");
         detail.GetProperty("invited_email").GetString().Should().Be(OwnerEmail);
+        // Anonymous endpoint snapshot (task 44, guard 2): anyone with the email link can call this,
+        // so a new field here must be a deliberate change to this list. No tenant or invitation id.
+        detail.EnumerateObject().Select(p => p.Name).Should().BeEquivalentTo(
+            "tenant_name", "invited_email", "first_name", "last_name", "role_name", "expires_at", "status",
+            "password_setup_enabled", "google_sign_in_enabled", "allow_google_email_mismatch",
+            "allowed_email_domains", "requires_password");
 
         // ── 4. Invitee accepts with a password; a session is established ───────
         var (acceptBody, acceptCookies) = await PostJsonAsync(

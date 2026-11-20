@@ -162,6 +162,7 @@ public class ApplicationDbContext : DbContext
     public DbSet<RoleTemplate> RoleTemplates => Set<RoleTemplate>();
     public DbSet<Role> Roles => Set<Role>();
     public DbSet<Permission> Permissions => Set<Permission>();
+    public DbSet<PermissionChange> PermissionChanges => Set<PermissionChange>();
     public DbSet<RolePermission> RolePermissions => Set<RolePermission>();
     public DbSet<UserRole> UserRoles => Set<UserRole>();
     public DbSet<UserPermissionOverride> UserPermissionOverrides => Set<UserPermissionOverride>();
