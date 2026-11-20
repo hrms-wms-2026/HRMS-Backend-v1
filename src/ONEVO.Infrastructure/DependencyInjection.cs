@@ -775,6 +775,9 @@ public static class DependencyInjection
         // System Config - Platform Service Keys (Phase 1 canonical table)
         services.AddScoped<IPlatformServiceKeyRepository, EfPlatformServiceKeyRepository>();
         services.AddScoped<ITrayAppReleaseRepository, EfTrayAppReleaseRepository>();
+        services.AddScoped<
+            ONEVO.Application.Features.DevPlatform.SystemConfig.RateLimits.RepositoryInterfaces.IRateLimitSettingRepository,
+            EfRateLimitSettingRepository>();
         services.AddScoped<IPlatformServiceKeyVerificationService, PlatformServiceKeyVerificationService>();
         services.AddScoped<
             ONEVO.Infrastructure.Services.Monitoring.Biometrics.IAwsRekognitionConnectionProbe,

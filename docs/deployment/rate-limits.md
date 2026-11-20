@@ -103,6 +103,14 @@ It starts from this section and applies the override rows in `rate_limit_setting
 
 With no rows in `rate_limit_settings`, the limits are exactly this section's.
 
+Since task 47, platform admins change the rows through the admin API (`admin/v1/system-config/rate-limits`,
+`admin/v1/subscription-plans/{id}/rate-limits`, `admin/v1/tenants/{tenantId}/rate-limits`; request docs in
+`docs/postman-request/Admin Rate Limits/`). Reads need `platform.system_config.read`, writes
+`platform.system_config.manage`. Every write is checked against `RateLimitBounds`, needs a reason, uses
+`rowVersion` (a stale save gets 409), writes one `rate_limit_setting_changes` row in the same transaction
+and reloads the provider on that instance. The API cannot change `Enabled`, `PreAuthentication` or the
+auth endpoint limits below.
+
 ## Rejected requests
 
 A rejected request gets HTTP 429 with a `Retry-After` header (in seconds) and this body, which

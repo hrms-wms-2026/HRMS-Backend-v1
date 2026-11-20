@@ -36,7 +36,7 @@ public sealed class SubscriptionPlansController : ControllerBase
     [RequirePlatformPermission(PlatformPermissionCatalog.SubscriptionsRead)]
     public async Task<IActionResult> GetById(Guid id, CancellationToken ct)
     {
-        var result = await _mediator.Send(new GetSubscriptionPlanQuery(id), ct);
+        var result = await _mediator.Send(new GetSubscriptionPlanQuery(id, IncludeRateLimits: true), ct);
         return result.IsSuccess
             ? Ok(result.Value)
             : Problem(result.Error, statusCode: result.StatusCode ?? 400);

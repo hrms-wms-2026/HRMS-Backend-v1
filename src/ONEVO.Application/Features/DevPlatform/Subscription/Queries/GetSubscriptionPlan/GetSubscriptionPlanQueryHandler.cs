@@ -3,6 +3,7 @@ using ONEVO.Application.Common.Models;
 using ONEVO.Application.Features.DevPlatform.Subscription.DTOs.Responses;
 using ONEVO.Application.Features.DevPlatform.Subscription.Mappers;
 using ONEVO.Application.Features.DevPlatform.Subscription.RepositoryInterfaces;
+using ONEVO.Application.Features.DevPlatform.SystemConfig.RateLimits.Services;
 
 namespace ONEVO.Application.Features.DevPlatform.Subscription.Queries.GetSubscriptionPlan;
 
@@ -10,9 +11,13 @@ public sealed class GetSubscriptionPlanQueryHandler
     : IRequestHandler<GetSubscriptionPlanQuery, Result<SubscriptionPlanDetailDto>>
 {
     private readonly ISubscriptionPlanRepository _planRepo;
+    private readonly RateLimitAdminService? _rateLimits;
 
-    public GetSubscriptionPlanQueryHandler(ISubscriptionPlanRepository planRepo)
-        => _planRepo = planRepo;
+    public GetSubscriptionPlanQueryHandler(ISubscriptionPlanRepository planRepo, RateLimitAdminService? rateLimits = null)
+    {
+        _planRepo = planRepo;
+        _rateLimits = rateLimits;
+    }
 
     public async Task<Result<SubscriptionPlanDetailDto>> Handle(
         GetSubscriptionPlanQuery request,
@@ -23,6 +28,10 @@ public sealed class GetSubscriptionPlanQueryHandler
             return Result<SubscriptionPlanDetailDto>.NotFound(
                 $"Subscription plan '{request.PlanId}' not found.");
 
-        return Result<SubscriptionPlanDetailDto>.Success(SubscriptionPlanMapper.ToDetailDto(plan));
+        var detail = SubscriptionPlanMapper.ToDetailDto(plan);
+        if (request.IncludeRateLimits && _rateLimits is not null)
+            detail = detail with { RateLimits = (await _rateLimits.BuildPlanAsync(plan.Id, ct)).Limits };
+
+        return Result<SubscriptionPlanDetailDto>.Success(detail);
     }
 }
