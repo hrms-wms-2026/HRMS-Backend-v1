@@ -101,7 +101,7 @@ public class PermissionCatalogArchitectureTests
                 foreach (var code in codes)
                 {
                     var definition = PermissionCatalog.Find(code);
-                    if (definition is null || definition.Kind is PermissionKind.Retired or PermissionKind.NotSeeded)
+                    if (definition is null || definition.IsRetired || definition.Kind is PermissionKind.NotSeeded)
                         bad.Add($"{type.Name}.{member.Name}: '{code}' ({definition?.Kind.ToString() ?? "unknown"})");
                 }
             }
@@ -167,7 +167,7 @@ public class PermissionCatalogArchitectureTests
         foreach (var code in triggers)
         {
             var definition = PermissionCatalog.Find(code);
-            Assert.True(definition is not null && definition.Kind != PermissionKind.Retired,
+            Assert.True(definition is not null && !definition.IsRetired,
                 $"{code} is a derived-permission trigger but is {definition?.Kind.ToString() ?? "not in the catalogue"}.");
         }
 

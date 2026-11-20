@@ -15,17 +15,31 @@ public enum PermissionKind
     /// <summary>Referenced in code but never seeded and never enforced. Listed so the gap is visible; task 33 decides its fate.</summary>
     NotSeeded,
 
-    /// <summary>Removed. The seeder deletes its row (and, by cascade, its grants) from existing databases.</summary>
+    /// <summary>
+    /// First retirement stage. The row stays with retired_at set: the code stops working and leaves the role
+    /// screen, but its grants are kept, so changing the entry back to Assignable restores them. Move it to
+    /// <see cref="Retired"/> in a later release.
+    /// </summary>
+    SoftRetired,
+
+    /// <summary>
+    /// Removed. The sync deletes its row, and by cascade its grants, from existing databases. While any role or
+    /// override still holds it, the sync refuses unless the definition sets <c>DropGrants</c>.
+    /// </summary>
     Retired,
 }
 
 /// <summary>
 /// One tenant permission code. <see cref="Module"/> and <see cref="Description"/> are what the seeder writes
-/// to the <c>permissions</c> row for <see cref="PermissionKind.Assignable"/> codes. Task 33 can add
-/// rename and retire metadata (for example a replacement code) as further optional members.
+/// to the <c>permissions</c> row for <see cref="PermissionKind.Assignable"/> codes. For a retired code the
+/// description is the reason, and <see cref="DropGrants"/> says losing its remaining grants is intended.
+/// Renames and default grants for new codes are declared in <see cref="PermissionCatalog.Renames"/> and
+/// <see cref="PermissionCatalog.DefaultGrants"/>.
 /// </summary>
-public sealed record PermissionDefinition(string Code, string Module, string Description, PermissionKind Kind)
+public sealed record PermissionDefinition(
+    string Code, string Module, string Description, PermissionKind Kind, bool DropGrants = false)
 {
+    public bool IsRetired => Kind is PermissionKind.SoftRetired or PermissionKind.Retired;
 }
 
 /// <summary>
@@ -471,7 +485,7 @@ public static class PermissionCatalog
         Definition(Monitoring.AlertsResolve, "activity_monitoring", "Trigger code in DerivedPermissions only. No permissions row and no endpoint checks it (task 32 mismatch report).", PermissionKind.NotSeeded),
         Definition(Workflows.Execute, "workflows", "Trigger code in DerivedPermissions only. No permissions row and no endpoint checks it (task 32 mismatch report).", PermissionKind.NotSeeded),
 
-        // Retired. The seeder deletes these rows from existing databases.
+        // Retired (removed). The sync deletes these rows from existing databases.
         RetiredCode(PermissionCatalog.Retired.AgentCommand),
         RetiredCode(PermissionCatalog.Retired.AgentManage),
         RetiredCode(PermissionCatalog.Retired.AgentRegister),
@@ -528,9 +542,41 @@ public static class PermissionCatalog
     public static IReadOnlyList<PermissionDefinition> Seeded { get; } =
         Definitions.Where(d => d.Kind == PermissionKind.Assignable).ToArray();
 
-    /// <summary>Codes the seeder removes from existing databases.</summary>
+    /// <summary>Soft-retired and removed codes. No user can hold them; do not check them.</summary>
     public static IReadOnlySet<string> RetiredCodes { get; } =
-        Definitions.Where(d => d.Kind == PermissionKind.Retired).Select(d => d.Code).ToHashSet(StringComparer.Ordinal);
+        Definitions.Where(d => d.IsRetired).Select(d => d.Code).ToHashSet(StringComparer.Ordinal);
+
+    /// <summary>
+    /// Old code to new code. The sync updates the <c>permissions</c> row in place, so every role grant and user
+    /// override follows it and nothing cascades. Take the old constant out of the catalogue in the same change;
+    /// keep the entry for as long as any database may still hold the old code. Each entry also gets a line in
+    /// docs/api/permission-changelog.md.
+    /// </summary>
+    public static IReadOnlyList<PermissionRename> Renames { get; } =
+    [
+    ];
+
+    /// <summary>
+    /// One-time backfill of a newly added code to matching roles of existing tenants (for example
+    /// <c>DefaultGrantTarget.Owner</c>). It runs once per database, so an admin who later removes the code
+    /// from a role is not overruled. Declare it only together with a new code.
+    /// </summary>
+    public static IReadOnlyList<PermissionDefaultGrant> DefaultGrants { get; } =
+    [
+    ];
+
+    /// <summary>Everything PermissionCatalogSynchronizer applies besides writing <see cref="Seeded"/>.</summary>
+    public static PermissionLifecycleRules Lifecycle { get; } = new(
+        Renames,
+        DefaultGrants,
+        Definitions
+            .Where(d => d.IsRetired)
+            .Select(d => new PermissionRetirement(
+                d.Code,
+                d.Kind == PermissionKind.SoftRetired ? RetirementStage.SoftRetired : RetirementStage.Removed,
+                d.Description,
+                d.DropGrants))
+            .ToArray());
 
     /// <summary>The definition for a code, or null when the code is not in the catalogue.</summary>
     public static PermissionDefinition? Find(string code) => ByCode.GetValueOrDefault(code);
@@ -541,6 +587,8 @@ public static class PermissionCatalog
     private static PermissionDefinition Definition(string code, string module, string description, PermissionKind kind) =>
         new(code, module, description, kind);
 
+    /// <summary>Retired before task 33, when the seeder deleted these rows and their grants at every start.
+    /// DropGrants keeps old databases converging the same way.</summary>
     private static PermissionDefinition RetiredCode(string code) =>
-        new(code, string.Empty, "Retired.", PermissionKind.Retired);
+        new(code, string.Empty, "Retired before task 33.", PermissionKind.Retired, DropGrants: true);
 }

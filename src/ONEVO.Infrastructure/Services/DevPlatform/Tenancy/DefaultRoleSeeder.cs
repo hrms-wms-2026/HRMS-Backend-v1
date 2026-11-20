@@ -9,6 +9,9 @@ namespace ONEVO.Infrastructure.Services.DevPlatform.Tenancy;
 
 public sealed class DefaultRoleSeeder : IDefaultRoleSeeder
 {
+    /// <summary>The built-in full-access role. PermissionLifecycle default grants target it by this name.</summary>
+    public const string OwnerRoleName = "Owner";
+
     private readonly ApplicationDbContext _db;
     private readonly IModuleEntitlementService _entitlements;
 
@@ -35,7 +38,7 @@ public sealed class DefaultRoleSeeder : IDefaultRoleSeeder
         {
             Id = Guid.NewGuid(),
             TenantId = tenantId,
-            Name = "Owner",
+            Name = OwnerRoleName,
             Description = "Full access to all subscribed modules",
             IsSystem = true
         };
@@ -66,6 +69,6 @@ public sealed class DefaultRoleSeeder : IDefaultRoleSeeder
         CancellationToken ct = default)
     {
         var roles = await SeedDefaultRolesAsync(tenantId, moduleKeys, ct);
-        return roles.First(r => r.Name == "Owner");
+        return roles.First(r => r.Name == OwnerRoleName);
     }
 }
