@@ -48,6 +48,52 @@ public static class ValidationRuleExtensions
             .WithMessage($"'{{PropertyName}}' can hold at most {maxCount} entries.");
     }
 
+    /// <summary>A list of short strings from the request (emails, codes, keys): at most <paramref name="maxCount"/>
+    /// entries, each at most <paramref name="maxItemLength"/> characters. A null list and null entries pass; the
+    /// handlers normalize and check the values themselves. Task 19b.</summary>
+    public static IRuleBuilderOptions<T, TList> ValidStringList<T, TList>(
+        this IRuleBuilder<T, TList> rule, int maxCount, int maxItemLength)
+        where TList : IEnumerable<string?>?
+    {
+        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(maxCount);
+        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(maxItemLength);
+        return rule
+            .Must(items => items is null || items.Count() <= maxCount)
+            .WithMessage($"'{{PropertyName}}' can hold at most {maxCount} entries.")
+            .Must(items => items is null || items.All(item => item is null || item.Length <= maxItemLength))
+            .WithMessage($"Each entry in '{{PropertyName}}' must be {maxItemLength} characters or fewer.");
+    }
+
+    /// <summary>A string map from the request (credential fields, template variables, column mappings): at most
+    /// <paramref name="maxCount"/> entries, each key at most <paramref name="maxKeyLength"/> characters and each
+    /// value at most <paramref name="maxValueLength"/>. A null map passes. The messages never echo a value, so a
+    /// secret in a credential map is not reflected back. Task 19b.</summary>
+    public static IRuleBuilderOptions<T, IEnumerable<KeyValuePair<string, string>>?> ValidStringMap<T>(
+        this IRuleBuilder<T, IEnumerable<KeyValuePair<string, string>>?> rule, int maxCount, int maxKeyLength, int maxValueLength)
+    {
+        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(maxCount);
+        return rule
+            .Must(map => map is null || map.Count() <= maxCount)
+            .WithMessage($"'{{PropertyName}}' can hold at most {maxCount} entries.")
+            .Must(map => map is null || map.All(p => FitsMap(p.Key, p.Value, maxKeyLength, maxValueLength)))
+            .WithMessage($"Each key in '{{PropertyName}}' must be {maxKeyLength} characters or fewer and each value {maxValueLength}.");
+    }
+
+    /// <summary>The same as <see cref="ValidStringMap{T}"/> for maps whose values may be null.</summary>
+    public static IRuleBuilderOptions<T, IEnumerable<KeyValuePair<string, string?>>?> ValidNullableStringMap<T>(
+        this IRuleBuilder<T, IEnumerable<KeyValuePair<string, string?>>?> rule, int maxCount, int maxKeyLength, int maxValueLength)
+    {
+        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(maxCount);
+        return rule
+            .Must(map => map is null || map.Count() <= maxCount)
+            .WithMessage($"'{{PropertyName}}' can hold at most {maxCount} entries.")
+            .Must(map => map is null || map.All(p => FitsMap(p.Key, p.Value, maxKeyLength, maxValueLength)))
+            .WithMessage($"Each key in '{{PropertyName}}' must be {maxKeyLength} characters or fewer and each value {maxValueLength}.");
+    }
+
+    private static bool FitsMap(string? key, string? value, int maxKeyLength, int maxValueLength) =>
+        (key is null || key.Length <= maxKeyLength) && (value is null || value.Length <= maxValueLength);
+
     /// <summary>A date-time range on the whole command: when both ends are set, the end must not be before the start
     /// and the range must not be longer than <paramref name="maxSpan"/>. Use with <c>RuleFor(x =&gt; x)</c>; the
     /// failure is reported against the end property.</summary>
