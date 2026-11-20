@@ -10,7 +10,7 @@
 
 ## What is left
 
-`tests/ONEVO.Tests.Architecture/Schema/missing-check-constraints.txt` lists 103 columns: 97 `todo` and 6 `free` (MIME types, which stay open).
+`tests/ONEVO.Tests.Architecture/Schema/missing-check-constraints.txt` lists 104 columns: 98 `todo` and 6 `free` (MIME types, which stay open). `permission_changes.kind` came in with task 33 after 39a was built; its values (`rename`, `default-grant`, `soft-retire`, `remove`) are string literals in `PermissionCatalogSynchronizer`.
 
 Order:
 

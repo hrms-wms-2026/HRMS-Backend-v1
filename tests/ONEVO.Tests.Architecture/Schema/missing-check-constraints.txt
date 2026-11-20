@@ -71,6 +71,7 @@ offboarding_task_bypass_requests.prior_task_status | todo | not reviewed yet: ta
 offboarding_task_bypass_requests.status | todo | not reviewed yet: task-39f
 onboarding_drafts.employment_type | todo | not reviewed yet: task-39f
 outbox_messages.type | todo | not reviewed yet: task-39f
+permission_changes.kind | todo | values are string literals in PermissionCatalogSynchronizer (rename, default-grant, soft-retire, remove); move them to constants first: task-39f
 personal_calendar_events.event_status | todo | not reviewed yet: task-39f
 personal_calendar_events.source_type | todo | not reviewed yet: task-39f
 platform_auth_events.event_type | todo | not reviewed yet: task-39f
