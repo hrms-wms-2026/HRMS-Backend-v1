@@ -131,6 +131,7 @@ public sealed class AuthRateLimitingMiddleware
                 rule.MaxRequests,
                 (int)rule.Window.TotalSeconds);
 
+            ONEVO.Application.Common.Observability.CrownusMetrics.RecordRateLimitRejection("auth", rule.Scope);
             await WriteRateLimitExceededResponseAsync(context, rule);
             return;
         }

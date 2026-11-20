@@ -72,6 +72,8 @@ Not checked at start-up. Defaults come from `appsettings.json`.
 | `Tenancy__Mode` | no | `SingleHost` only for the App Service test setup (tenant from the `X-Crownus-Tenant` header) |
 | `Hosting__ServeSpas`, `Hosting__SpaRoot` | no | Serve the web and admin apps from the API (App Service package) |
 | `Planner__Enabled` | no | Turns the day planner on |
+| `APPLICATIONINSIGHTS_CONNECTION_STRING` | yes | Sends traces, metrics and logs to Application Insights. See [observability.md](observability.md) |
+| `OTEL_EXPORTER_OTLP_ENDPOINT`, `OTEL_EXPORTER_OTLP_HEADERS` | headers yes | Alternative: send telemetry to an OTLP backend |
 | `BackgroundJobs__Enabled` | no | Default `true`. `false` runs no recurring jobs (web-only instance). Keep `true` until task 21; see [background-jobs.md](background-jobs.md) |
 | `RateLimiting__*` | no | See [rate-limits.md](rate-limits.md) |
 | `Serilog__MinimumLevel__Default` | no | `Information` by default |

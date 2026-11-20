@@ -53,10 +53,20 @@ if (builder.Environment.IsDevelopment())
     await DatabaseMigrationRunner.MigrateIfPendingAsync(builder.Configuration);
 }
 
+// Task 17: OpenTelemetry when an exporter is configured (docs/deployment/observability.md). Serilog then also
+// forwards its events to the OpenTelemetry log provider.
+var telemetryExporter = builder.AddApiObservability();
 builder.Host.UseSerilog((ctx, cfg) =>
+{
     cfg.ReadFrom.Configuration(ctx.Configuration)
        .Enrich.FromLogContext()
-       .Enrich.WithProperty("Application", "ONEVO.Api"));
+       .Enrich.WithProperty("Application", "ONEVO.Api");
+    // Readable lines locally; one JSON object per line elsewhere, so the host's log store can query the fields.
+    if (ctx.HostingEnvironment.IsDevelopment())
+        cfg.WriteTo.Console();
+    else
+        cfg.WriteTo.Console(new Serilog.Formatting.Compact.RenderedCompactJsonFormatter());
+}, writeToProviders: telemetryExporter != ObservabilityExtensions.TelemetryExporter.None);
 
 builder.Services.AddApiForwardedHeaders(builder.Configuration);
 
@@ -117,9 +127,17 @@ builder.Services.AddHealthChecks()
         {
             return Microsoft.Extensions.Diagnostics.HealthChecks.HealthCheckResult.Unhealthy("SQL Server unreachable", ex);
         }
-    }, ["ready"]);
+    }, ["ready"])
+    // Task 17: Degraded (still 200) when storage or the outbox is in trouble; see the check classes for why.
+    .AddCheck<ONEVO.Infrastructure.Observability.ObjectStorageHealthCheck>("object-storage", tags: ["ready"])
+    .AddCheck<ONEVO.Infrastructure.Observability.OutboxBacklogHealthCheck>("outbox", tags: ["ready"]);
+builder.Services.AddSingleton<ONEVO.Infrastructure.Observability.OutboxBacklogProbe>();
+builder.Services.AddSingleton<ONEVO.Infrastructure.Observability.IOutboxBacklogSource>(
+    sp => sp.GetRequiredService<ONEVO.Infrastructure.Observability.OutboxBacklogProbe>());
 
 var app = builder.Build();
+// Creating the probe registers the crownus.outbox.* gauges, so they report without waiting for a readiness call.
+app.Services.GetRequiredService<ONEVO.Infrastructure.Observability.OutboxBacklogProbe>();
 
 if (ONEVO.Application.Common.Tenancy.TenancyModeReader.Read(app.Configuration)
     == ONEVO.Application.Common.Tenancy.TenancyMode.SingleHost)

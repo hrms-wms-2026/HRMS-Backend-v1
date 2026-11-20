@@ -63,7 +63,10 @@ public sealed class AdminAuthController : ControllerBase
 
         var result = await _mediator.Send(new AdminGoogleLoginCommand(request.GoogleIdToken, ip, ua), ct);
         if (!result.IsSuccess)
+        {
+            ONEVO.Application.Common.Observability.CrownusMetrics.RecordSignInFailure("admin", result.StatusCode ?? 400);
             return Problem(result.Error, statusCode: result.StatusCode ?? 400);
+        }
 
         var dto = result.Value!;
 
@@ -94,7 +97,10 @@ public sealed class AdminAuthController : ControllerBase
         var result = await _mediator.Send(
             new AdminLoginCommand(request.Email, request.Password, ip, ua), ct);
         if (!result.IsSuccess)
+        {
+            ONEVO.Application.Common.Observability.CrownusMetrics.RecordSignInFailure("admin", result.StatusCode ?? 401);
             return Problem(result.Error, statusCode: result.StatusCode ?? 401);
+        }
 
         var dto = result.Value!;
 
