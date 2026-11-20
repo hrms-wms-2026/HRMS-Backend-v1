@@ -391,6 +391,8 @@ public class LeaveInboxTests
         public List<LeaveBalanceAudit> Audits { get; } = new();
         public bool CanApprove { get; set; } = true;
         public Mock<INotificationDispatcher> Notifications { get; } = new();
+        /// <summary>Task 37: every inbox header the reverter staged.</summary>
+        public List<ONEVO.Application.Features.Inbox.Contracts.InboxEntryState> StagedHeaders { get; } = new();
 
         public RevertFixture(decimal totalHours = 160m)
         {
@@ -421,7 +423,16 @@ public class LeaveInboxTests
             currentUser.Setup(x => x.HasPermission("leave:approve")).Returns(CanApprove);
             return new LeaveDecisionReverter(Journal, new FakeUnitOfWork(), Clock, Approvals.Object,
                 new LeaveRequestRangeEditor(currentUser.Object, Clock, Approvals.Object, null!, new LeaveRequestDayAllocationBuilder()), currentUser.Object,
-                Notifications.Object, new ONEVO.Application.Features.Leave.Inbox.LeaveInboxEntrySync(Moq.Mock.Of<ONEVO.Application.Features.Inbox.Contracts.IInboxEntryStore>(), Moq.Mock.Of<ONEVO.Application.Features.Leave.Approval.RepositoryInterfaces.ILeaveApprovalRepository>()));
+                Notifications.Object, InboxSync());
+        }
+
+        private ONEVO.Application.Features.Leave.Inbox.LeaveInboxEntrySync InboxSync()
+        {
+            var store = new Mock<ONEVO.Application.Features.Inbox.Contracts.IInboxEntryStore>();
+            store.Setup(s => s.StageAsync(It.IsAny<ONEVO.Application.Features.Inbox.Contracts.InboxEntryState>(), It.IsAny<CancellationToken>()))
+                .Callback<ONEVO.Application.Features.Inbox.Contracts.InboxEntryState, CancellationToken>((h, _) => StagedHeaders.Add(h))
+                .Returns(Task.CompletedTask);
+            return new ONEVO.Application.Features.Leave.Inbox.LeaveInboxEntrySync(store.Object, Approvals.Object);
         }
 
         public Task<Result<InboxActionResult>> Revert()
@@ -450,6 +461,10 @@ public class LeaveInboxTests
         (f.State.Entitlement!.UsedHours, f.State.Entitlement.PendingHours).Should().Be((0m, 8m));
         f.Audits.Should().ContainSingle(a => a.ChangeType == LeaveBalanceChangeTypes.Adjustment);
         f.Approvals.Verify(x => x.SaveChangesAsync(It.IsAny<CancellationToken>()), Times.Once);
+        // Task 37: the header goes back to pending with the approver able to act again, in the same save.
+        var header = f.StagedHeaders.Should().ContainSingle().Subject;
+        header.Status.Should().Be(ONEVO.Domain.Features.Inbox.Entities.InboxEntryStatuses.Pending);
+        header.Assignees.Should().Contain(a => a.Status == ONEVO.Domain.Features.Inbox.Entities.InboxEntryAssigneeStatuses.Pending);
     }
 
     [Fact]

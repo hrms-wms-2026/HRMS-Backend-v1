@@ -10,10 +10,13 @@ public sealed class EfInboxEntryStore(ApplicationDbContext db) : IInboxEntryStor
 {
     public async Task StageAsync(InboxEntryState state, CancellationToken ct)
     {
-        var entry = await db.InboxEntries
-            .Include(e => e.Assignees)
-            .SingleOrDefaultAsync(e => e.TenantId == state.TenantId && e.Source == state.Source && e.Kind == state.Kind
-                && e.SubjectId == state.SubjectId, ct);
+        // A header staged earlier in this unit of work (staged twice, or a retried transaction) is not in the database yet.
+        var entry = db.InboxEntries.Local.SingleOrDefault(e => e.TenantId == state.TenantId && e.Source == state.Source
+                && e.Kind == state.Kind && e.SubjectId == state.SubjectId)
+            ?? await db.InboxEntries
+                .Include(e => e.Assignees)
+                .SingleOrDefaultAsync(e => e.TenantId == state.TenantId && e.Source == state.Source && e.Kind == state.Kind
+                    && e.SubjectId == state.SubjectId, ct);
         if (entry is null)
         {
             entry = new InboxEntry

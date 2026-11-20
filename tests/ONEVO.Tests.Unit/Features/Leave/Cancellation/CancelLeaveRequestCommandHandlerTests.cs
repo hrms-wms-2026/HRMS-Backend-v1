@@ -37,6 +37,10 @@ public class CancelLeaveRequestCommandHandlerTests
         harness.Request.Status.Should().Be(LeaveRequestStatuses.Cancelled);
         harness.Audits.Should().BeEmpty();
         harness.Approver.Status.Should().Be(LeaveRequestApproverStatuses.Cancelled);
+        // Task 37: the cancelled header is staged before the save, with nobody left to act.
+        var header = harness.StagedHeaders.Should().ContainSingle().Subject;
+        header.Status.Should().Be(ONEVO.Domain.Features.Inbox.Entities.InboxEntryStatuses.Cancelled);
+        header.Assignees.Should().OnlyContain(a => a.Status == ONEVO.Domain.Features.Inbox.Entities.InboxEntryAssigneeStatuses.Cancelled);
     }
 
     [Fact]
@@ -258,6 +262,22 @@ public class CancelLeaveRequestCommandHandlerTests
         public Mock<INotificationDispatcher> Notifications { get; } = new();
         public bool ThrowConcurrency { get; set; }
         public CancelLeaveRequestCommandHandler Sut { get; }
+        /// <summary>Task 37: every inbox header the handler staged.</summary>
+        public List<ONEVO.Application.Features.Inbox.Contracts.InboxEntryState> StagedHeaders { get; } = [];
+
+        /// <summary>The sync reloads the approval state from the same unit of work: here, the harness rows as the handler left them.</summary>
+        private ONEVO.Application.Features.Leave.Inbox.LeaveInboxEntrySync InboxSync()
+        {
+            var store = new Mock<ONEVO.Application.Features.Inbox.Contracts.IInboxEntryStore>();
+            store.Setup(s => s.StageAsync(It.IsAny<ONEVO.Application.Features.Inbox.Contracts.InboxEntryState>(), It.IsAny<CancellationToken>()))
+                .Callback<ONEVO.Application.Features.Inbox.Contracts.InboxEntryState, CancellationToken>((h, _) => StagedHeaders.Add(h))
+                .Returns(Task.CompletedTask);
+            var approvals = new Mock<ONEVO.Application.Features.Leave.Approval.RepositoryInterfaces.ILeaveApprovalRepository>();
+            approvals.Setup(a => a.GetStateAsync(TenantId, Request.Id, It.IsAny<CancellationToken>()))
+                .ReturnsAsync(() => new ONEVO.Application.Features.Leave.Approval.RepositoryInterfaces.LeaveApprovalState(
+                    Request, Entitlement, Subject, "Annual Leave", "AL", LeaveApprovalModes.AnyOne, [Approver]));
+            return new ONEVO.Application.Features.Leave.Inbox.LeaveInboxEntrySync(store.Object, approvals.Object);
+        }
 
         private Harness(
             string status,
@@ -405,7 +425,7 @@ public class CancelLeaveRequestCommandHandlerTests
                 Notifications.Object,
                 clock.Object,
                 Options.Create(new LeaveCancellationOptions { FallbackTimezone = "UTC" }),
-                new ONEVO.Application.Features.Leave.Inbox.LeaveInboxEntrySync(Moq.Mock.Of<ONEVO.Application.Features.Inbox.Contracts.IInboxEntryStore>(), Moq.Mock.Of<ONEVO.Application.Features.Leave.Approval.RepositoryInterfaces.ILeaveApprovalRepository>()));
+                InboxSync());
         }
 
         public static Harness Create(

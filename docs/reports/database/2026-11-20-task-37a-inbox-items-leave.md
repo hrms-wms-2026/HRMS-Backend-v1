@@ -37,8 +37,16 @@ transaction. Covered write paths:
 | Undo a decision from the inbox | `LeaveDecisionReverter` |
 | Approver-created backdated leave (from an attendance alert) | `CreateApproverBackdatedLeaveCommandHandler` |
 
-A sweep for every assignment of a leave request status and every approver row add or remove found no other path.
-Seeders write leave rows directly; the nightly check fills those in.
+A sweep for every assignment of a leave request status, every approver row added or removed, and every change of an
+existing row's approver (none: delegation and hand-over add new rows) found no other path. Seeders write leave rows
+directly; the nightly check fills those in.
+
+Unit tests fail when a stage call is removed: approve, reject, hand-over (decision service), cancel, and undo each
+assert the staged header (checked by deleting the reject stage call: the test failed). Submit and the backdated
+create have no unit harness for this; the nightly check is their safety net.
+
+`EfInboxEntryStore.StageAsync` looks at headers already staged in the unit of work before querying, so staging twice
+or a retried transaction cannot add a second header for the same request.
 
 **Read path.** `GET /inbox/counts` now counts leave with one grouped query on `inbox_item_assignees` (still only with
 `leave:approve`, checked at read time). The router no longer builds leave's inbox rows for the counts. The other
@@ -61,9 +69,9 @@ outside the commands. Headers whose request no longer exists are logged and remo
 
 | Suite | Result |
 |---|---|
-| Unit (Release) | 8,172 passed. New: `LeaveInboxEntrySyncTests` (in-order and any-one chains, decided, cancelled, no mode, count source permission) and a router test that leave counts skip the leave rows |
+| Unit (Release) | 8,175 passed. New: `LeaveInboxEntrySyncTests` (in-order and any-one chains, decided, cancelled, no mode, count source permission), staging assertions in the decision, cancel and revert tests, and a router test that leave counts skip the leave rows |
 | Architecture | 713 passed (RLS coverage of the two new tables) |
-| `LeaveInboxEntryIntegrationTests` | 3 passed |
+| Integration: Leave, Inbox and E2E suites (SQL Server) | 49 passed, the 3 new `LeaveInboxEntryIntegrationTests` included |
 | `dotnet ef migrations has-pending-model-changes` | none |
 
 ## 37b: what is left
@@ -79,8 +87,14 @@ outside the commands. Headers whose request no longer exists are logged and remo
 
 ## Not covered
 
-- The live `/inbox/counts` response was not called with a signed-in user; parity was checked in the database (29 =
-  29) and by the shared `IsActionable` rule.
+- The live `/inbox/counts` response was not called with a signed-in user, and its time was not measured. Parity was
+  checked in the database (29 = 29) and by the shared `IsActionable` rule. The 2.2 s p95 of the 2026-11-20 load test
+  comes from all sources together; leave is now one query, but the other sources still build their rows, so the
+  endpoint stays slow until 00a or 37b.
+- The nightly check reads every leave request ever created, about 7 queries each: 245 took about 9 seconds locally.
+  Within its 30-minute limit that is roughly 50,000 requests, and a run that times out starts again from the start.
+  Before a tenant gets near that, limit it to pending requests, headers still pending and requests changed since the
+  last run.
 - A request whose employee or leave type was deleted after submission keeps its header; the old count dropped it.
   The nightly check skips such requests rather than flagging them.
 - The migration is applied to the local Docker database only. Apply it to UAT through the deploy pipeline; the first

@@ -3,11 +3,14 @@ using Microsoft.Extensions.Options;
 using Moq;
 using ONEVO.Application.Common.RepositoryInterfaces;
 using ONEVO.Application.Common.ServiceInterfaces;
+using ONEVO.Application.Features.Inbox.Contracts;
 using ONEVO.Application.Features.Leave.Approval.Commands;
 using ONEVO.Application.Features.Leave.Approval.Options;
 using ONEVO.Application.Features.Leave.Approval.OutboxHandlers;
 using ONEVO.Application.Features.Leave.Approval.RepositoryInterfaces;
 using ONEVO.Application.Features.Leave.Approval.Services;
+using ONEVO.Application.Features.Leave.Inbox;
+using ONEVO.Domain.Features.Inbox.Entities;
 using ONEVO.Application.Features.Leave.Request.Services;
 using ONEVO.Domain.Features.CoreHr.Entities;
 using ONEVO.Domain.Features.Leave.BalanceAudit.Entities;
@@ -213,6 +216,44 @@ public class LeaveApprovalDecisionServiceTests
         harness.Entitlement.UsedHours.Should().Be(8m);
     }
 
+    // Task 37: each write path stages the inbox header before its save; removing a stage call fails these.
+    [Fact]
+    public async Task Approve_stages_an_approved_header_where_nobody_must_act()
+    {
+        var harness = Harness.Create(LeaveRequestStatuses.Pending, paidHours: 3m, pendingHours: 3m, usedHours: 5m);
+
+        (await harness.Sut.ApproveAsync(harness.Request.Id, "ok", CancellationToken.None)).IsSuccess.Should().BeTrue();
+
+        var header = harness.StagedHeaders.Should().ContainSingle().Subject;
+        header.Status.Should().Be(InboxEntryStatuses.Approved);
+        header.SubjectId.Should().Be(harness.Request.Id);
+        header.Assignees.Should().NotContain(a => a.Status == InboxEntryAssigneeStatuses.Pending);
+    }
+
+    [Fact]
+    public async Task Reject_stages_a_rejected_header()
+    {
+        var harness = Harness.Create(LeaveRequestStatuses.Pending, paidHours: 2m, pendingHours: 2m, usedHours: 4m);
+
+        (await harness.Sut.RejectAsync(harness.Request.Id, "coverage", CancellationToken.None)).IsSuccess.Should().BeTrue();
+
+        harness.StagedHeaders.Should().ContainSingle().Which.Status.Should().Be(InboxEntryStatuses.Rejected);
+    }
+
+    [Fact]
+    public async Task HandOver_stages_the_picked_person_as_must_act_and_the_caller_as_skipped()
+    {
+        var harness = Harness.Create(LeaveRequestStatuses.Pending);
+        var target = Guid.NewGuid();
+
+        (await harness.Sut.HandOverAsync(harness.Request.Id, target, null, CancellationToken.None)).IsSuccess.Should().BeTrue();
+
+        var header = harness.StagedHeaders.Should().ContainSingle().Subject;
+        header.Status.Should().Be(InboxEntryStatuses.Pending);
+        header.Assignees.Should().Contain(new InboxEntryAssigneeState(target, InboxEntryAssigneeStatuses.Pending, harness.Approver.SequenceOrder));
+        header.Assignees.Single(a => a.EmployeeId == harness.Approver.ApproverEmployeeId).Status.Should().Be(InboxEntryAssigneeStatuses.Skipped);
+    }
+
     private sealed class Harness
     {
         public LeaveRequest Request { get; }
@@ -221,7 +262,18 @@ public class LeaveApprovalDecisionServiceTests
         public Employee Employee { get; }
         public List<LeaveBalanceAudit> Audits { get; } = [];
         public List<LeaveRequestApprover> AddedApprovers { get; } = [];
+        /// <summary>Task 37: every inbox header the service staged, in order.</summary>
+        public List<InboxEntryState> StagedHeaders { get; } = [];
         public LeaveApprovalDecisionService Sut { get; }
+
+        private IInboxEntryStore InboxStore()
+        {
+            var store = new Mock<IInboxEntryStore>();
+            store.Setup(s => s.StageAsync(It.IsAny<InboxEntryState>(), It.IsAny<CancellationToken>()))
+                .Callback<InboxEntryState, CancellationToken>((h, _) => StagedHeaders.Add(h))
+                .Returns(Task.CompletedTask);
+            return store.Object;
+        }
 
         private Harness(
             string status,
@@ -349,7 +401,7 @@ public class LeaveApprovalDecisionServiceTests
                 currentUser.Object, clock.Object, employees.Object, repo.Object,
                 outbox.Object, notifications.Object, conflicts.Object,
                 Options.Create(new LeaveApprovalOptions { AllowSelfApproval = false }),
-                new ONEVO.Application.Features.Leave.Inbox.LeaveInboxEntrySync(Moq.Mock.Of<ONEVO.Application.Features.Inbox.Contracts.IInboxEntryStore>(), Moq.Mock.Of<ONEVO.Application.Features.Leave.Approval.RepositoryInterfaces.ILeaveApprovalRepository>()));
+                new LeaveInboxEntrySync(InboxStore(), repo.Object));
         }
 
         public static Harness Create(
