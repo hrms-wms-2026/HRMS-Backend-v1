@@ -15,19 +15,22 @@ public class UpdateDepartmentCommandHandler
     private readonly IPositionRepository _positions;
     private readonly ICurrentUser _currentUser;
     private readonly IDateTimeProvider _dateTimeProvider;
+    private readonly IRowVersionStore? _versions;
 
     public UpdateDepartmentCommandHandler(
         IDepartmentRepository departments,
         ILegalEntityRepository legalEntities,
         IPositionRepository positions,
         ICurrentUser currentUser,
-        IDateTimeProvider dateTimeProvider)
+        IDateTimeProvider dateTimeProvider,
+        IRowVersionStore? versions = null)
     {
         _departments = departments;
         _legalEntities = legalEntities;
         _positions = positions;
         _currentUser = currentUser;
         _dateTimeProvider = dateTimeProvider;
+        _versions = versions;
     }
 
     public async Task<Result<DepartmentResponse>> Handle(
@@ -107,8 +110,9 @@ public class UpdateDepartmentCommandHandler
         existing.UpdatedAt = _dateTimeProvider.UtcNow;
 
         _departments.Update(existing);
+        _versions?.SetExpectedVersion(existing, request.Version); // task 42: 409 when someone saved in between
         await _departments.SaveChangesAsync(ct);
 
-        return Result<DepartmentResponse>.Success(DepartmentMapper.ToResponse(existing));
+        return Result<DepartmentResponse>.Success(DepartmentMapper.ToResponse(existing) with { Version = _versions?.GetVersion(existing) });
     }
 }

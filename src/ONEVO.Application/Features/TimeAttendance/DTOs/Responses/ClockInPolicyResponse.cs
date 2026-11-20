@@ -26,7 +26,8 @@ public record ClockInPolicyResponse(
     bool IsActive,
     Guid CreatedById,
     DateTimeOffset CreatedAt,
-    DateTimeOffset UpdatedAt);
+    DateTimeOffset UpdatedAt,
+    string? Version = null);
 
 public record ClockInPolicyListItemResponse(
     Guid Id,

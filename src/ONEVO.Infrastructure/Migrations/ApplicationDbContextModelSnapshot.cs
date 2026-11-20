@@ -759,6 +759,13 @@ namespace ONEVO.Infrastructure.Migrations
                         .HasColumnType("datetimeoffset")
                         .HasColumnName("updated_at");
 
+                    b.Property<byte[]>("xmin")
+                        .IsConcurrencyToken()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("rowversion")
+                        .HasColumnName("xmin")
+                        .HasAnnotation("Crownus:RowVersion:FillDetached", true);
+
                     b.HasKey("Id")
                         .HasName("pk_roles");
 
@@ -7449,6 +7456,13 @@ namespace ONEVO.Infrastructure.Migrations
                         .HasColumnType("datetimeoffset")
                         .HasColumnName("updated_at");
 
+                    b.Property<byte[]>("xmin")
+                        .IsConcurrencyToken()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("rowversion")
+                        .HasColumnName("xmin")
+                        .HasAnnotation("Crownus:RowVersion:FillDetached", true);
+
                     b.HasKey("Id")
                         .HasName("pk_leave_policies");
 
@@ -10053,6 +10067,13 @@ namespace ONEVO.Infrastructure.Migrations
                         .HasColumnType("datetimeoffset")
                         .HasColumnName("updated_at");
 
+                    b.Property<byte[]>("xmin")
+                        .IsConcurrencyToken()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("rowversion")
+                        .HasColumnName("xmin")
+                        .HasAnnotation("Crownus:RowVersion:FillDetached", true);
+
                     b.HasKey("Id")
                         .HasName("pk_departments");
 
@@ -10235,6 +10256,13 @@ namespace ONEVO.Infrastructure.Migrations
                     b.Property<TimeOnly?>("WorkStartTime")
                         .HasColumnType("time")
                         .HasColumnName("work_start_time");
+
+                    b.Property<byte[]>("xmin")
+                        .IsConcurrencyToken()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("rowversion")
+                        .HasColumnName("xmin")
+                        .HasAnnotation("Crownus:RowVersion:FillDetached", true);
 
                     b.HasKey("Id")
                         .HasName("pk_legal_entities");
@@ -10464,6 +10492,13 @@ namespace ONEVO.Infrastructure.Migrations
                     b.Property<DateTimeOffset?>("UpdatedAt")
                         .HasColumnType("datetimeoffset")
                         .HasColumnName("updated_at");
+
+                    b.Property<byte[]>("xmin")
+                        .IsConcurrencyToken()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("rowversion")
+                        .HasColumnName("xmin")
+                        .HasAnnotation("Crownus:RowVersion:FillDetached", true);
 
                     b.HasKey("Id")
                         .HasName("pk_positions");
@@ -13533,6 +13568,13 @@ namespace ONEVO.Infrastructure.Migrations
                         .HasColumnType("datetimeoffset")
                         .HasColumnName("updated_at");
 
+                    b.Property<byte[]>("xmin")
+                        .IsConcurrencyToken()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("rowversion")
+                        .HasColumnName("xmin")
+                        .HasAnnotation("Crownus:RowVersion:FillDetached", true);
+
                     b.HasKey("Id")
                         .HasName("pk_clock_in_policies");
 
@@ -15323,6 +15365,13 @@ namespace ONEVO.Infrastructure.Migrations
                         .HasColumnType("datetimeoffset")
                         .HasColumnName("updated_at");
 
+                    b.Property<byte[]>("xmin")
+                        .IsConcurrencyToken()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("rowversion")
+                        .HasColumnName("xmin")
+                        .HasAnnotation("Crownus:RowVersion:FillDetached", true);
+
                     b.HasKey("Id")
                         .HasName("pk_objectives");
 
@@ -15946,6 +15995,13 @@ namespace ONEVO.Infrastructure.Migrations
                     b.Property<DateTimeOffset?>("UpdatedAt")
                         .HasColumnType("datetimeoffset")
                         .HasColumnName("updated_at");
+
+                    b.Property<byte[]>("xmin")
+                        .IsConcurrencyToken()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("rowversion")
+                        .HasColumnName("xmin")
+                        .HasAnnotation("Crownus:RowVersion:FillDetached", true);
 
                     b.HasKey("Id")
                         .HasName("pk_sprints");
@@ -16940,6 +16996,13 @@ namespace ONEVO.Infrastructure.Migrations
                         .HasColumnType("nvarchar(20)")
                         .HasDefaultValue("module")
                         .HasColumnName("visibility_scope");
+
+                    b.Property<byte[]>("xmin")
+                        .IsConcurrencyToken()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("rowversion")
+                        .HasColumnName("xmin")
+                        .HasAnnotation("Crownus:RowVersion:FillDetached", true);
 
                     b.HasKey("Id")
                         .HasName("pk_tasks");

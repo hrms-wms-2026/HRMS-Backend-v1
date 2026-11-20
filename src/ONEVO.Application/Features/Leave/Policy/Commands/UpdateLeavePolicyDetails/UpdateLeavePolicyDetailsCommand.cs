@@ -8,7 +8,7 @@ namespace ONEVO.Application.Features.Leave.Policy.Commands.UpdateLeavePolicyDeta
 
 /// <summary>Renames a policy or changes its description. Not versioned: the name labels the policy,
 /// it is not a rule. The leave type can never change.</summary>
-public sealed record UpdateLeavePolicyDetailsCommand(Guid PolicyId, string Name, string? Description) : IRequest<Result>;
+public sealed record UpdateLeavePolicyDetailsCommand(Guid PolicyId, string Name, string? Description, string? Version = null) : IRequest<Result>;
 
 public class UpdateLeavePolicyDetailsCommandValidator : AbstractValidator<UpdateLeavePolicyDetailsCommand>
 {
@@ -24,12 +24,15 @@ public sealed class UpdateLeavePolicyDetailsCommandHandler : IRequestHandler<Upd
     private readonly ILeavePolicyRepository _policies;
     private readonly ICurrentUser _currentUser;
     private readonly IDateTimeProvider _clock;
+    private readonly IRowVersionStore? _versions;
 
-    public UpdateLeavePolicyDetailsCommandHandler(ILeavePolicyRepository policies, ICurrentUser currentUser, IDateTimeProvider clock)
+    public UpdateLeavePolicyDetailsCommandHandler(ILeavePolicyRepository policies, ICurrentUser currentUser, IDateTimeProvider clock,
+        IRowVersionStore? versions = null)
     {
         _policies = policies;
         _currentUser = currentUser;
         _clock = clock;
+        _versions = versions;
     }
 
     public async Task<Result> Handle(UpdateLeavePolicyDetailsCommand request, CancellationToken ct)
@@ -46,6 +49,7 @@ public sealed class UpdateLeavePolicyDetailsCommandHandler : IRequestHandler<Upd
         policy.Name = name;
         policy.Description = string.IsNullOrWhiteSpace(request.Description) ? null : request.Description.Trim();
         policy.UpdatedAt = _clock.UtcNow;
+        _versions?.SetExpectedVersion(policy, request.Version); // task 42: 409 when someone saved in between
         await _policies.SaveChangesAsync(ct);
         return Result.Success();
     }

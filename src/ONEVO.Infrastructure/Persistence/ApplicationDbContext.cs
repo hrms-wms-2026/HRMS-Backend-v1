@@ -426,6 +426,40 @@ public class ApplicationDbContext : DbContext
             .HaveConversion<ONEVO.Infrastructure.Persistence.SqlServer.UtcDateTimeOffsetConverter>();
     }
 
+    // Task 42: rows with a task-42 rowversion token that were loaded without tracking and then Update()d carry no
+    // original version, so the UPDATE would match nothing. For those (and only those) the current version is read
+    // first: they keep today's last-write-wins behaviour. A version the client sent (SetExpectedVersion) is not null,
+    // so it is left alone and a stale one fails with DbUpdateConcurrencyException (409).
+    public override int SaveChanges(bool acceptAllChangesOnSuccess)
+    {
+        foreach (var entry in DetachedRowVersionEntries())
+            FillRowVersion(entry, entry.GetDatabaseValues());
+        return base.SaveChanges(acceptAllChangesOnSuccess);
+    }
+
+    public override async Task<int> SaveChangesAsync(bool acceptAllChangesOnSuccess, CancellationToken cancellationToken = default)
+    {
+        foreach (var entry in DetachedRowVersionEntries())
+            FillRowVersion(entry, await entry.GetDatabaseValuesAsync(cancellationToken));
+        return await base.SaveChangesAsync(acceptAllChangesOnSuccess, cancellationToken);
+    }
+
+    private List<Microsoft.EntityFrameworkCore.ChangeTracking.EntityEntry> DetachedRowVersionEntries()
+        => ChangeTracker.Entries()
+            .Where(e => e.State == EntityState.Modified
+                && e.Metadata.FindProperty(Persistence.SqlServer.RowVersionConfiguration.PropertyName) is { } p
+                && p.FindAnnotation(Persistence.SqlServer.RowVersionConfiguration.FillDetachedAnnotation) is not null
+                && e.Property(Persistence.SqlServer.RowVersionConfiguration.PropertyName).OriginalValue is null)
+            .ToList();
+
+    private static void FillRowVersion(
+        Microsoft.EntityFrameworkCore.ChangeTracking.EntityEntry entry, Microsoft.EntityFrameworkCore.ChangeTracking.PropertyValues? current)
+    {
+        // A row that is gone stays null: the save then fails as a concurrency conflict, which is correct.
+        if (current?[Persistence.SqlServer.RowVersionConfiguration.PropertyName] is { } version)
+            entry.Property(Persistence.SqlServer.RowVersionConfiguration.PropertyName).OriginalValue = version;
+    }
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         modelBuilder.ApplyConfigurationsFromAssembly(typeof(ApplicationDbContext).Assembly);

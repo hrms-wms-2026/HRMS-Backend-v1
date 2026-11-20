@@ -4,4 +4,5 @@ public record UpdateDepartmentRequest(
     string Name,
     string? Code,
     Guid? ParentDepartmentId,
-    Guid? HeadPositionId);
+    Guid? HeadPositionId,
+    string? Version = null);

@@ -135,7 +135,8 @@ public class LegalEntityClockInPoliciesController : ControllerBase
             request.CorrectionRequiresApproval,
             request.NotificationRecipientResolver,
             ToLateRules(request.LateDeductionRules),
-            request.IsActive);
+            request.IsActive,
+            request.Version);
 
     private static ClockInPolicyScopeInput ToScope(ClockInPolicyScopeRequest scope)
         => new(scope.Type, scope.DepartmentIds, scope.PositionIds, scope.EmployeeIds);

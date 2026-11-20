@@ -50,7 +50,7 @@ public class LeavePoliciesController : ControllerBase
     [RequirePermission("leave:manage")]
     public async Task<IActionResult> UpdateDetails(
         Guid leavePolicyId, [FromBody] UpdateLeavePolicyDetailsRequest request, CancellationToken ct = default) =>
-        ToResult(await _mediator.Send(new UpdateLeavePolicyDetailsCommand(leavePolicyId, request.Name, request.Description), ct));
+        ToResult(await _mediator.Send(new UpdateLeavePolicyDetailsCommand(leavePolicyId, request.Name, request.Description, request.Version), ct));
 
     [HttpPost("{leavePolicyId:guid}/versions")]
     [RequirePermission("leave:manage")]

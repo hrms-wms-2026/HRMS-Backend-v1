@@ -15,4 +15,5 @@ public record UpdateClockInPolicyCommand(
     bool CorrectionRequiresApproval,
     string NotificationRecipientResolver,
     IReadOnlyList<LateDeductionRuleInput> LateDeductionRules,
-    bool IsActive) : IRequest<Result<ClockInPolicyResponse>>;
+    bool IsActive,
+    string? Version = null) : IRequest<Result<ClockInPolicyResponse>>;

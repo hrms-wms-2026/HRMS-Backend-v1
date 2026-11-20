@@ -100,7 +100,8 @@ public class LegalEntitiesController : ControllerBase
                 request.BreakDurationMinutes,
                 request.OfficeAddress,
                 request.OfficeLatitude,
-                request.OfficeLongitude),
+                request.OfficeLongitude,
+                request.Version),
             ct);
 
         return result.IsSuccess

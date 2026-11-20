@@ -9,6 +9,7 @@ public record RoleDetailDto(
     IReadOnlyList<RolePermissionDto> Permissions,
     IReadOnlyList<RolePermissionDto> UniversalPermissions,
     DateTimeOffset CreatedAt,
-    DateTimeOffset? UpdatedAt);
+    DateTimeOffset? UpdatedAt,
+    string? Version = null);
 
 public record RolePermissionDto(Guid Id, string Code, string Description, string Module);

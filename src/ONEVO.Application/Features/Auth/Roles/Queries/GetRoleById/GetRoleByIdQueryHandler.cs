@@ -21,6 +21,7 @@ public class GetRoleByIdQueryHandler : IRequestHandler<GetRoleByIdQuery, Result<
     private readonly ITenantPermissionCatalogService _permissionCatalog;
     private readonly IModuleEntitlementService _entitlements;
     private readonly ICurrentUser _currentUser;
+    private readonly IRowVersionStore? _versions;
 
     public GetRoleByIdQueryHandler(
         IRoleRepository roles,
@@ -28,7 +29,8 @@ public class GetRoleByIdQueryHandler : IRequestHandler<GetRoleByIdQuery, Result<
         IPermissionRepository permissions,
         ITenantPermissionCatalogService permissionCatalog,
         IModuleEntitlementService entitlements,
-        ICurrentUser currentUser)
+        ICurrentUser currentUser,
+        IRowVersionStore? versions = null)
     {
         _roles = roles;
         _rolePermissions = rolePermissions;
@@ -36,6 +38,7 @@ public class GetRoleByIdQueryHandler : IRequestHandler<GetRoleByIdQuery, Result<
         _permissionCatalog = permissionCatalog;
         _entitlements = entitlements;
         _currentUser = currentUser;
+        _versions = versions;
     }
 
     public async Task<Result<RoleDetailDto>> Handle(GetRoleByIdQuery request, CancellationToken ct)
@@ -65,6 +68,8 @@ public class GetRoleByIdQueryHandler : IRequestHandler<GetRoleByIdQuery, Result<
         var catalog = await _permissionCatalog.GetCatalogAsync(tenantId, ct);
         var dto = RoleMapper.ToDetailDto(role, permissions, RoleMapper.MapUniversalPermissions(catalog));
 
+        if (_versions is not null)
+            dto = dto with { Version = await _versions.GetVersionAsync<global::ONEVO.Domain.Features.Auth.Entities.Role>(role.Id, ct) };
         return Result<RoleDetailDto>.Success(dto);
     }
 }
