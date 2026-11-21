@@ -3,16 +3,33 @@ using ONEVO.Api.Extensions;
 namespace ONEVO.Api.Middleware;
 
 /// <summary>
-/// Adds baseline security response headers to every response. Swagger UI paths get
-/// a relaxed CSP because the UI loads its own inline scripts/styles; API responses get a
-/// deny-all CSP. When the API also hosts the Angular SPAs (<c>Hosting:ServeSpas</c>), every
-/// non-API, non-Swagger request is an SPA request and gets <see cref="SpaCsp"/> instead.
+/// Adds baseline security response headers to every response. API responses get a deny-all CSP
+/// (task 23 removed Swagger UI and its relaxed CSP).
+///
+/// Task 23: API responses also get Permissions-Policy, Cross-Origin-Opener-Policy and
+/// Cross-Origin-Resource-Policy. CORP is same-origin here; file downloads relax it to
+/// same-site in <see cref="ONEVO.Api.Filters.UserFileResponseFilter"/>, because the web app
+/// loads images from the API with &lt;img&gt; tags and locally runs on another port
+/// (another origin on the same site). HSTS is added by UseHsts (see Program.cs).
+///
+/// When the API also hosts the Angular SPAs (<c>Hosting:ServeSpas</c>), every non-API request is an
+/// SPA request and gets <see cref="SpaCsp"/> and the base headers only: the API-only policies above
+/// would switch off browser features the web app's pages use.
 /// </summary>
 public sealed class SecurityHeadersMiddleware
 {
     private const string ApiCsp = "default-src 'none'; frame-ancestors 'none'";
-    private const string SwaggerCsp =
-        "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data:";
+
+    /// <summary>
+    /// The API never needs any powerful browser feature, so every one is switched off for
+    /// documents served from this origin. This does not affect the web app's own pages, which
+    /// are served from the frontend and set their own policy.
+    /// </summary>
+    public const string PermissionsPolicy =
+        "accelerometer=(), autoplay=(), camera=(), display-capture=(), encrypted-media=(), " +
+        "fullscreen=(), geolocation=(), gyroscope=(), hid=(), magnetometer=(), microphone=(), " +
+        "midi=(), payment=(), picture-in-picture=(), publickey-credentials-get=(), " +
+        "screen-wake-lock=(), serial=(), usb=(), xr-spatial-tracking=()";
 
     /// <summary>
     /// CSP for the web app and the admin console, the same in both tenancy modes. Built from the
@@ -60,19 +77,17 @@ public sealed class SecurityHeadersMiddleware
         headers["X-Content-Type-Options"] = "nosniff";
         headers["X-Frame-Options"] = "DENY";
         headers["Referrer-Policy"] = "no-referrer";
-        headers["Content-Security-Policy"] = SelectCsp(context.Request.Path);
+        if (_serveSpas && !SpaHostingExtensions.IsApiPath(context.Request.Path))
+        {
+            headers["Content-Security-Policy"] = SpaCsp;
+            return _next(context);
+        }
+
+        headers["Content-Security-Policy"] = ApiCsp;
+        headers["Permissions-Policy"] = PermissionsPolicy;
+        headers["Cross-Origin-Opener-Policy"] = "same-origin";
+        headers["Cross-Origin-Resource-Policy"] = "same-origin";
 
         return _next(context);
-    }
-
-    private string SelectCsp(PathString path)
-    {
-        if (path.StartsWithSegments("/swagger"))
-            return SwaggerCsp;
-
-        if (_serveSpas && !SpaHostingExtensions.IsApiPath(path))
-            return SpaCsp;
-
-        return ApiCsp;
     }
 }

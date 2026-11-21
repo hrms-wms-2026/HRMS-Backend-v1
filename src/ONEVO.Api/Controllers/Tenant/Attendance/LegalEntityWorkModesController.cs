@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using ONEVO.Api.Contracts.Attendance.WorkModes;
 using ONEVO.Api.Filters;
+using ONEVO.Application.Common.Authorization;
 using ONEVO.Application.Features.TimeAttendance.Commands.CreateWorkMode;
 using ONEVO.Application.Features.TimeAttendance.Commands.DeactivateWorkMode;
 using ONEVO.Application.Features.TimeAttendance.Commands.UpdateWorkMode;
@@ -23,7 +24,7 @@ public class LegalEntityWorkModesController : ControllerBase
     }
 
     [HttpGet]
-    [RequirePermission("attendance:read")]
+    [RequirePermission(PermissionCatalog.Attendance.Read)]
     public async Task<IActionResult> List(
         Guid legalEntityId, [FromQuery] bool includeInactive = false, CancellationToken ct = default)
     {
@@ -32,7 +33,7 @@ public class LegalEntityWorkModesController : ControllerBase
     }
 
     [HttpPost]
-    [RequirePermission("attendance:write")]
+    [RequirePermission(PermissionCatalog.Attendance.Write)]
     public async Task<IActionResult> Create(
         Guid legalEntityId, [FromBody] UpsertWorkModeRequest request, CancellationToken ct = default)
     {
@@ -48,7 +49,7 @@ public class LegalEntityWorkModesController : ControllerBase
     }
 
     [HttpPut("{id:guid}")]
-    [RequirePermission("attendance:write")]
+    [RequirePermission(PermissionCatalog.Attendance.Write)]
     public async Task<IActionResult> Update(
         Guid legalEntityId, Guid id, [FromBody] UpsertWorkModeRequest request, CancellationToken ct = default)
     {
@@ -62,7 +63,7 @@ public class LegalEntityWorkModesController : ControllerBase
     }
 
     [HttpPost("{id:guid}/deactivate")]
-    [RequirePermission("attendance:write")]
+    [RequirePermission(PermissionCatalog.Attendance.Write)]
     public async Task<IActionResult> Deactivate(Guid legalEntityId, Guid id, CancellationToken ct = default)
     {
         var result = await _mediator.Send(new DeactivateWorkModeCommand(id), ct);

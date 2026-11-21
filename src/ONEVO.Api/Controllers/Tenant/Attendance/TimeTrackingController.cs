@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using ONEVO.Api.Contracts.Attendance.TimeTracking;
 using ONEVO.Api.Filters;
+using ONEVO.Application.Common.Authorization;
 using ONEVO.Application.Common.Models;
 using ONEVO.Application.Features.TimeAttendance.Commands.ClockIn;
 using ONEVO.Application.Features.TimeAttendance.Commands.ClockOut;
@@ -91,7 +92,7 @@ public sealed class TimeTrackingController(IMediator mediator) : ControllerBase
     }
 
     [HttpGet("covered-history")]
-    [RequirePermission("attendance:read")]
+    [RequirePermission(PermissionCatalog.Attendance.Read)]
     public async Task<IActionResult> CoveredHistory(
         [FromQuery] DateOnly from,
         [FromQuery] DateOnly to,
@@ -119,7 +120,7 @@ public sealed class TimeTrackingController(IMediator mediator) : ControllerBase
     }
 
     [HttpGet("team/today")]
-    [RequirePermission("attendance:read")]
+    [RequirePermission(PermissionCatalog.Attendance.Read)]
     public async Task<IActionResult> TeamToday(
         [FromQuery] int limit = 50,
         CancellationToken ct = default)
@@ -131,7 +132,7 @@ public sealed class TimeTrackingController(IMediator mediator) : ControllerBase
     }
 
     [HttpGet("team/working-hours")]
-    [RequirePermission("attendance:read")]
+    [RequirePermission(PermissionCatalog.Attendance.Read)]
     public async Task<IActionResult> TeamWorkingHours(
         [FromQuery] DateOnly? weekStart = null,
         CancellationToken ct = default)
@@ -144,7 +145,7 @@ public sealed class TimeTrackingController(IMediator mediator) : ControllerBase
 
     /// <summary>Work vs task hours widget: working time (less breaks) against completed tasks' estimated hours.</summary>
     [HttpGet("team/work-vs-task")]
-    [RequirePermission("attendance:read")]
+    [RequirePermission(PermissionCatalog.Attendance.Read)]
     public async Task<IActionResult> TeamWorkVsTask(
         [FromQuery] string period = "week",
         [FromQuery] DateOnly? anchor = null,
@@ -157,7 +158,7 @@ public sealed class TimeTrackingController(IMediator mediator) : ControllerBase
     }
 
     [HttpGet("team/attendance-summary")]
-    [RequirePermission("attendance:read")]
+    [RequirePermission(PermissionCatalog.Attendance.Read)]
     public async Task<IActionResult> TeamAttendanceSummary(
         [FromQuery] string mode = "week",
         [FromQuery] DateOnly? anchor = null,
@@ -171,7 +172,7 @@ public sealed class TimeTrackingController(IMediator mediator) : ControllerBase
     }
 
     [HttpGet("team/attendance-employees")]
-    [RequirePermission("attendance:read")]
+    [RequirePermission(PermissionCatalog.Attendance.Read)]
     public async Task<IActionResult> TeamAttendanceEmployees(
         [FromQuery] string mode = "week",
         [FromQuery] DateOnly? anchor = null,

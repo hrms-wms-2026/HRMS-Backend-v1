@@ -37,6 +37,7 @@ public sealed class ListEmployeesAuthorityResolverArchitectureTests
         Assert.Contains("EmployeeAuthorityVisibilityRequest.RelationshipOnly", text, StringComparison.Ordinal);
         Assert.DoesNotContain("\"employees:read\"", text, StringComparison.Ordinal);
         Assert.DoesNotContain("\"employees:write\"", text, StringComparison.Ordinal);
+        Assert.DoesNotContain("PermissionCatalog.Employees.Write", text, StringComparison.Ordinal);
     }
 
     // The Employees directory remains coverage-scoped through the resolver - org:manage must never
@@ -51,8 +52,9 @@ public sealed class ListEmployeesAuthorityResolverArchitectureTests
         var text = File.ReadAllText(path);
 
         Assert.DoesNotContain("org:manage", text, StringComparison.Ordinal);
+        Assert.DoesNotContain("PermissionCatalog.Org.Manage", text, StringComparison.Ordinal);
         Assert.Contains("HasPermission(AttendanceReadPermission)", text, StringComparison.Ordinal);
-        Assert.Contains("\"attendance:read\"", text, StringComparison.Ordinal);
+        Assert.Contains("AttendanceReadPermission = PermissionCatalog.Attendance.Read", text, StringComparison.Ordinal);
     }
 
     private static string FindFileUnderRepoRoot(params string[] relativeSegments)

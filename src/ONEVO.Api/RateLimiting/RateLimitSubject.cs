@@ -13,7 +13,7 @@ public static class RateLimitAuthenticationSchemes
 
 public enum RateLimitSubjectKind
 {
-    /// <summary>Outside /api/v1 and /admin/v1 (health, swagger, SignalR hubs): not limited.</summary>
+    /// <summary>Outside /api/v1 and /admin/v1 (health, SignalR hubs): not limited.</summary>
     Exempt,
     Anonymous,
     User,

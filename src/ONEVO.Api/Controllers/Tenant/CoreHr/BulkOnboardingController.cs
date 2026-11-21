@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using ONEVO.Api.Contracts.CoreHr.BulkOnboarding;
 using ONEVO.Api.Filters;
+using ONEVO.Application.Common.Authorization;
 using ONEVO.Application.Features.CoreHr.BulkOnboarding.Commands.PreviewBulkOnboardingMapping;
 using ONEVO.Application.Features.CoreHr.BulkOnboarding.Commands.RequestBulkOnboardingDraftCreation;
 using ONEVO.Application.Features.CoreHr.BulkOnboarding.Commands.RequestBulkOnboardingFinalize;
@@ -29,9 +30,15 @@ public class BulkOnboardingController : ControllerBase
     }
 
     [HttpPost]
-    [RequirePermission("employees:write")]
+    [RequirePermission(PermissionCatalog.Employees.Write)]
+    [RequestSizeLimit(ONEVO.Api.Configuration.RequestBodyLimits.BulkOnboardingFile)]
     public async Task<IActionResult> Upload([FromForm] UploadBulkOnboardingBatchRequest request, CancellationToken ct = default)
     {
+        if (request.File is null || request.File.Length == 0)
+            return Problem("A .csv or .xlsx file is required.", statusCode: 400);
+        if (request.File.Length > ONEVO.Api.Configuration.RequestBodyLimits.BulkOnboardingFileMaxBytes)
+            return Problem("The file must be 5 MB or smaller.", statusCode: 400);
+
         using var memoryStream = new MemoryStream();
         await request.File.CopyToAsync(memoryStream, ct);
         var fileContent = memoryStream.ToArray();
@@ -51,7 +58,7 @@ public class BulkOnboardingController : ControllerBase
     }
 
     [HttpGet("template")]
-    [RequirePermission("employees:write")]
+    [RequirePermission(PermissionCatalog.Employees.Write)]
     public IActionResult GetTemplate([FromQuery] string format)
     {
         var result = _templateHandler.Handle(new GetBulkOnboardingTemplateQuery(format));
@@ -63,7 +70,7 @@ public class BulkOnboardingController : ControllerBase
     }
 
     [HttpPost("{id:guid}/preview")]
-    [RequirePermission("employees:write")]
+    [RequirePermission(PermissionCatalog.Employees.Write)]
     public async Task<IActionResult> Preview(Guid id, [FromBody] PreviewBulkOnboardingMappingRequest request, CancellationToken ct = default)
     {
         var result = await _mediator.Send(new PreviewBulkOnboardingMappingCommand(id, request.Mapping), ct);
@@ -77,7 +84,7 @@ public class BulkOnboardingController : ControllerBase
     }
 
     [HttpPost("{id:guid}/validate")]
-    [RequirePermission("employees:write")]
+    [RequirePermission(PermissionCatalog.Employees.Write)]
     public async Task<IActionResult> Validate(Guid id, [FromBody] ValidateBulkOnboardingBatchRequest request, CancellationToken ct = default)
     {
         var result = await _mediator.Send(new ValidateBulkOnboardingBatchCommand(id, request.Mapping), ct);
@@ -88,7 +95,7 @@ public class BulkOnboardingController : ControllerBase
     }
 
     [HttpPost("{id:guid}/resolve-issues")]
-    [RequirePermission("employees:write")]
+    [RequirePermission(PermissionCatalog.Employees.Write)]
     public async Task<IActionResult> ResolveIssues(
         Guid id, [FromBody] ResolveBulkOnboardingIssuesRequest request, CancellationToken ct = default)
     {
@@ -154,7 +161,7 @@ public class BulkOnboardingController : ControllerBase
                         i.Context.CanIncreaseCapacity))).ToList());
 
     [HttpPost("{id:guid}/create-drafts")]
-    [RequirePermission("employees:write")]
+    [RequirePermission(PermissionCatalog.Employees.Write)]
     public async Task<IActionResult> CreateDrafts(Guid id, CancellationToken ct = default)
     {
         var result = await _mediator.Send(new RequestBulkOnboardingDraftCreationCommand(id), ct);
@@ -168,7 +175,7 @@ public class BulkOnboardingController : ControllerBase
     }
 
     [HttpPost("{id:guid}/finalize")]
-    [RequirePermission("employees:write")]
+    [RequirePermission(PermissionCatalog.Employees.Write)]
     [Idempotent]
     public async Task<IActionResult> Finalize(Guid id, [FromBody] FinalizeBulkOnboardingBatchRequest request, CancellationToken ct = default)
     {
@@ -183,7 +190,7 @@ public class BulkOnboardingController : ControllerBase
     }
 
     [HttpGet("{id:guid}")]
-    [RequirePermission("employees:write")]
+    [RequirePermission(PermissionCatalog.Employees.Write)]
     public async Task<IActionResult> GetById(Guid id, CancellationToken ct = default)
     {
         var result = await _mediator.Send(new GetBulkOnboardingBatchQuery(id), ct);

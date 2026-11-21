@@ -104,7 +104,7 @@ public sealed class EfPositionRepositoryTests
         Assert.NotNull(entityType);
 
         var fks = entityType.GetForeignKeys().ToList();
-        Assert.Equal(4, fks.Count);
+        Assert.Equal(5, fks.Count); // 4 own keys + responsible_employee_id (task 39a)
         Assert.All(fks, fk => Assert.Equal(DeleteBehavior.Restrict, fk.DeleteBehavior));
     }
 

@@ -13,13 +13,16 @@ namespace ONEVO.Tests.Unit.Features.Storage.File;
 
 public class FileStorageServiceTests
 {
+    private static readonly byte[] PngMagic = { 0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A, 0, 0, 0, 0 };
+
     private static FileStorageService CreateService(
         FakeFileUploadReservationRepository reservations,
         FakeFileRecordRepository fileRecords,
         FakeStorageQuotaService quota,
         FakeObjectStorageAdapter objectStorage,
         FakeUnitOfWork unitOfWork,
-        IAvatarImageProcessor? avatarImageProcessor = null)
+        IAvatarImageProcessor? avatarImageProcessor = null,
+        IImageSanitizer? imageSanitizer = null)
     {
         return new FileStorageService(
             reservations,
@@ -28,6 +31,7 @@ public class FileStorageServiceTests
             objectStorage,
             new UploadPurposePolicy(),
             avatarImageProcessor ?? new FakeAvatarImageProcessor(),
+            imageSanitizer ?? new FakeImageSanitizer(),
             unitOfWork,
             new FakeDateTimeProvider(),
             Options.Create(new FileStorageOptions()),
@@ -270,10 +274,9 @@ public class FileStorageServiceTests
         var objectStorage = new FakeObjectStorageAdapter();
         var service = CreateService(
             reservations, new FakeFileRecordRepository(), quota, objectStorage, new FakeUnitOfWork());
-        // FakeAvatarImageProcessor echoes the input bytes back unchanged under a renamed .webp
-        // extension - SEC-13's signature check then runs against that .webp name, so the input
-        // needs real WEBP magic bytes for this fake passthrough to look valid.
-        using var content = new MemoryStream(new byte[] { 0x52, 0x49, 0x46, 0x46, 0, 0, 0, 0, 0x57, 0x45, 0x42, 0x50 });
+        // Task 23: the source is checked as sent (.png, so PNG magic bytes); FakeAvatarImageProcessor
+        // then returns WebP bytes, which are checked again under the .webp name.
+        using var content = new MemoryStream(PngMagic);
 
         var result = await service.UploadAsync(
             tenantId, Guid.NewGuid(), "photo.png", "image/png", "employee_avatar", content, CancellationToken.None);
@@ -297,9 +300,8 @@ public class FileStorageServiceTests
             objectStorage,
             new FakeUnitOfWork(),
             avatarProcessor);
-        // Same passthrough-fake reasoning as UploadAsync_MetadataCompletionFailure above: the
-        // content must look like a valid WEBP since that's the extension it's checked against.
-        using var content = new MemoryStream(new byte[] { 0x52, 0x49, 0x46, 0x46, 0, 0, 0, 0, 0x57, 0x45, 0x42, 0x50 });
+        // Same reasoning as UploadAsync_MetadataCompletionFailure above.
+        using var content = new MemoryStream(PngMagic);
 
         var result = await service.UploadAsync(
             tenantId,
@@ -316,7 +318,8 @@ public class FileStorageServiceTests
         Assert.Equal("employee-photo.webp", result.Value.SafeFileName);
         Assert.Equal("image/webp", result.Value.ContentType);
         Assert.Equal("image/webp", objectStorage.LastPutContentType);
-        Assert.EndsWith("/employee-photo.webp", Assert.Single(objectStorage.PutObjectKeys));
+        // Task 23: the object name is server-generated; only the extension survives.
+        Assert.EndsWith("/content.webp", Assert.Single(objectStorage.PutObjectKeys));
     }
 
     [Fact]
@@ -568,5 +571,78 @@ public class FileStorageServiceTests
 
         Assert.True(result.IsSuccess);
         Assert.Equal(0, quota.ReleaseUsedCallCount);
+    }
+
+    // ── Task 23: upload checks ───────────────────────────────────────────────
+
+    [Fact]
+    public async Task UploadAsync_ExeRenamedToPng_IsRejectedBeforeQuotaOrStorage()
+    {
+        var quota = new FakeStorageQuotaService();
+        var objectStorage = new FakeObjectStorageAdapter();
+        var sanitizer = new FakeImageSanitizer();
+        var service = CreateService(
+            new FakeFileUploadReservationRepository(), new FakeFileRecordRepository(), quota, objectStorage,
+            new FakeUnitOfWork(), imageSanitizer: sanitizer);
+        // "MZ" - a Windows executable header, sent with a .png name and an image/png Content-Type.
+        using var content = new MemoryStream(new byte[] { 0x4D, 0x5A, 0x90, 0x00, 0x03, 0x00, 0x00, 0x00, 0x04, 0x00, 0x00, 0x00 });
+
+        var result = await service.UploadAsync(
+            Guid.NewGuid(), Guid.NewGuid(), "holiday.png", "image/png", "company_logo", content, CancellationToken.None);
+
+        Assert.False(result.IsSuccess);
+        Assert.Equal(400, result.StatusCode);
+        Assert.Equal(0, quota.ReserveCallCount);
+        Assert.Equal(0, sanitizer.CallCount);
+        Assert.Empty(objectStorage.PutObjectKeys);
+    }
+
+    [Theory]
+    [InlineData("monitoring_face_scan", "scan.jpg", "image/jpeg")]
+    [InlineData("monitoring_screenshot", "screen.png", "image/png")]
+    [InlineData("company_logo", "logo.webp", "image/webp")]
+    [InlineData("task_attachment", "photo.jpeg", "image/jpeg")]
+    public async Task UploadAsync_RasterImage_IsReencodedForEveryPurpose(string purpose, string fileName, string contentType)
+    {
+        var sanitizer = new FakeImageSanitizer();
+        var service = CreateService(
+            new FakeFileUploadReservationRepository(), new FakeFileRecordRepository(), new FakeStorageQuotaService(),
+            new FakeObjectStorageAdapter(), new FakeUnitOfWork(), imageSanitizer: sanitizer);
+        byte[] bytes = contentType switch
+        {
+            "image/png" => PngMagic,
+            "image/webp" => FakeAvatarImageProcessor.WebpBytes,
+            _ => new byte[] { 0xFF, 0xD8, 0xFF, 0xE0, 0, 0, 0, 0 }
+        };
+        using var content = new MemoryStream(bytes);
+
+        var result = await service.UploadAsync(
+            Guid.NewGuid(), Guid.NewGuid(), fileName, contentType, purpose, content, CancellationToken.None);
+
+        Assert.True(result.IsSuccess, result.Error);
+        Assert.Equal(1, sanitizer.CallCount);
+    }
+
+    [Fact]
+    public async Task UploadAsync_Document_IsNotReencodedAndGetsServerGeneratedObjectName()
+    {
+        var sanitizer = new FakeImageSanitizer();
+        var objectStorage = new FakeObjectStorageAdapter();
+        var service = CreateService(
+            new FakeFileUploadReservationRepository(), new FakeFileRecordRepository(), new FakeStorageQuotaService(),
+            objectStorage, new FakeUnitOfWork(), imageSanitizer: sanitizer);
+        using var content = new MemoryStream(new byte[] { 0x25, 0x50, 0x44, 0x46, 0x2D, 0x31, 0x2E, 0x34 });
+
+        var result = await service.UploadAsync(
+            Guid.NewGuid(), Guid.NewGuid(), "Salary slip <script>.pdf", "application/pdf", "generic_document",
+            content, CancellationToken.None);
+
+        Assert.True(result.IsSuccess, result.Error);
+        Assert.Equal(0, sanitizer.CallCount);
+        var key = Assert.Single(objectStorage.PutObjectKeys);
+        Assert.EndsWith("/content.pdf", key);
+        Assert.DoesNotContain("Salary", key);
+        // The client's name is kept for display only.
+        Assert.Equal("Salary slip <script>.pdf", result.Value!.OriginalFileName);
     }
 }

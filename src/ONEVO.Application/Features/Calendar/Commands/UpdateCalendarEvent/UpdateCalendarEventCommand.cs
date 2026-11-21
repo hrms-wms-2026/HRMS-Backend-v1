@@ -1,6 +1,7 @@
 using MediatR;
 using ONEVO.Application.Common.Models;
 using ONEVO.Application.Features.Calendar.DTOs.Responses;
+using ONEVO.Application.Features.Calendar.Validation;
 
 namespace ONEVO.Application.Features.Calendar.Commands.UpdateCalendarEvent;
 
@@ -14,4 +15,4 @@ public sealed record UpdateCalendarEventCommand(
     string? Location,
     string? MeetingLink,
     string? Color,
-    string Recurrence) : IRequest<Result<CalendarEventItem>>;
+    string Recurrence) : IRequest<Result<CalendarEventItem>>, ICalendarEventInput;

@@ -267,10 +267,17 @@ public sealed class MyTeamDb
     public (Guid ProjectId, Guid RootObjectiveId) AddProject(ApplicationDbContext db, Guid leadEmployeeId, bool active = true, Guid? legalEntityId = null)
     {
         var today = DateOnly.FromDateTime(DateTime.UtcNow);
+        // projects.category_id has a foreign key to project_categories (task 39a).
+        var projectCategory = new ProjectCategory
+        {
+            Id = Guid.NewGuid(), TenantId = TenantId, Name = $"Category {Guid.NewGuid():N}"[..16], IsActive = true,
+            CreatedAt = DateTimeOffset.UtcNow,
+        };
+        db.Set<ProjectCategory>().Add(projectCategory);
         var project = new Project
         {
             Id = Guid.NewGuid(), TenantId = TenantId, OwningLegalEntityId = legalEntityId ?? LegalEntityId,
-            CategoryId = Guid.NewGuid(), Name = $"Project {Guid.NewGuid():N}"[..16],
+            CategoryId = projectCategory.Id, Name = $"Project {Guid.NewGuid():N}"[..16],
             Identifier = $"P{Guid.NewGuid():N}"[..8].ToUpperInvariant(), LeadId = leadEmployeeId,
             StartDate = today.AddMonths(-1), TargetDate = today.AddMonths(3), IsActive = active,
         };

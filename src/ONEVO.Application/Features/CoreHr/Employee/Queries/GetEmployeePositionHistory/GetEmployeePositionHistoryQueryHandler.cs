@@ -1,4 +1,5 @@
 using MediatR;
+using ONEVO.Application.Common.Authorization;
 using ONEVO.Application.Common.Models;
 using ONEVO.Application.Common.ServiceInterfaces;
 using ONEVO.Application.Features.Auth.Login.RepositoryInterfaces;
@@ -50,7 +51,7 @@ public class GetEmployeePositionHistoryQueryHandler
         if (existing is null)
             return Result<IReadOnlyList<PositionHistoryEntryResponse>>.NotFound("The employee or selected organization record could not be found.");
 
-        var scope = _currentUser.HasPermission("org:manage")
+        var scope = _currentUser.HasPermission(PermissionCatalog.Org.Manage)
             ? EmployeeVisibilityScope.Unrestricted()
             : await _visibilityScopeResolver.ResolveAsync(tenantId, _currentUser.UserId, ct);
 
