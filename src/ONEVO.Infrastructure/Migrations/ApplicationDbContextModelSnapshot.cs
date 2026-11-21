@@ -12346,6 +12346,174 @@ namespace ONEVO.Infrastructure.Migrations
                     b.ToTable("payment_gateway_credentials", (string)null);
                 });
 
+            modelBuilder.Entity("ONEVO.Domain.Features.SharedPlatform.RateLimiting.Entities.RateLimitSetting", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier")
+                        .HasColumnName("id");
+
+                    b.Property<int?>("Burst")
+                        .HasColumnType("int")
+                        .HasColumnName("burst");
+
+                    b.Property<string>("LimitName")
+                        .IsRequired()
+                        .HasMaxLength(40)
+                        .HasColumnType("nvarchar(40)")
+                        .HasColumnName("limit_name");
+
+                    b.Property<int>("PerMinute")
+                        .HasColumnType("int")
+                        .HasColumnName("per_minute");
+
+                    b.Property<byte[]>("RowVersion")
+                        .IsConcurrencyToken()
+                        .IsRequired()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("rowversion")
+                        .HasColumnName("row_version");
+
+                    b.Property<string>("Scope")
+                        .IsRequired()
+                        .HasMaxLength(10)
+                        .HasColumnType("nvarchar(10)")
+                        .HasColumnName("scope");
+
+                    b.Property<Guid?>("SubscriptionPlanId")
+                        .HasColumnType("uniqueidentifier")
+                        .HasColumnName("subscription_plan_id");
+
+                    b.Property<Guid?>("TenantId")
+                        .HasColumnType("uniqueidentifier")
+                        .HasColumnName("tenant_id");
+
+                    b.Property<DateTimeOffset>("UpdatedAt")
+                        .HasColumnType("datetimeoffset")
+                        .HasColumnName("updated_at");
+
+                    b.Property<Guid>("UpdatedByPlatformUserId")
+                        .HasColumnType("uniqueidentifier")
+                        .HasColumnName("updated_by_platform_user_id");
+
+                    b.HasKey("Id")
+                        .HasName("pk_rate_limit_settings");
+
+                    b.HasIndex("LimitName")
+                        .IsUnique()
+                        .HasDatabaseName("ux_rate_limit_settings_global")
+                        .HasFilter("[scope] = 'global'");
+
+                    b.HasIndex("UpdatedByPlatformUserId")
+                        .HasDatabaseName("ix_rate_limit_settings_updated_by_platform_user_id");
+
+                    b.HasIndex("SubscriptionPlanId", "LimitName")
+                        .IsUnique()
+                        .HasDatabaseName("ux_rate_limit_settings_plan")
+                        .HasFilter("[scope] = 'plan' AND [subscription_plan_id] IS NOT NULL");
+
+                    b.HasIndex("TenantId", "LimitName")
+                        .IsUnique()
+                        .HasDatabaseName("ux_rate_limit_settings_tenant")
+                        .HasFilter("[scope] = 'tenant' AND [tenant_id] IS NOT NULL");
+
+                    b.ToTable("rate_limit_settings", null, t =>
+                        {
+                            t.HasCheckConstraint("ck_rate_limit_settings_burst", "([limit_name] IN ('Anonymous', 'AdminAnonymous') AND [burst] IS NULL) OR ([limit_name] NOT IN ('Anonymous', 'AdminAnonymous') AND [burst] IS NOT NULL)");
+
+                            t.HasCheckConstraint("ck_rate_limit_settings_limit_name", "[limit_name] IN ('Anonymous', 'SignedIn', 'TrayDevice', 'TenantCeiling', 'AdminAnonymous', 'AdminSignedIn')");
+
+                            t.HasCheckConstraint("ck_rate_limit_settings_platform_limits_global_only", "[scope] = 'global' OR [limit_name] IN ('SignedIn', 'TrayDevice', 'TenantCeiling')");
+
+                            t.HasCheckConstraint("ck_rate_limit_settings_ranges", "[per_minute] BETWEEN 10 AND 200000 AND ([burst] IS NULL OR [burst] BETWEEN 1 AND 50000)");
+
+                            t.HasCheckConstraint("ck_rate_limit_settings_scope_ids", "([scope] = 'global' AND [subscription_plan_id] IS NULL AND [tenant_id] IS NULL) OR ([scope] = 'plan' AND [subscription_plan_id] IS NOT NULL AND [tenant_id] IS NULL) OR ([scope] = 'tenant' AND [tenant_id] IS NOT NULL AND [subscription_plan_id] IS NULL)");
+                        });
+                });
+
+            modelBuilder.Entity("ONEVO.Domain.Features.SharedPlatform.RateLimiting.Entities.RateLimitSettingChange", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier")
+                        .HasColumnName("id");
+
+                    b.Property<DateTimeOffset>("ChangedAt")
+                        .HasColumnType("datetimeoffset")
+                        .HasColumnName("changed_at");
+
+                    b.Property<string>("CorrelationId")
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)")
+                        .HasColumnName("correlation_id");
+
+                    b.Property<string>("LimitName")
+                        .IsRequired()
+                        .HasMaxLength(40)
+                        .HasColumnType("nvarchar(40)")
+                        .HasColumnName("limit_name");
+
+                    b.Property<int?>("NewBurst")
+                        .HasColumnType("int")
+                        .HasColumnName("new_burst");
+
+                    b.Property<int?>("NewPerMinute")
+                        .HasColumnType("int")
+                        .HasColumnName("new_per_minute");
+
+                    b.Property<int?>("OldBurst")
+                        .HasColumnType("int")
+                        .HasColumnName("old_burst");
+
+                    b.Property<int?>("OldPerMinute")
+                        .HasColumnType("int")
+                        .HasColumnName("old_per_minute");
+
+                    b.Property<Guid>("PlatformUserId")
+                        .HasColumnType("uniqueidentifier")
+                        .HasColumnName("platform_user_id");
+
+                    b.Property<string>("Reason")
+                        .IsRequired()
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)")
+                        .HasColumnName("reason");
+
+                    b.Property<string>("Scope")
+                        .IsRequired()
+                        .HasMaxLength(10)
+                        .HasColumnType("nvarchar(10)")
+                        .HasColumnName("scope");
+
+                    b.Property<Guid?>("SubscriptionPlanId")
+                        .HasColumnType("uniqueidentifier")
+                        .HasColumnName("subscription_plan_id");
+
+                    b.Property<Guid?>("TenantId")
+                        .HasColumnType("uniqueidentifier")
+                        .HasColumnName("tenant_id");
+
+                    b.HasKey("Id")
+                        .HasName("pk_rate_limit_setting_changes");
+
+                    b.HasIndex("ChangedAt")
+                        .HasDatabaseName("ix_rate_limit_setting_changes_changed_at");
+
+                    b.HasIndex("TenantId", "ChangedAt")
+                        .HasDatabaseName("ix_rate_limit_setting_changes_tenant_changed_at");
+
+                    b.ToTable("rate_limit_setting_changes", null, t =>
+                        {
+                            t.HasCheckConstraint("ck_rate_limit_setting_changes_has_values", "[old_per_minute] IS NOT NULL OR [new_per_minute] IS NOT NULL");
+
+                            t.HasCheckConstraint("ck_rate_limit_setting_changes_limit_name", "[limit_name] IN ('Anonymous', 'SignedIn', 'TrayDevice', 'TenantCeiling', 'AdminAnonymous', 'AdminSignedIn')");
+
+                            t.HasCheckConstraint("ck_rate_limit_setting_changes_reason", "LTRIM([reason]) <> ''");
+
+                            t.HasCheckConstraint("ck_rate_limit_setting_changes_scope_ids", "([scope] = 'global' AND [subscription_plan_id] IS NULL AND [tenant_id] IS NULL) OR ([scope] = 'plan' AND [subscription_plan_id] IS NOT NULL AND [tenant_id] IS NULL) OR ([scope] = 'tenant' AND [tenant_id] IS NOT NULL AND [subscription_plan_id] IS NULL)");
+                        });
+                });
+
             modelBuilder.Entity("ONEVO.Domain.Features.SharedPlatform.TenantIntegrations.Entities.TenantIntegrationCredential", b =>
                 {
                     b.Property<Guid>("Id")
@@ -18892,6 +19060,28 @@ namespace ONEVO.Infrastructure.Migrations
                         .HasConstraintName("fk_payment_gateway_credentials_payment_gateway_configs_payment_gateway_config_id");
 
                     b.Navigation("GatewayConfig");
+                });
+
+            modelBuilder.Entity("ONEVO.Domain.Features.SharedPlatform.RateLimiting.Entities.RateLimitSetting", b =>
+                {
+                    b.HasOne("ONEVO.Domain.Features.SharedPlatform.Entities.SubscriptionPlan", null)
+                        .WithMany()
+                        .HasForeignKey("SubscriptionPlanId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .HasConstraintName("fk_rate_limit_settings_subscription_plans_subscription_plan_id");
+
+                    b.HasOne("ONEVO.Domain.Features.InfrastructureModule.Entities.Tenant", null)
+                        .WithMany()
+                        .HasForeignKey("TenantId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .HasConstraintName("fk_rate_limit_settings_tenants_tenant_id");
+
+                    b.HasOne("ONEVO.Domain.Features.DevPlatform.PlatformAccess.Entities.PlatformUser", null)
+                        .WithMany()
+                        .HasForeignKey("UpdatedByPlatformUserId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("fk_rate_limit_settings_platform_users_updated_by_platform_user_id");
                 });
 
             modelBuilder.Entity("ONEVO.Domain.Features.SharedPlatform.TenantIntegrations.Entities.TenantIntegrationCredential", b =>
