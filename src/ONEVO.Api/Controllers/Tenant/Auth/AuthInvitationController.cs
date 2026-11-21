@@ -28,6 +28,7 @@ public class AuthInvitationController : ControllerBase
 
     /// <summary>Public invitation preview (token from email link).</summary>
     [HttpGet("invitations/{token}")]
+    // Public by design: random invitation token from the email link; AuthRateLimiting covers POSTs only, GET has the per-IP /api/v1 limit.
     [AllowAnonymous]
     public async Task<IActionResult> GetInvitation(string token, CancellationToken ct)
     {
@@ -39,6 +40,7 @@ public class AuthInvitationController : ControllerBase
 
     /// <summary>Complete invitation by setting a password and accepting required legal documents.</summary>
     [HttpPost("invitations/{token}/accept-password")]
+    // Public by design: single-use invitation token checked against the tenant host; AuthRateLimiting per IP and per path.
     [AllowAnonymous]
     public async Task<IActionResult> AcceptInvitationPassword(
         string token,
@@ -74,6 +76,7 @@ public class AuthInvitationController : ControllerBase
     /// returns 404, mirroring AcceptInvitationPassword's own tenant-host check.
     /// </summary>
     [HttpPost("invitations/{token}/accept-employee")]
+    // Public by design: single-use invitation token checked against the tenant host; AuthRateLimiting per IP and per path.
     [AllowAnonymous]
     public async Task<IActionResult> AcceptEmployeeInvitation(
         string token,
@@ -104,6 +107,7 @@ public class AuthInvitationController : ControllerBase
 
     /// <summary>Complete invitation with Google Sign-In.</summary>
     [HttpPost("invitations/{token}/accept-google")]
+    // Public by design: invitation token + verified Google ID token; AuthRateLimiting per IP and per path.
     [AllowAnonymous]
     public async Task<IActionResult> AcceptInvitationGoogle(
         string token,

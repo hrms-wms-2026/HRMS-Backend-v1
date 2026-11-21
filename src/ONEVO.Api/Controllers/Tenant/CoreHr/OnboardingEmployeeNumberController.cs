@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using ONEVO.Api.Contracts.CoreHr.Onboarding;
 using ONEVO.Api.Filters;
+using ONEVO.Application.Common.Authorization;
 using ONEVO.Application.Features.CoreHr.Onboarding.Queries.CheckEmployeeNumberAvailability;
 using ONEVO.Application.Features.CoreHr.Onboarding.Queries.GetEmployeeNumberSuggestion;
 
@@ -18,7 +19,7 @@ public sealed class OnboardingEmployeeNumberController(IMediator mediator) : Con
     /// <summary>Suggests the next <c>{COMPANY_CODE}-{NNNN}</c> employee number for the given
     /// legal entity. Does not reserve the value — save/finalize must re-check uniqueness.</summary>
     [HttpGet("employee-number-suggestion")]
-    [RequirePermission("employees:write")]
+    [RequirePermission(PermissionCatalog.Employees.Write)]
     public async Task<IActionResult> Suggest(
         [FromQuery] Guid legalEntityId,
         CancellationToken ct = default)
@@ -33,7 +34,7 @@ public sealed class OnboardingEmployeeNumberController(IMediator mediator) : Con
     /// <summary>Checks whether an employee number is available in the current tenant.
     /// Hint only — final persistence still enforces the unique index.</summary>
     [HttpGet("employee-number-availability")]
-    [RequirePermission("employees:write")]
+    [RequirePermission(PermissionCatalog.Employees.Write)]
     public async Task<IActionResult> Availability(
         [FromQuery] string? employeeNumber,
         [FromQuery] Guid? excludeEmployeeId,

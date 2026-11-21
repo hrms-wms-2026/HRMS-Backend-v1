@@ -1,5 +1,6 @@
 using System.Text.Json;
 using MediatR;
+using ONEVO.Application.Common.Authorization;
 using ONEVO.Application.Common.Models;
 using ONEVO.Application.Common.ServiceInterfaces;
 using ONEVO.Application.Features.CoreHr.BulkOnboarding.Commands.ValidateBulkOnboardingBatch;
@@ -135,7 +136,7 @@ public sealed class ResolveBulkOnboardingIssuesCommandHandler
             }
             case BulkOnboardingIssueTypes.Actions.CreateDepartment:
             {
-                if (!_currentUser.HasPermission("org:manage"))
+                if (!_currentUser.HasPermission(PermissionCatalog.Org.Manage))
                     return Result<ValidateBulkOnboardingBatchResult>.Forbidden(
                         "You do not have permission to create departments.");
                 if (request.CreateDepartment is null)
@@ -158,7 +159,7 @@ public sealed class ResolveBulkOnboardingIssuesCommandHandler
             }
             case BulkOnboardingIssueTypes.Actions.CreatePosition:
             {
-                if (!_currentUser.HasPermission("org:manage"))
+                if (!_currentUser.HasPermission(PermissionCatalog.Org.Manage))
                     return Result<ValidateBulkOnboardingBatchResult>.Forbidden(
                         "You do not have permission to create positions.");
                 if (request.CreatePosition is null)
@@ -216,7 +217,7 @@ public sealed class ResolveBulkOnboardingIssuesCommandHandler
             }
             case BulkOnboardingIssueTypes.Actions.IncreaseCapacity:
             {
-                if (!_currentUser.HasPermission("org:manage"))
+                if (!_currentUser.HasPermission(PermissionCatalog.Org.Manage))
                     return Result<ValidateBulkOnboardingBatchResult>.Forbidden(
                         "You do not have permission to update positions.");
                 if (!Guid.TryParse(request.TargetId, out var positionId))

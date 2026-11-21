@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using ONEVO.Api.Contracts.Leave.Types;
 using ONEVO.Api.Filters;
+using ONEVO.Application.Common.Authorization;
 using ONEVO.Application.Features.Leave.Type.Commands.CreateLeaveType;
 using ONEVO.Application.Features.Leave.Type.Commands.DeactivateLeaveType;
 using ONEVO.Application.Features.Leave.Type.Commands.UpdateLeaveType;
@@ -28,7 +29,7 @@ public class LeaveTypesController : ControllerBase
     /// see whether Time Off is set up and to manage the types they create.</summary>
     [ReferenceDataCache]
     [HttpGet]
-    [RequireAnyPermission("leave:read", "leave:read-own", "leave:manage")]
+    [RequireAnyPermission(PermissionCatalog.Leave.Read, PermissionCatalog.Leave.ReadOwn, PermissionCatalog.Leave.Manage)]
     public async Task<IActionResult> List([FromQuery] bool includeInactive = false, CancellationToken ct = default)
     {
         var result = await _mediator.Send(new ListLeaveTypesQuery(includeInactive), ct);
@@ -38,7 +39,7 @@ public class LeaveTypesController : ControllerBase
     /// <summary>Get a single leave type.</summary>
     [ReferenceDataCache]
     [HttpGet("{leaveTypeId:guid}")]
-    [RequirePermission("leave:read")]
+    [RequirePermission(PermissionCatalog.Leave.Read)]
     public async Task<IActionResult> Get(Guid leaveTypeId, CancellationToken ct = default)
     {
         var result = await _mediator.Send(new GetLeaveTypeQuery(leaveTypeId), ct);
@@ -47,7 +48,7 @@ public class LeaveTypesController : ControllerBase
 
     /// <summary>Create a leave type. Requires leave:manage.</summary>
     [HttpPost]
-    [RequirePermission("leave:manage")]
+    [RequirePermission(PermissionCatalog.Leave.Manage)]
     public async Task<IActionResult> Create([FromBody] CreateLeaveTypeRequest request, CancellationToken ct = default)
     {
         var result = await _mediator.Send(
@@ -64,7 +65,7 @@ public class LeaveTypesController : ControllerBase
 
     /// <summary>Update a leave type. Code is immutable and not accepted here.</summary>
     [HttpPut("{leaveTypeId:guid}")]
-    [RequirePermission("leave:manage")]
+    [RequirePermission(PermissionCatalog.Leave.Manage)]
     public async Task<IActionResult> Update(Guid leaveTypeId, [FromBody] UpdateLeaveTypeRequest request, CancellationToken ct = default)
     {
         var result = await _mediator.Send(
@@ -80,7 +81,7 @@ public class LeaveTypesController : ControllerBase
     /// <summary>Deactivate a leave type. Returns 409 with the pending-request count if any exist
     /// and confirmed=false; resubmit with confirmed=true to proceed.</summary>
     [HttpPost("{leaveTypeId:guid}/deactivate")]
-    [RequirePermission("leave:manage")]
+    [RequirePermission(PermissionCatalog.Leave.Manage)]
     public async Task<IActionResult> Deactivate(Guid leaveTypeId, [FromQuery] bool confirmed = false, CancellationToken ct = default)
     {
         var result = await _mediator.Send(new DeactivateLeaveTypeCommand(leaveTypeId, confirmed), ct);

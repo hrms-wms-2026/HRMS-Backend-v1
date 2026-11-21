@@ -1,4 +1,5 @@
 using MediatR;
+using ONEVO.Application.Common.Authorization;
 using ONEVO.Application.Common.Constants;
 using ONEVO.Application.Common.Models;
 using ONEVO.Application.Common.ServiceInterfaces;
@@ -17,7 +18,7 @@ public class ListEmployeesQueryHandler : IRequestHandler<ListEmployeesQuery, Res
     // The directory is relationship-based: who you see comes from your management coverage
     // (plus yourself), not from a permission code.
     private const string RequiredPermission = EmployeeAuthorityVisibilityRequest.RelationshipOnly;
-    private const string AttendanceReadPermission = "attendance:read";
+    private const string AttendanceReadPermission = PermissionCatalog.Attendance.Read;
 
     private static readonly HashSet<string> SortKeys = new(StringComparer.OrdinalIgnoreCase)
     {

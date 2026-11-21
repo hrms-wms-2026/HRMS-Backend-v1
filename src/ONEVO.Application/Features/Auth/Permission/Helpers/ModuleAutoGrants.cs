@@ -1,3 +1,5 @@
+using ONEVO.Application.Common.Authorization;
+
 namespace ONEVO.Application.Features.Auth.Permission;
 
 public static class ModuleAutoGrants
@@ -5,13 +7,13 @@ public static class ModuleAutoGrants
     public static readonly IReadOnlyDictionary<string, string[]> ByModule =
         new Dictionary<string, string[]>(StringComparer.Ordinal)
         {
-            ["core_hr"]    = ["employees:read-own", "attendance:read-own", "attendance:write-own"],
-            ["employees"]  = ["employees:read-own"],
-            ["leave"]      = ["leave:read-own"],
-            ["attendance"] = ["attendance:read-own", "attendance:write-own"],
-            ["calendar"]   = ["calendar:read"],
-            ["activity_monitoring"] = ["activity:read:self"],
-            ["workforce"]  = ["workforce:dashboard"],
+            ["core_hr"]    = [PermissionCatalog.Employees.ReadOwn, PermissionCatalog.Attendance.ReadOwn, PermissionCatalog.Attendance.WriteOwn],
+            ["employees"]  = [PermissionCatalog.Employees.ReadOwn],
+            ["leave"]      = [PermissionCatalog.Leave.ReadOwn],
+            ["attendance"] = [PermissionCatalog.Attendance.ReadOwn, PermissionCatalog.Attendance.WriteOwn],
+            ["calendar"]   = [PermissionCatalog.Calendar.Read],
+            ["activity_monitoring"] = [PermissionCatalog.Activity.ReadSelf],
+            ["workforce"]  = [PermissionCatalog.Workforce.Dashboard],
         };
 
     private static readonly HashSet<string> AllCodes =

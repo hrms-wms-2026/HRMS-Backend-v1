@@ -1024,7 +1024,8 @@ public sealed class LegalEntitiesIntegrationTests : IClassFixture<LegalEntitiesI
     public async Task LinkLogo_ValidPendingImage_ReturnsFileId()
     {
         var company = await _fixture.CreateCompanyAsync(_fixture.TenantA, "Logo Upload Co", "LOGOU1", "REG-LOGOU1");
-        var bytes = new byte[] { 0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A }; // PNG magic bytes + padding
+        // Task 23: uploads are re-encoded, so the logo must be a real, decodable PNG.
+        var bytes = TestImages.Encode(SkiaSharp.SKEncodedImageFormat.Png, 16, 16);
         var fileId = await UploadPendingFileAsync(bytes, "image/png", "logo.png", "company_logo");
 
         var response = await _fixture.SendAsync(HttpMethod.Put, _fixture.TenantA.Host,
@@ -1090,7 +1091,7 @@ public sealed class LegalEntitiesIntegrationTests : IClassFixture<LegalEntitiesI
     {
         var company = await _fixture.CreateCompanyAsync(_fixture.TenantA, "Logo RoundTrip Co", "LOGOU5", "REG-LOGOU5");
 
-        var bytes = new byte[] { 0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A };
+        var bytes = TestImages.Encode(SkiaSharp.SKEncodedImageFormat.Png, 16, 16);
         var fileId = await UploadPendingFileAsync(bytes, "image/png", "logo.png", "company_logo");
         var linkResponse = await _fixture.SendAsync(HttpMethod.Put, _fixture.TenantA.Host,
             $"/api/v1/org/legal-entities/{company.Id}/logo", new { fileId },
@@ -1102,8 +1103,12 @@ public sealed class LegalEntitiesIntegrationTests : IClassFixture<LegalEntitiesI
 
         getResponse.StatusCode.Should().Be(HttpStatusCode.OK);
         getResponse.Content.Headers.ContentType!.MediaType.Should().Be("image/png");
+        // Task 23: the stored logo is a re-encoded copy - same format and size, not the same bytes.
         var returnedBytes = await getResponse.Content.ReadAsByteArrayAsync();
-        returnedBytes.Should().BeEquivalentTo(bytes);
+        using var codec = SkiaSharp.SKCodec.Create(SkiaSharp.SKData.CreateCopy(returnedBytes));
+        codec.Should().NotBeNull();
+        codec!.EncodedFormat.Should().Be(SkiaSharp.SKEncodedImageFormat.Png);
+        codec.Info.Width.Should().Be(16);
     }
 
     [Fact]
@@ -1112,7 +1117,7 @@ public sealed class LegalEntitiesIntegrationTests : IClassFixture<LegalEntitiesI
         var company = await _fixture.CreateCompanyAsync(_fixture.TenantA, "Logo RemoveThenGet Co", "LOGOU6", "REG-LOGOU6");
 
         var fileId = await UploadPendingFileAsync(
-            new byte[] { 0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A },
+            TestImages.Encode(SkiaSharp.SKEncodedImageFormat.Png, 16, 16),
             "image/png", "logo.png", "company_logo");
         await _fixture.SendAsync(HttpMethod.Put, _fixture.TenantA.Host,
             $"/api/v1/org/legal-entities/{company.Id}/logo", new { fileId },

@@ -1,3 +1,4 @@
+using ONEVO.Application.Common.Authorization;
 using ONEVO.Application.Common.Models;
 using ONEVO.Application.Features.Auth.Permission.ServiceInterfaces;
 using ONEVO.Application.Features.WorkManagement.Common.Services;
@@ -51,7 +52,7 @@ public sealed class TaskAccessResolver : ITaskAccessResolver
             return Result<TaskAccessContext>.NotFound("Task not found.");
 
         var permissions = await _permissionResolver.ResolveAsync(userId, tenantId, null, ct);
-        var hasReadPermission = permissions.Contains("*");
+        var hasReadPermission = permissions.Contains(PermissionCatalog.SuperAdmin);
 
         if (task.VisibilityScope == WorkTaskVisibilityScopes.Assignees)
         {
@@ -87,7 +88,7 @@ public sealed class TaskAccessResolver : ITaskAccessResolver
             return Array.Empty<WorkTask>();
 
         var permissions = await _permissionResolver.ResolveAsync(userId, tenantId, null, ct);
-        var hasReadPermission = permissions.Contains("*");
+        var hasReadPermission = permissions.Contains(PermissionCatalog.SuperAdmin);
 
         // One project lookup and one membership lookup per project, not per task.
         var projects = new Dictionary<Guid, Project>();
@@ -149,7 +150,7 @@ public sealed class TaskAccessResolver : ITaskAccessResolver
             return tasks;
 
         var permissions = await _permissionResolver.ResolveAsync(userId, tenantId, null, ct);
-        if (permissions.Contains("*"))
+        if (permissions.Contains(PermissionCatalog.SuperAdmin))
             return tasks;
 
         var assignments = await _tasks.GetAssignedEmployeeIdsByTaskIdsAsync(

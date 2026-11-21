@@ -18,6 +18,6 @@ public class EmployeeDependentConfiguration : IEntityTypeConfiguration<EmployeeD
         builder.Property(d => d.EmployeeId).HasColumnName("employee_id").IsRequired();
         builder.HasIndex(d => new { d.TenantId, d.EmployeeId });
         builder.HasOne<ONEVO.Domain.Features.CoreHr.Entities.Employee>()
-            .WithMany().HasForeignKey(d => d.EmployeeId).OnDelete(DeleteBehavior.Cascade);
+            .WithMany().HasForeignKey(d => d.EmployeeId).OnDelete(DeleteBehavior.NoAction);
     }
 }

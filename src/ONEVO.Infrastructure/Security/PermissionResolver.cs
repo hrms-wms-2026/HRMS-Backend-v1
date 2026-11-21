@@ -1,3 +1,4 @@
+using ONEVO.Application.Common.Authorization;
 using ONEVO.Application.Common.ServiceInterfaces;
 using ONEVO.Application.Features.Auth.Permission;
 using ONEVO.Application.Features.Auth.Permission.RepositoryInterfaces;
@@ -28,8 +29,8 @@ public class PermissionResolver : IPermissionResolver
     {
         var now = _clock.UtcNow;
 
-        if (await _permissions.UserHasPermissionCodeAsync(userId, "*", now, ct))
-            return ["*"];
+        if (await _permissions.UserHasPermissionCodeAsync(userId, PermissionCatalog.SuperAdmin, now, ct))
+            return [PermissionCatalog.SuperAdmin];
 
         var activeModuleKeys = await _entitlements.GetActiveModuleKeysForTenantAsync(tenantId, ct);
         var activeModules = activeModuleKeys.ToHashSet(StringComparer.Ordinal);
@@ -64,7 +65,7 @@ public class PermissionResolver : IPermissionResolver
         // Step 2: role permissions filtered by active modules
         foreach (var row in roleRows)
         {
-            if (row.Code == "*") continue;
+            if (row.Code == PermissionCatalog.SuperAdmin) continue;
             if (activeModules.Contains(row.Module))
                 effective.Add(row.Code);
         }
@@ -90,9 +91,9 @@ public class PermissionResolver : IPermissionResolver
 
         // Step 5: derive inbox:read and notifications:read
         if (effective.Overlaps(DerivedPermissions.InboxTriggers))
-            effective.Add("inbox:read");
+            effective.Add(PermissionCatalog.Inbox.Read);
         if (effective.Overlaps(DerivedPermissions.NotificationTriggers))
-            effective.Add("notifications:read");
+            effective.Add(PermissionCatalog.Notifications.Read);
 
         return [.. effective];
     }

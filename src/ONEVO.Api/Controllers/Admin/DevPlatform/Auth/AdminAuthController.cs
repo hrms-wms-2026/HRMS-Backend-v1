@@ -46,6 +46,7 @@ public sealed class AdminAuthController : ControllerBase
     /// only whether Google SSO is currently usable and its public clientId.
     /// </summary>
     [HttpGet("google-config")]
+    // Public by design: returns only the public Google client id; per-IP /admin/v1 rate limit.
     [AllowAnonymous]
     public async Task<IActionResult> GoogleConfig(CancellationToken ct)
     {
@@ -55,6 +56,7 @@ public sealed class AdminAuthController : ControllerBase
 
     /// <summary>Exchange a Google ID token for a cookie-backed platform-admin session.</summary>
     [HttpPost("google-callback")]
+    // Public by design: Google ID token is verified server-side; AuthRateLimiting per IP and per token.
     [AllowAnonymous]
     public async Task<IActionResult> GoogleCallback([FromBody] AdminGoogleCallbackRequest request, CancellationToken ct)
     {
@@ -84,6 +86,7 @@ public sealed class AdminAuthController : ControllerBase
     /// Database-backed email + password login for Developer Platform users.
     /// </summary>
     [HttpPost("login")]
+    // Public by design: password + lockout, generic 401; AuthRateLimiting per IP and per email.
     [AllowAnonymous]
     public async Task<IActionResult> Login(
         [FromBody] AdminLoginRequest request, CancellationToken ct)
@@ -113,6 +116,7 @@ public sealed class AdminAuthController : ControllerBase
     /// <summary>Requests a password reset link for a Platform Admin account. Always returns a
     /// generic success response - enumeration-safe.</summary>
     [HttpPost("forgot-password")]
+    // Public by design: always the same generic 200; AuthRateLimiting per IP and per email.
     [AllowAnonymous]
     public async Task<IActionResult> ForgotPassword(
         [FromBody] AdminForgotPasswordRequest request, CancellationToken ct)
@@ -127,6 +131,7 @@ public sealed class AdminAuthController : ControllerBase
     /// <summary>Completes a Platform Admin password reset. Never returns a message that
     /// distinguishes an invalid token from an expired or already-used one.</summary>
     [HttpPost("reset-password")]
+    // Public by design: single-use hashed reset token; AuthRateLimiting per IP and per token.
     [AllowAnonymous]
     public async Task<IActionResult> ResetPassword(
         [FromBody] AdminResetPasswordRequest request, CancellationToken ct)
@@ -144,6 +149,7 @@ public sealed class AdminAuthController : ControllerBase
     /// revoked / expired) - those are safe to show, they don't leak account
     /// existence the way a password-reset error would.</summary>
     [HttpPost("accept-invite")]
+    // Public by design: single-use hashed invite token; AuthRateLimiting per IP and per token.
     [AllowAnonymous]
     public async Task<IActionResult> AcceptInvite(
         [FromBody] AcceptPlatformManagerInviteRequest request, CancellationToken ct)
@@ -194,6 +200,7 @@ public sealed class AdminAuthController : ControllerBase
 
     /// <summary>Login step 2 - completes an MFA-gated admin login using the admin_mfa challenge cookie.</summary>
     [HttpPost("mfa/verify")]
+    // Public by design: needs the admin_mfa challenge cookie + TOTP; AuthRateLimiting per IP and per challenge.
     [AllowAnonymous]
     public async Task<IActionResult> VerifyMfa([FromBody] VerifyAdminMfaRequest request, CancellationToken ct)
     {

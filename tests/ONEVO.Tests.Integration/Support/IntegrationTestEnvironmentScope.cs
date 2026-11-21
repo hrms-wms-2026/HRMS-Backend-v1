@@ -79,8 +79,8 @@ public sealed class IntegrationTestEnvironmentScope : IDisposable, IAsyncDisposa
         // serve real HTTPS traffic - WebApplicationFactory hosts run in-process against
         // TestServer - but Program.cs's DevCertificateBootstrapper still runs eagerly whenever a
         // test overrides the ASP.NET Core environment name back to "Development" (e.g.
-        // ApiBootTests.SwaggerEndpoint_ReturnsOk_InDevelopment, to exercise the Development-only
-        // Swagger gate). Without this, that bootstrapper tries to shell out to mkcert to generate
+        // ApiBootTests.SwaggerAndOpenApiPaths_ServeNothing, which checks Development too). Without
+        // this, that bootstrapper tries to shell out to mkcert to generate
         // the developer's local cert, which isn't installed in CI. An empty path makes it a no-op
         // (see DevCertificateBootstrapper.EnsureCertificateExists's blank-path early return).
         Set("Kestrel__Certificates__Default__Path", string.Empty);

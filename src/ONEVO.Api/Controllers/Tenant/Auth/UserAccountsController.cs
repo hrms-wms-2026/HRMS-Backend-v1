@@ -2,6 +2,7 @@ using MediatR;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using ONEVO.Api.Filters;
+using ONEVO.Application.Common.Authorization;
 using ONEVO.Application.Features.Auth.UserAccounts.Commands.ReactivateUserAccount;
 using ONEVO.Application.Features.Auth.UserAccounts.Commands.RevokeUserAccountSession;
 using ONEVO.Application.Features.Auth.UserAccounts.Commands.SignOutUserAccount;
@@ -27,7 +28,7 @@ public class UserAccountsController : ControllerBase
     public UserAccountsController(IMediator mediator) => _mediator = mediator;
 
     [HttpGet]
-    [RequirePermission("users:read")]
+    [RequirePermission(PermissionCatalog.Users.Read)]
     public async Task<IActionResult> List(CancellationToken ct)
     {
         var result = await _mediator.Send(new ListUserAccountsQuery(), ct);
@@ -37,7 +38,7 @@ public class UserAccountsController : ControllerBase
     }
 
     [HttpPost("{id:guid}/suspend")]
-    [RequirePermission("users:manage")]
+    [RequirePermission(PermissionCatalog.Users.Manage)]
     public async Task<IActionResult> Suspend(Guid id, CancellationToken ct)
     {
         var result = await _mediator.Send(new SuspendUserAccountCommand(id), ct);
@@ -47,7 +48,7 @@ public class UserAccountsController : ControllerBase
     }
 
     [HttpPost("{id:guid}/reactivate")]
-    [RequirePermission("users:manage")]
+    [RequirePermission(PermissionCatalog.Users.Manage)]
     public async Task<IActionResult> Reactivate(Guid id, CancellationToken ct)
     {
         var result = await _mediator.Send(new ReactivateUserAccountCommand(id), ct);
@@ -57,7 +58,7 @@ public class UserAccountsController : ControllerBase
     }
 
     [HttpPost("{id:guid}/sign-out")]
-    [RequirePermission("users:manage")]
+    [RequirePermission(PermissionCatalog.Users.Manage)]
     public async Task<IActionResult> SignOutEverywhere(Guid id, CancellationToken ct)
     {
         var result = await _mediator.Send(new SignOutUserAccountCommand(id), ct);
@@ -68,7 +69,7 @@ public class UserAccountsController : ControllerBase
 
     /// <summary>Every browser session and tray app this user is signed in on.</summary>
     [HttpGet("{id:guid}/sessions")]
-    [RequirePermission("users:read")]
+    [RequirePermission(PermissionCatalog.Users.Read)]
     public async Task<IActionResult> Sessions(Guid id, CancellationToken ct)
     {
         var result = await _mediator.Send(new GetUserAccountSessionsQuery(id), ct);
@@ -79,7 +80,7 @@ public class UserAccountsController : ControllerBase
 
     /// <summary>End one web session; the user's other sign-ins keep working.</summary>
     [HttpPost("{id:guid}/sessions/{sessionId:guid}/revoke")]
-    [RequirePermission("users:manage")]
+    [RequirePermission(PermissionCatalog.Users.Manage)]
     public async Task<IActionResult> RevokeSession(Guid id, Guid sessionId, CancellationToken ct)
     {
         var result = await _mediator.Send(new RevokeUserAccountSessionCommand(id, sessionId, null), ct);
@@ -90,7 +91,7 @@ public class UserAccountsController : ControllerBase
 
     /// <summary>Disconnect one tray app; the user's other sign-ins keep working.</summary>
     [HttpPost("{id:guid}/devices/{deviceId:guid}/revoke")]
-    [RequirePermission("users:manage")]
+    [RequirePermission(PermissionCatalog.Users.Manage)]
     public async Task<IActionResult> RevokeDevice(Guid id, Guid deviceId, CancellationToken ct)
     {
         var result = await _mediator.Send(new RevokeUserAccountSessionCommand(id, null, deviceId), ct);

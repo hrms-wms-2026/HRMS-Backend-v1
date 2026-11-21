@@ -73,6 +73,7 @@ public sealed class TrayReleasesController : ControllerBase
 
     /// <summary>Called by the tray release pipeline. Never activates a build.</summary>
     [HttpPost("admin/v1/tray-releases/ingest")]
+    // Public by design: X-Release-Token checked in constant time, 404 when unset, never activates; per-IP /admin/v1 rate limit.
     [AllowAnonymous]
     public async Task<IActionResult> Ingest([FromBody] CreateTrayReleaseRequest request, CancellationToken ct)
     {

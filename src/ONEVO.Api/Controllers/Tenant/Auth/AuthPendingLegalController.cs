@@ -24,6 +24,7 @@ public class AuthPendingLegalController : ControllerBase
 
     /// <summary>Return pending required documents while a legal acceptance challenge is active.</summary>
     [HttpPost("/api/v1/legal/acceptances/complete-login")]
+    // Public by design: needs the crownus_legal_pending challenge cookie + matching CSRF token; AuthRateLimiting per IP.
     [AllowAnonymous]
     public async Task<IActionResult> AcceptPendingLegalDocuments(
         [FromBody] AcceptPendingLegalDocumentsRequest request,

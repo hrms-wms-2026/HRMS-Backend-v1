@@ -1,3 +1,4 @@
+using ONEVO.Application.Common.Authorization;
 using ONEVO.Application.Common.Models;
 using ONEVO.Application.Common.ServiceInterfaces;
 using ONEVO.Application.Features.CoreHr.Employee.RepositoryInterfaces;
@@ -26,7 +27,7 @@ public sealed class AttendanceTodayStateService(
     ILeaveRequestReadRepository? leaveRequests = null)
     : IAttendanceTodayStateService
 {
-    private const string AttendanceReadPermission = "attendance:read";
+    private const string AttendanceReadPermission = PermissionCatalog.Attendance.Read;
     public const string ExpectedWorkAreaSourceAttendanceSnapshot = "attendance_record_snapshot";
 
     public Task<Result<AttendanceTodayContext>> ResolveContextAsync(CancellationToken ct = default)

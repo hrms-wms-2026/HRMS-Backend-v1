@@ -1,6 +1,7 @@
 using MediatR;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using ONEVO.Application.Common.Authorization;
 using ONEVO.Application.Common.ServiceInterfaces;
 using ONEVO.Application.Features.Monitoring.Settings.ServiceInterfaces;
 
@@ -37,7 +38,7 @@ public class MonitoringSettingsController : ControllerBase
     }
 
     [HttpGet]
-    [RequirePermission("monitoring:read")]
+    [RequirePermission(PermissionCatalog.Monitoring.Read)]
     public async Task<IActionResult> Get(CancellationToken ct)
     {
         var result = await _mediator.Send(new GetMonitoringFeatureTogglesQuery(), ct);
@@ -47,7 +48,7 @@ public class MonitoringSettingsController : ControllerBase
     }
 
     [HttpGet("~/api/v1/attendance/monitoring/policy")]
-    [RequirePermission("monitoring:read")]
+    [RequirePermission(PermissionCatalog.Monitoring.Read)]
     public async Task<IActionResult> GetAttendanceMonitoringPolicy(CancellationToken ct)
     {
         if (!_currentUser.IsAuthenticated || _currentUser.TenantId == Guid.Empty)
@@ -57,12 +58,12 @@ public class MonitoringSettingsController : ControllerBase
     }
 
     [HttpPut("~/api/v1/attendance/monitoring/policy/company")]
-    [RequirePermission("monitoring:configure")]
+    [RequirePermission(PermissionCatalog.Monitoring.Configure)]
     public Task<IActionResult> UpdateAttendanceMonitoringCompany(
         [FromBody] UpdateMonitoringFeatureTogglesRequest request, CancellationToken ct) => Update(request, ct);
 
     [HttpPut("~/api/v1/attendance/monitoring/policy/{scopeType}/{targetId:guid}")]
-    [RequirePermission("monitoring:configure")]
+    [RequirePermission(PermissionCatalog.Monitoring.Configure)]
     public async Task<IActionResult> UpsertAttendanceMonitoringOverride(
         string scopeType,
         Guid targetId,
@@ -98,7 +99,7 @@ public class MonitoringSettingsController : ControllerBase
     }
 
     [HttpDelete("~/api/v1/attendance/monitoring/policy/{scopeType}/{targetId:guid}")]
-    [RequirePermission("monitoring:configure")]
+    [RequirePermission(PermissionCatalog.Monitoring.Configure)]
     public async Task<IActionResult> DeleteAttendanceMonitoringOverride(
         string scopeType, Guid targetId, CancellationToken ct)
     {
@@ -110,7 +111,7 @@ public class MonitoringSettingsController : ControllerBase
     }
 
     [HttpPut]
-    [RequirePermission("monitoring:configure")]
+    [RequirePermission(PermissionCatalog.Monitoring.Configure)]
     public async Task<IActionResult> Update(
         [FromBody] UpdateMonitoringFeatureTogglesRequest request, CancellationToken ct)
     {

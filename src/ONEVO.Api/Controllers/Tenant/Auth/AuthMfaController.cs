@@ -38,6 +38,7 @@ public class AuthMfaController : ControllerBase
 
     /// <summary>Verify TOTP code for a login MFA challenge.</summary>
     [HttpPost("mfa/verify")]
+    // Public by design: needs the crownus_mfa challenge cookie + TOTP; AuthRateLimiting per IP and per challenge.
     [AllowAnonymous]
     public async Task<IActionResult> VerifyMfa([FromBody] VerifyMfaRequest request, CancellationToken ct)
     {
