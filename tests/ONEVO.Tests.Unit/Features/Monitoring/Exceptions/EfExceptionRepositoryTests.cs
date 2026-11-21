@@ -155,6 +155,85 @@ public sealed class EfExceptionRepositoryTests
         listed.Select(e => e.Status).Should().BeEquivalentTo([ExceptionStatus.Open, ExceptionStatus.Acknowledged]);
     }
 
+    [Fact]
+    public async Task CountActiveInboxAsync_Counts_the_visibility_union_once_and_excludes_resolved_calendar_and_other_tenants()
+    {
+        await using var db = BuildInMemoryDb();
+        var tenantId = Guid.NewGuid();
+        var caller = Guid.NewGuid();
+        var routedEmployee = Guid.NewGuid();
+        var heldEmployee = Guid.NewGuid();
+        var addedEmployee = Guid.NewGuid();
+        var legacyEmployee = Guid.NewGuid();
+        var otherTenant = Guid.NewGuid();
+
+        DomainException Case(Guid tenant, Guid employee, ExceptionStatus status = ExceptionStatus.Open,
+            ExceptionType type = ExceptionType.SustainedLowActivity) => new()
+        {
+            Id = Guid.NewGuid(), TenantId = tenant, EmployeeId = employee, Type = type, Status = status,
+            Title = "t", Description = "d", DetectedAt = DayStart
+        };
+
+        var own = Case(tenantId, caller);
+        var routed = Case(tenantId, routedEmployee);
+        var held = Case(tenantId, heldEmployee);
+        var added = Case(tenantId, addedEmployee);
+        var legacyHr = Case(tenantId, legacyEmployee, ExceptionStatus.Escalated);
+        var journaledEscalation = Case(tenantId, legacyEmployee, ExceptionStatus.Escalated);
+        db.Exceptions.AddRange(
+            own, routed, held, added, legacyHr, journaledEscalation,
+            Case(tenantId, caller, ExceptionStatus.Resolved),
+            Case(tenantId, caller, type: ExceptionType.MeetingNoShow),
+            Case(otherTenant, caller));
+        await db.SaveChangesAsync();
+        db.ChangeTracker.Clear();
+
+        var repository = new EfExceptionRepository(db);
+        var count = await repository.CountActiveInboxAsync(tenantId, new ExceptionInboxCountCriteria(
+            CallerEmployeeId: caller,
+            RoutedEmployeeIds: [routedEmployee],
+            HrFallbackEmployeeIds: [legacyEmployee],
+            HeldCaseIds: [held.Id],
+            AddedCaseIds: [added.Id, routed.Id],
+            IncludeLegacyHrEscalations: true,
+            JournaledEscalatedCaseIds: [journaledEscalation.Id],
+            Calendar: false), CancellationToken.None);
+
+        count.Should().Be(5, "own, routed, held, chat-added and pre-journal HR cases are visible, with overlaps counted once");
+        (await repository.ListActiveInboxEmployeeIdsAsync(tenantId, calendar: false, CancellationToken.None))
+            .Should().BeEquivalentTo([caller, routedEmployee, heldEmployee, addedEmployee, legacyEmployee]);
+    }
+
+    [Fact]
+    public async Task CountActiveInboxAsync_HR_fallback_counts_open_cases_of_no_approver_employees_except_journaled_escalations()
+    {
+        await using var db = BuildInMemoryDb();
+        var tenantId = Guid.NewGuid();
+        var noApprover = Guid.NewGuid();
+        DomainException Case(ExceptionStatus status) => new()
+        {
+            Id = Guid.NewGuid(), TenantId = tenantId, EmployeeId = noApprover, Type = ExceptionType.SustainedLowActivity, Status = status,
+            Title = "t", Description = "d", DetectedAt = DayStart
+        };
+        var open = Case(ExceptionStatus.Open);
+        var acknowledged = Case(ExceptionStatus.Acknowledged);
+        var escalatedElsewhere = Case(ExceptionStatus.Escalated);
+        db.Exceptions.AddRange(open, acknowledged, escalatedElsewhere);
+        await db.SaveChangesAsync();
+
+        var count = await new EfExceptionRepository(db).CountActiveInboxAsync(tenantId, new ExceptionInboxCountCriteria(
+            CallerEmployeeId: Guid.NewGuid(),
+            RoutedEmployeeIds: [],
+            HrFallbackEmployeeIds: [noApprover],
+            HeldCaseIds: [],
+            AddedCaseIds: [],
+            IncludeLegacyHrEscalations: false,
+            JournaledEscalatedCaseIds: [escalatedElsewhere.Id],
+            Calendar: false), CancellationToken.None);
+
+        count.Should().Be(2, "HR keeps the open and acknowledged cases; the journaled escalation went to someone else");
+    }
+
     private static ApplicationDbContext BuildInMemoryDb()
     {
         var options = new DbContextOptionsBuilder<ApplicationDbContext>()

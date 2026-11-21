@@ -19,6 +19,9 @@ public interface IMilestoneMembershipCoordinator
     /// <summary>Null if no active Employee exists with this Id in this tenant, or their EmploymentStatusId isn't Active.</summary>
     Task<Employee?> GetActiveAssigneeAsync(Guid tenantId, Guid employeeId, CancellationToken ct = default);
 
+    /// <summary>The ids among employeeIds that GetActiveAssigneeAsync would return, read in one query.</summary>
+    Task<IReadOnlySet<Guid>> GetActiveAssigneeIdsAsync(Guid tenantId, IReadOnlyCollection<Guid> employeeIds, CancellationToken ct = default);
+
     /// <summary>Creates a new milestone-scoped membership, or reactivates an existing inactive one. No-op if already active.</summary>
     Task UpsertMembershipAsync(Guid tenantId, Guid projectId, Guid objectiveId, Guid employeeId, CancellationToken ct = default);
 

@@ -432,6 +432,24 @@ public class EfConversationRepository : IConversationRepository
         }
     }
 
+    public Task<int> CountUnreadInListedChatsAsync(Guid tenantId, Guid employeeId, string groupEventPrefix, CancellationToken ct = default)
+        => (from m in _db.ConversationMessages.AsNoTracking()
+            join p in _db.ConversationParticipants.AsNoTracking() on m.ConversationId equals p.ConversationId
+            join c in _db.Conversations.AsNoTracking() on m.ConversationId equals c.Id
+            where m.TenantId == tenantId && p.TenantId == tenantId && p.EmployeeId == employeeId
+                && p.RemovedAt == null && p.LeftAt == null
+                && m.Kind != ConversationMessageKinds.Evidence
+                && (m.AuthorEmployeeId == null || m.AuthorEmployeeId != employeeId)
+                && (p.LastReadAt == null || m.CreatedAt > p.LastReadAt)
+                && !_db.ConversationMessageHides.Any(h => h.MessageId == m.Id && h.EmployeeId == employeeId)
+                && !_db.ConversationMutes.Any(x => x.TenantId == tenantId && x.EmployeeId == employeeId && x.ConversationId == c.Id)
+                && (c.SubjectSource == ConversationSources.Direct || c.SubjectSource == ConversationSources.Group
+                    || _db.ConversationMessages.Any(e => e.TenantId == tenantId && e.ConversationId == c.Id
+                        && e.Kind == ConversationMessageKinds.System && e.SystemEventJson != null
+                        && e.SystemEventJson.StartsWith(groupEventPrefix)))
+            select m.Id)
+            .CountAsync(ct);
+
     public async Task<IReadOnlySet<Guid>> ListMutedConversationIdsAsync(Guid tenantId, Guid employeeId, CancellationToken ct = default)
         => (await _db.ConversationMutes.AsNoTracking()
                 .Where(m => m.TenantId == tenantId && m.EmployeeId == employeeId)

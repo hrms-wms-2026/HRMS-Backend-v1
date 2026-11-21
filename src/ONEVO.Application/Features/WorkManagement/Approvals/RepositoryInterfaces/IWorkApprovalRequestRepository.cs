@@ -13,6 +13,9 @@ public interface IWorkApprovalRequestRepository
     /// <summary>Newest first. requestedByEmployeeId and status are optional filters.</summary>
     Task<IReadOnlyList<WorkApprovalRequest>> ListByProjectAsync(
         Guid tenantId, Guid projectId, Guid? requestedByEmployeeId, string? status, CancellationToken ct = default);
+    /// <summary>Pending requests of several projects in one read, read-only and unordered (inbox badge counts).</summary>
+    Task<IReadOnlyList<WorkApprovalRequest>> ListPendingForProjectsAsync(
+        Guid tenantId, IReadOnlyCollection<Guid> projectIds, CancellationToken ct = default);
     /// <summary>Tracked pending requests of one action type in a project - used by conflict sweeps.</summary>
     Task<IReadOnlyList<WorkApprovalRequest>> ListTrackedPendingByActionAsync(
         Guid tenantId, Guid projectId, string actionType, CancellationToken ct = default);

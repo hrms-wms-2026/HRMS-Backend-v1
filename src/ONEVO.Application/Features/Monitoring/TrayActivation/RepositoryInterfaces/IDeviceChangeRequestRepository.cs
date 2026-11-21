@@ -13,6 +13,8 @@ public interface IDeviceChangeRequestRepository
 
     Task<IReadOnlyList<Guid>> ListPendingEmployeeIdsAsync(
         Guid tenantId, Guid legalEntityId, CancellationToken ct = default);
+    Task<int> CountPendingAsync(
+        Guid tenantId, Guid legalEntityId, IReadOnlyCollection<Guid> employeeIds, CancellationToken ct = default);
 
     Task<(IReadOnlyList<DeviceChangeRequest> Items, int TotalCount)> ListApprovalInboxAsync(
         Guid tenantId, Guid legalEntityId, IReadOnlyCollection<Guid> employeeIds,

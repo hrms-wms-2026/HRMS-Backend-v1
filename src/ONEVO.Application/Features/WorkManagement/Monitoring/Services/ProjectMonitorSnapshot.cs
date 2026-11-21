@@ -46,6 +46,24 @@ public sealed record ProjectMonitorSnapshot(
     IReadOnlyList<MonitorModule> Modules, IReadOnlyList<MonitorSprint> Sprints, IReadOnlyList<MonitorTask> Tasks,
     ConversionRateSet? Rates = null, decimal MaxTaskRate = TaskRateLimit.Default);
 
+/// <summary>Only what MonitorAlertRecipients.CreatorPosition reads about a project's Modules, sprints and tasks,
+/// with the snapshot's own filters. Lets the Inbox find alert recipients without loading the whole snapshot.</summary>
+public sealed record MonitorTargets(
+    IEnumerable<MonitorTargetModule> Modules, IEnumerable<MonitorTargetSprint> Sprints, IEnumerable<MonitorTargetTask> Tasks)
+{
+    /// <summary>A lazy view over the snapshot, so a lookup costs what it did on the snapshot itself.</summary>
+    public static MonitorTargets From(ProjectMonitorSnapshot snapshot) => new(
+        snapshot.Modules.Select(m => new MonitorTargetModule(m.Id, m.ParentId, m.CreatorPositionModuleId)),
+        snapshot.Sprints.Select(s => new MonitorTargetSprint(s.Id, s.CreatorPositionModuleId)),
+        snapshot.Tasks.Select(t => new MonitorTargetTask(t.Id, t.ModuleId, t.CreatorPositionModuleId)));
+}
+
+public sealed record MonitorTargetModule(Guid Id, Guid? ParentId, Guid? CreatorPositionModuleId);
+
+public sealed record MonitorTargetSprint(Guid Id, Guid? CreatorPositionModuleId);
+
+public sealed record MonitorTargetTask(Guid Id, Guid ModuleId, Guid? CreatorPositionModuleId);
+
 /// <summary>One detected problem. (TargetId, RuleCode, SubjectEmployeeId) identifies it across runs.</summary>
 public sealed record MonitorFinding(
     string RuleCode, string TargetType, Guid TargetId, string TargetTitle, Guid? SubjectEmployeeId,
