@@ -15,6 +15,8 @@ using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using ONEVO.Api.RateLimiting;
 using ONEVO.Application.Common.ServiceInterfaces;
+using ONEVO.Domain.Features.SharedPlatform.RateLimiting;
+using ONEVO.Infrastructure.Services.SharedPlatform.RateLimiting;
 using Xunit;
 
 namespace ONEVO.Tests.Unit.Features.Api.RateLimiting;
@@ -277,7 +279,50 @@ public sealed class ApiRateLimitingTests
 
     // ── host ────────────────────────────────────────────────────────────────────
 
-    private static async Task<WebApplication> StartAsync(Dictionary<string, string?>? settings = null)
+    [Fact]
+    public async Task DatabaseOverride_AppliesToThatTenantRightAfterInvalidate_AndKeepsOtherTenantsCounters()
+    {
+        var loader = new DatabaseRateLimitSettingsProviderTests.FakeLoader();
+        await using var app = await StartAsync(new()
+        {
+            ["RateLimiting:SignedIn:TokenLimit"] = "5",
+            ["RateLimiting:SignedIn:TokensPerPeriod"] = "1",
+            ["RateLimiting:SignedIn:ReplenishmentPeriodSeconds"] = "60",
+        }, services =>
+        {
+            services.AddDatabaseRateLimitSettings();
+            services.AddSingleton<IRateLimitOverrideLoader>(loader);
+        });
+        var client = app.GetTestClient();
+        var tenantB = Guid.NewGuid();
+        var alice = Guid.NewGuid();
+        var bob = Guid.NewGuid();
+        app.Services.GetRequiredService<IRateLimitSettingsProvider>().Should().BeOfType<DatabaseRateLimitSettingsProvider>();
+
+        for (var i = 0; i < 3; i++)
+        {
+            (await SendAsync(client, "/api/v1/ping", OfficeIp, user: alice)).StatusCode.Should().Be(HttpStatusCode.OK);
+            (await SendAsync(client, "/api/v1/ping", OfficeIp, user: bob, tenant: tenantB)).StatusCode.Should().Be(HttpStatusCode.OK);
+        }
+
+        // Tenant A: burst 30, 120 a minute (the SignedIn floor). With the 60 s period that is 120 tokens a minute.
+        loader.Rows.Add(new RateLimitOverrideRow(
+            RateLimitSettingRules.TenantScope, null, TenantA, RateLimitSettingRules.SignedIn, 120, 30));
+        await app.Services.GetRequiredService<IRateLimitSettingsInvalidator>().InvalidateAsync();
+
+        for (var i = 0; i < 30; i++)
+            (await SendAsync(client, "/api/v1/ping", OfficeIp, user: alice)).StatusCode.Should().Be(HttpStatusCode.OK);
+        (await SendAsync(client, "/api/v1/ping", OfficeIp, user: alice)).StatusCode
+            .Should().Be(HttpStatusCode.TooManyRequests, "burst + 1 requests with the new tenant limit");
+
+        for (var i = 0; i < 2; i++)
+            (await SendAsync(client, "/api/v1/ping", OfficeIp, user: bob, tenant: tenantB)).StatusCode.Should().Be(HttpStatusCode.OK);
+        (await SendAsync(client, "/api/v1/ping", OfficeIp, user: bob, tenant: tenantB)).StatusCode
+            .Should().Be(HttpStatusCode.TooManyRequests, "the other tenant kept its counter: 3 + 2 of 5");
+    }
+
+    private static async Task<WebApplication> StartAsync(
+        Dictionary<string, string?>? settings = null, Action<IServiceCollection>? services = null)
     {
         var builder = WebApplication.CreateBuilder();
         builder.WebHost.UseTestServer();
@@ -289,6 +334,7 @@ public sealed class ApiRateLimitingTests
             .AddScheme<AuthenticationSchemeOptions, HeaderAuthHandler>(RateLimitAuthenticationSchemes.Admin, _ => { })
             .AddScheme<AuthenticationSchemeOptions, HeaderAuthHandler>(RateLimitAuthenticationSchemes.TrayDevice, _ => { });
         builder.Services.AddAuthorization();
+        services?.Invoke(builder.Services);
         builder.Services.AddApiRateLimiting(builder.Configuration);
 
         var app = builder.Build();

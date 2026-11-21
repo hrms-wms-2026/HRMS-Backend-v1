@@ -84,9 +84,24 @@ keeps the version and the counters.
 
 The limits are read through `IRateLimitSettingsProvider`
 (`src/ONEVO.Application/Common/ServiceInterfaces`). The default implementation,
-`OptionsRateLimitSettingsProvider`, reads this section. A database-backed implementation managed
-from the platform admin app (global, per subscription plan, per tenant) is planned, and it will
-replace that registration without changes to the limiter.
+`OptionsRateLimitSettingsProvider`, reads this section. Since task 46 the registered provider is
+`DatabaseRateLimitSettingsProvider` (`src/ONEVO.Infrastructure/Services/SharedPlatform/RateLimiting`).
+It starts from this section and applies the override rows in `rate_limit_settings`:
+
+- Precedence: tenant row, then plan row, then global row, then this section. Plan and tenant rows
+  count only for `SignedIn`, `TrayDevice` and `TenantCeiling`.
+- `Enabled`, `ReplenishmentPeriodSeconds`, `WindowSeconds` and `SegmentsPerWindow` always come from
+  this section. A row gives "per minute" and "burst": `TokenLimit = burst`,
+  `TokensPerPeriod = perMinute x ReplenishmentPeriodSeconds / 60`, and
+  `PermitLimit = perMinute x WindowSeconds / 60`. Values are clamped to `RateLimitBounds` first.
+- Requests are answered from memory. The rows are loaded at startup (at most 15 s, then the API
+  starts on this section's limits), straight after an admin change on the same instance
+  (`IRateLimitSettingsInvalidator`), and within 30 s on other instances, which check
+  `COUNT`/`MAX(updated_at)` of the table and the tenants' plans.
+- The version is kept per tenant, so a change to one tenant resets only that tenant's counters.
+  If loading fails, the last good limits stay; with none yet, this section's limits apply.
+
+With no rows in `rate_limit_settings`, the limits are exactly this section's.
 
 ## Rejected requests
 
