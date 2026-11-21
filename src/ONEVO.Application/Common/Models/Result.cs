@@ -1,6 +1,14 @@
 namespace ONEVO.Application.Common.Models;
 
-public class Result<T>
+/// <summary>The outcome part of <see cref="Result"/> and <see cref="Result{T}"/>, readable without knowing T.</summary>
+public interface IResultStatus
+{
+    bool IsSuccess { get; }
+    int? StatusCode { get; }
+    string? ErrorCode { get; }
+}
+
+public class Result<T> : IResultStatus
 {
     public bool IsSuccess { get; }
     public T? Value { get; }
@@ -35,7 +43,7 @@ public class Result<T>
         => new(false, default, error, 422, null);
 }
 
-public class Result
+public class Result : IResultStatus
 {
     public bool IsSuccess { get; }
     public string? Error { get; }

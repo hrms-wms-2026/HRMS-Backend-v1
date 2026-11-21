@@ -6,6 +6,7 @@ using ONEVO.Application.Features.DevPlatform.SystemConfig.TrayReleases.Helpers;
 using ONEVO.Application.Features.DevPlatform.SystemConfig.TrayReleases.Mappers;
 using ONEVO.Application.Features.DevPlatform.SystemConfig.TrayReleases.RepositoryInterfaces;
 using ONEVO.Domain.Features.DevPlatform.SystemConfig.TrayReleases.Entities;
+using ONEVO.Application.Common.Auditing;
 
 namespace ONEVO.Application.Features.DevPlatform.SystemConfig.TrayReleases.Commands.CreateTrayRelease;
 
@@ -13,7 +14,11 @@ namespace ONEVO.Application.Features.DevPlatform.SystemConfig.TrayReleases.Comma
 public sealed record CreateTrayReleaseCommand(
     CreateTrayReleaseRequest Request,
     string Source,
-    Guid? ActorPlatformUserId) : IRequest<Result<TrayReleaseDto>>;
+    Guid? ActorPlatformUserId) : IRequest<Result<TrayReleaseDto>>, IAuditedCommand<Result<TrayReleaseDto>>
+{
+    public AuditEntry DescribeAudit(Result<TrayReleaseDto>? response)
+        => AuditEntry.For("tray_release.created", "tray_release", response?.Value?.Id, null, new { Source, Version = Request?.Version, Channel = Request?.Channel, DownloadUrl = Request?.DownloadUrl, Sha256 = Request?.Sha256, FileSizeBytes = Request?.FileSizeBytes, MinSupportedVersion = Request?.MinSupportedVersion, IsActive = Request?.IsActive });
+}
 
 public sealed class CreateTrayReleaseCommandHandler
     : IRequestHandler<CreateTrayReleaseCommand, Result<TrayReleaseDto>>

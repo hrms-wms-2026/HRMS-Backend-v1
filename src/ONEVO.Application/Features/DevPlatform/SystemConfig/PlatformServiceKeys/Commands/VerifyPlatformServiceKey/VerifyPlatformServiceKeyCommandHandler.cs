@@ -4,6 +4,7 @@ using ONEVO.Application.Common.ServiceInterfaces;
 using ONEVO.Application.Features.DevPlatform.SystemConfig.PlatformServiceKeys.DTOs.Responses;
 using ONEVO.Application.Features.DevPlatform.SystemConfig.PlatformServiceKeys.RepositoryInterfaces;
 using ONEVO.Application.Features.DevPlatform.SystemConfig.PlatformServiceKeys.ServiceInterfaces;
+using ONEVO.Application.Common.Auditing;
 
 namespace ONEVO.Application.Features.DevPlatform.SystemConfig.PlatformServiceKeys.Commands.VerifyPlatformServiceKey;
 
@@ -15,7 +16,11 @@ namespace ONEVO.Application.Features.DevPlatform.SystemConfig.PlatformServiceKey
 /// </summary>
 public sealed record VerifyPlatformServiceKeyCommand(
     string ServiceKey,
-    Guid ActorPlatformUserId) : IRequest<Result<ServiceKeyVerificationResultDto>>;
+    Guid ActorPlatformUserId) : IRequest<Result<ServiceKeyVerificationResultDto>>, IAuditedCommand<Result<ServiceKeyVerificationResultDto>>
+{
+    public AuditEntry DescribeAudit(Result<ServiceKeyVerificationResultDto>? response)
+        => new("service_key.verified", "service_key", ServiceKey, null, new { Success = response?.Value?.Success });
+}
 
 public sealed class VerifyPlatformServiceKeyCommandHandler
     : IRequestHandler<VerifyPlatformServiceKeyCommand, Result<ServiceKeyVerificationResultDto>>

@@ -4,6 +4,7 @@ using ONEVO.Application.Common.ServiceInterfaces;
 using ONEVO.Application.Features.DevPlatform.SystemConfig.PaymentGateway.DTOs;
 using ONEVO.Application.Features.DevPlatform.SystemConfig.PaymentGateway.RepositoryInterfaces;
 using ONEVO.Domain.Features.SharedPlatform.PaymentGateway.Entities;
+using ONEVO.Application.Common.Auditing;
 
 namespace ONEVO.Application.Features.DevPlatform.SystemConfig.PaymentGateway.Commands.RotatePaymentGatewayCredential;
 
@@ -18,7 +19,11 @@ public sealed record RotatePaymentGatewayCredentialCommand(
     string NewSecretKey,
     /// <summary>Plain-text new webhook secret - encrypted immediately; nullable.</summary>
     string? NewWebhookSecret,
-    Guid ActorPlatformUserId) : IRequest<Result<Unit>>;
+    Guid ActorPlatformUserId) : IRequest<Result<Unit>>, IAuditedCommand<Result<Unit>>
+{
+    public AuditEntry DescribeAudit(Result<Unit>? response)
+        => AuditEntry.For("payment_gateway.credential_rotated", "payment_gateway", GatewayConfigId, null, new { SecretKeyRotated = true, WebhookSecretRotated = NewWebhookSecret != null });
+}
 
 public sealed class RotatePaymentGatewayCredentialCommandHandler
     : IRequestHandler<RotatePaymentGatewayCredentialCommand, Result<Unit>>

@@ -19,7 +19,7 @@ public class TenantStatusHistoryConfiguration : IEntityTypeConfiguration<TenantS
 
         // Inventory: tenant_id FK -> tenants (Restrict, tenant-owned dependent
         // convention, matches MfaChallenge/TenantStorageStats). changed_by_id
-        // is nullable FK -> platform_users (SetNull, matches PlatformAuthEvent).
+        // is nullable FK -> platform_users (SetNull).
         builder.HasOne<Tenant>().WithMany().HasForeignKey(h => h.TenantId).OnDelete(DeleteBehavior.Restrict);
         builder.HasOne<PlatformUser>().WithMany().HasForeignKey(h => h.ChangedById).OnDelete(DeleteBehavior.SetNull);
     }

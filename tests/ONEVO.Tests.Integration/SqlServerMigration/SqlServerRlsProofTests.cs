@@ -100,6 +100,21 @@ public sealed class SqlServerRlsCrossTenantTests(SqlServerFixture fixture) : IAs
         return (int)(await command.ExecuteScalarAsync())!;
     }
 
+    // Audit tables the runtime login may not update or delete at all (post-migration-grants.sql, PA-SEC-002).
+    private static readonly HashSet<string> AppendOnlyTables = ["audit_logs", "billing_audit_logs"];
+
+    private static async Task AssertDeniedOrNoRowsAsync(SqlConnection app, string table, string sql)
+    {
+        if (!AppendOnlyTables.Contains(table))
+        {
+            Assert.Equal(0, await ExecuteAsync(app, sql));
+            return;
+        }
+
+        var denied = await Assert.ThrowsAsync<SqlException>(() => ExecuteAsync(app, sql));
+        Assert.Equal(229, denied.Number);
+    }
+
     [Theory]
     [MemberData(nameof(Tables))]
     public async Task EveryTable_BlocksCrossTenantAccess(string table)
@@ -121,8 +136,8 @@ public sealed class SqlServerRlsCrossTenantTests(SqlServerFixture fixture) : IAs
 
         Assert.True(await CountAsync(app, table, $"tenant_id = '{a}'") >= 1, "Tenant A cannot see its own row.");
         Assert.Equal(0, await CountAsync(app, table, $"tenant_id = '{b}'"));
-        Assert.Equal(0, await ExecuteAsync(app, $"UPDATE [{table}] SET tenant_id = tenant_id WHERE tenant_id = '{b}'"));
-        Assert.Equal(0, await ExecuteAsync(app, $"DELETE FROM [{table}] WHERE tenant_id = '{b}'"));
+        await AssertDeniedOrNoRowsAsync(app, table, $"UPDATE [{table}] SET tenant_id = tenant_id WHERE tenant_id = '{b}'");
+        await AssertDeniedOrNoRowsAsync(app, table, $"DELETE FROM [{table}] WHERE tenant_id = '{b}'");
 
         // A third tenant: on tables keyed by tenant_id, B's own row would raise a duplicate key first.
         var c = Guid.NewGuid();
@@ -132,7 +147,7 @@ public sealed class SqlServerRlsCrossTenantTests(SqlServerFixture fixture) : IAs
 
         var move = await Assert.ThrowsAsync<SqlException>(() => ExecuteAsync(
             app, $"UPDATE [{table}] SET tenant_id = '{c}' WHERE tenant_id = '{a}'"));
-        Assert.Equal(33504, move.Number);
+        Assert.Equal(AppendOnlyTables.Contains(table) ? 229 : 33504, move.Number);
 
         await using var none = new SqlConnection(_database.App);
         await none.OpenAsync();

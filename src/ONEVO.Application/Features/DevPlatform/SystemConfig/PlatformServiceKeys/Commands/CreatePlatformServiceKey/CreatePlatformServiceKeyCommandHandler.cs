@@ -9,6 +9,7 @@ using ONEVO.Application.Features.DevPlatform.SystemConfig.PlatformServiceKeys.Re
 using ONEVO.Application.Features.DevPlatform.SystemConfig.PlatformProviders.RepositoryInterfaces;
 using ONEVO.Domain.Features.DevPlatform.SystemConfig.PlatformProviders.Entities;
 using ONEVO.Domain.Features.DevPlatform.SystemConfig.PlatformServiceKeys.Entities;
+using ONEVO.Application.Common.Auditing;
 
 namespace ONEVO.Application.Features.DevPlatform.SystemConfig.PlatformServiceKeys.Commands.CreatePlatformServiceKey;
 
@@ -22,7 +23,11 @@ public sealed record CreatePlatformServiceKeyCommand(
     string DisplayName,
     string? ApiKey,
     Guid ActorPlatformUserId,
-    IReadOnlyDictionary<string, string>? Fields = null) : IRequest<Result<PlatformServiceKeyDto>>;
+    IReadOnlyDictionary<string, string>? Fields = null) : IRequest<Result<PlatformServiceKeyDto>>, IAuditedCommand<Result<PlatformServiceKeyDto>>
+{
+    public AuditEntry DescribeAudit(Result<PlatformServiceKeyDto>? response)
+        => new("service_key.created", "service_key", ServiceKey, null, new { DisplayName, ApiKeySet = ApiKey != null, FieldNames = Fields?.Keys.OrderBy(k => k, StringComparer.Ordinal).ToArray() });
+}
 
 public sealed class CreatePlatformServiceKeyCommandHandler
     : IRequestHandler<CreatePlatformServiceKeyCommand, Result<PlatformServiceKeyDto>>
