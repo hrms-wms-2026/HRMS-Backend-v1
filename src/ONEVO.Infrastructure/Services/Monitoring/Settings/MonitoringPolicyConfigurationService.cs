@@ -29,20 +29,24 @@ public sealed class MonitoringPolicyConfigurationService : IMonitoringPolicyConf
     public async Task<MonitoringPolicyConfigurationResponse> GetAsync(
         Guid tenantId, Guid? legalEntityId, CancellationToken ct = default)
     {
-        var company = await _db.MonitoringFeatureToggles
+        var companyRows = await _db.MonitoringSettings
             .AsNoTracking()
             .Where(x => x.TenantId == tenantId
-                && (x.LegalEntityId == legalEntityId || x.LegalEntityId == null))
-            .OrderByDescending(x => x.LegalEntityId == legalEntityId)
-            .FirstOrDefaultAsync(ct);
-        var overrides = await _db.MonitoringPolicyOverrides
+                && ((x.ScopeType == MonitoringSettingScopes.LegalEntity && legalEntityId != null && x.ScopeId == legalEntityId)
+                    || (x.ScopeType == MonitoringSettingScopes.Tenant && x.ScopeId == tenantId)))
+            .ToListAsync(ct);
+        // Legal-entity default, then the retained tenant fallback.
+        var company = companyRows.FirstOrDefault(x => x.ScopeType == MonitoringSettingScopes.LegalEntity)
+            ?? companyRows.FirstOrDefault();
+        var policyScopes = MonitoringSettingScopes.Policy.ToList();
+        var overrides = await _db.MonitoringSettings
             .AsNoTracking()
-            .Where(x => x.TenantId == tenantId)
+            .Where(x => x.TenantId == tenantId && policyScopes.Contains(x.ScopeType))
             .OrderBy(x => x.ScopeType)
             .ThenBy(x => x.ScopeId)
             .ToListAsync(ct);
 
-        var visibleOverrides = new List<MonitoringPolicyOverride>(overrides.Count);
+        var visibleOverrides = new List<MonitoringSetting>(overrides.Count);
         foreach (var item in overrides)
         {
             if (item.ScopeType == "role" || await TargetExistsAsync(tenantId, item.ScopeType, item.ScopeId, legalEntityId, ct))
@@ -81,12 +85,12 @@ public sealed class MonitoringPolicyConfigurationService : IMonitoringPolicyConf
             return Result<MonitoringPolicyOverrideResponse>.NotFound("The selected monitoring override target was not found or is inactive.");
 
         var now = DateTimeOffset.UtcNow;
-        var entity = await _db.MonitoringPolicyOverrides
+        var entity = await _db.MonitoringSettings
             .FirstOrDefaultAsync(x => x.TenantId == tenantId && x.ScopeType == normalizedScope && x.ScopeId == scopeId, ct);
-        var oldValuesJson = entity is null ? null : MonitoringSettingsAudit.Snapshot(entity);
+        var oldValuesJson = entity is null ? null : MonitoringSettingsAudit.OverrideSnapshot(entity);
         if (entity is null)
         {
-            entity = new MonitoringPolicyOverride
+            entity = new MonitoringSetting
             {
                 Id = Guid.NewGuid(),
                 TenantId = tenantId,
@@ -95,7 +99,7 @@ public sealed class MonitoringPolicyConfigurationService : IMonitoringPolicyConf
                 SetById = actorId,
                 CreatedAt = now
             };
-            _db.MonitoringPolicyOverrides.Add(entity);
+            _db.MonitoringSettings.Add(entity);
         }
 
         entity.ActivityMonitoring = request.ActivityMonitoring;
@@ -116,8 +120,8 @@ public sealed class MonitoringPolicyConfigurationService : IMonitoringPolicyConf
         entity.UpdatedAt = now;
 
         _db.AuditLogs.Add(MonitoringSettingsAudit.Entry(
-            tenantId, actorId, MonitoringSettingsAudit.OverrideSaved, nameof(MonitoringPolicyOverride), entity.Id,
-            oldValuesJson, MonitoringSettingsAudit.Snapshot(entity), now));
+            tenantId, actorId, MonitoringSettingsAudit.OverrideSaved, MonitoringSettingsAudit.OverrideResource, entity.Id,
+            oldValuesJson, MonitoringSettingsAudit.OverrideSnapshot(entity), now));
 
         await _db.SaveChangesAsync(ct);
         await _cache.RemoveByPrefixAsync($"tenant:{tenantId}:monitoring-toggle:", ct);
@@ -130,7 +134,10 @@ public sealed class MonitoringPolicyConfigurationService : IMonitoringPolicyConf
         Guid tenantId, Guid actorId, string scopeType, Guid scopeId, Guid? legalEntityId, CancellationToken ct = default)
     {
         var normalizedScope = scopeType.Trim().ToLowerInvariant();
-        var entity = await _db.MonitoringPolicyOverrides
+        // Only the screen's override scopes can be removed here, never a company default or an employee row.
+        if (!MonitoringSettingScopes.Policy.Contains(normalizedScope))
+            return Result.NotFound("The monitoring override was not found.");
+        var entity = await _db.MonitoringSettings
             .FirstOrDefaultAsync(x => x.TenantId == tenantId && x.ScopeType == normalizedScope && x.ScopeId == scopeId, ct);
         if (entity is null)
             return Result.NotFound("The monitoring override was not found.");
@@ -141,10 +148,10 @@ public sealed class MonitoringPolicyConfigurationService : IMonitoringPolicyConf
         if (normalizedScope != "role" && !await TargetExistsAsync(tenantId, normalizedScope, scopeId, legalEntityId, ct))
             return Result.NotFound("The monitoring override was not found.");
 
-        _db.MonitoringPolicyOverrides.Remove(entity);
+        _db.MonitoringSettings.Remove(entity);
         _db.AuditLogs.Add(MonitoringSettingsAudit.Entry(
-            tenantId, actorId, MonitoringSettingsAudit.OverrideRemoved, nameof(MonitoringPolicyOverride), entity.Id,
-            MonitoringSettingsAudit.Snapshot(entity), null, DateTimeOffset.UtcNow));
+            tenantId, actorId, MonitoringSettingsAudit.OverrideRemoved, MonitoringSettingsAudit.OverrideResource, entity.Id,
+            MonitoringSettingsAudit.OverrideSnapshot(entity), null, DateTimeOffset.UtcNow));
         await _db.SaveChangesAsync(ct);
         await _cache.RemoveByPrefixAsync($"tenant:{tenantId}:monitoring-toggle:", ct);
         await NotifyTraysAsync(tenantId, ct);
@@ -188,10 +195,10 @@ public sealed class MonitoringPolicyConfigurationService : IMonitoringPolicyConf
         _ => "Monitoring override"
     };
 
-    private static MonitoringPolicyOverrideResponse ToResponse(MonitoringPolicyOverride x, string targetName) => new(
+    private static MonitoringPolicyOverrideResponse ToResponse(MonitoringSetting x, string targetName) => new(
         x.Id, x.ScopeType, x.ScopeId, targetName, x.ActivityMonitoring, x.ApplicationTracking,
         x.DocumentTracking, x.CommunicationTracking, x.ScreenshotCapture,
         x.AutoScreenshotCapture, x.MeetingDetection, x.DeviceTracking,
         x.WorkLocationVerification, x.IdentityVerification, x.Biometric,
-        x.IdleThresholdMinutes, x.AllowedRadiusMeters, x.OverrideReason, x.UpdatedAt);
+        x.IdleThresholdMinutes, x.AllowedRadiusMeters, x.OverrideReason ?? string.Empty, x.UpdatedAt);
 }

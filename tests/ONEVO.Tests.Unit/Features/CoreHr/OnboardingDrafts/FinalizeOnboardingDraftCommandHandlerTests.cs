@@ -1,3 +1,4 @@
+using ONEVO.Domain.Features.Monitoring.Settings.Entities;
 using Moq;
 using ONEVO.Application.Common.Exceptions;
 using ONEVO.Application.Common.ServiceInterfaces;
@@ -870,11 +871,11 @@ public sealed class FinalizeOnboardingDraftCommandHandlerTests
     public async Task FinalizeAsync_Writes_Clock_In_Overrides_For_The_New_Employee_Only_When_Set()
     {
         var lookups = new Mock<IOnboardingWizardLookupService>();
-        ONEVO.Domain.Features.Monitoring.Settings.Entities.EmployeeMonitoringOverride? written = null;
+        ONEVO.Domain.Features.Monitoring.Settings.Entities.MonitoringSetting? written = null;
         lookups
             .Setup(l => l.AddEmployeeOverrideAsync(
-                It.IsAny<ONEVO.Domain.Features.Monitoring.Settings.Entities.EmployeeMonitoringOverride>(), It.IsAny<CancellationToken>()))
-            .Callback<ONEVO.Domain.Features.Monitoring.Settings.Entities.EmployeeMonitoringOverride, CancellationToken>((o, _) => written = o)
+                It.IsAny<ONEVO.Domain.Features.Monitoring.Settings.Entities.MonitoringSetting>(), It.IsAny<CancellationToken>()))
+            .Callback<ONEVO.Domain.Features.Monitoring.Settings.Entities.MonitoringSetting, CancellationToken>((o, _) => written = o)
             .Returns(Task.CompletedTask);
 
         var positionId = Guid.NewGuid();
@@ -890,7 +891,8 @@ public sealed class FinalizeOnboardingDraftCommandHandlerTests
 
         Assert.True(result.IsSuccess, result.Error);
         Assert.NotNull(written);
-        Assert.Equal(result.Value!.EmployeeId, written!.EmployeeId);
+        Assert.Equal(MonitoringSettingScopes.Employee, written!.ScopeType);
+        Assert.Equal(result.Value!.EmployeeId, written.ScopeId);
         Assert.Equal(_tenantId, written.TenantId);
         Assert.False(written.PhotoRequired);
         // Untouched toggle stays null so it keeps inheriting from the policy chain.
@@ -938,7 +940,7 @@ public sealed class FinalizeOnboardingDraftCommandHandlerTests
 
         Assert.True(result.IsSuccess, result.Error);
         lookups.Verify(l => l.AddEmployeeOverrideAsync(
-            It.IsAny<ONEVO.Domain.Features.Monitoring.Settings.Entities.EmployeeMonitoringOverride>(), It.IsAny<CancellationToken>()), Times.Never);
+            It.IsAny<ONEVO.Domain.Features.Monitoring.Settings.Entities.MonitoringSetting>(), It.IsAny<CancellationToken>()), Times.Never);
     }
 
     private OnboardingDraftWriteService CreateWriteService(IOnboardingWizardLookupService lookups) => new(

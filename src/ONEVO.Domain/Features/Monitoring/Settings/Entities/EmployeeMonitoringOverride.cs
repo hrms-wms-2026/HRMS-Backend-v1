@@ -5,6 +5,7 @@ namespace ONEVO.Domain.Features.Monitoring.Settings.Entities;
 /// <summary>
 /// Per-employee monitoring capability overrides. Null = inherit from policy/tenant.
 /// Unique on (tenant_id, employee_id).
+/// <para>Legacy since Improvements task 36: the table is kept for one release and no code reads or writes it. Use <see cref="MonitoringSetting"/>.</para>
 /// </summary>
 public class EmployeeMonitoringOverride : ITenantOwnedEntity
 {

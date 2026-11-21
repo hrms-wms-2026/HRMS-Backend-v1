@@ -78,7 +78,7 @@ public interface IMonitoringToggleResolver
     /// <summary>
     /// Whether the employee's Work Mode requires a photo at clock-in (WorkMode.PhotoRequired).
     /// This is identity verification's real source of truth - unlike the other capabilities,
-    /// it is not itself a MonitoringFeatureToggles/override tier chain, just a direct read of
+    /// it is not itself a monitoring_settings tier chain, just a direct read of
     /// the employee's assigned work mode. False when the employee has no work mode.
     /// </summary>
     Task<bool> IsPhotoRequiredAsync(
@@ -93,7 +93,7 @@ public interface IMonitoringToggleResolver
         CancellationToken ct = default);
 
     /// <summary>
-    /// The employee's own clock-in photo override (EmployeeMonitoringOverride.PhotoRequired),
+    /// The employee's own clock-in photo override (the employee row of monitoring_settings, PhotoRequired),
     /// or null when they inherit from whichever work mode applies. Lets callers that resolve a
     /// work mode other than the employee's base one (e.g. today's approved work-area change)
     /// still honor the per-employee setting.

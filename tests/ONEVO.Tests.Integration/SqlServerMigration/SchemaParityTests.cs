@@ -78,6 +78,8 @@ public sealed class SchemaParityTests(SqlServerFixture fixture)
         "platform_announcements", "support_tickets", "support_ticket_comments", "support_ticket_attachments",
         // 20261119155238_AddPermissionLifecycle
         "permission_changes",
+        // 20261121144123_AddMonitoringSettings
+        "monitoring_settings",
     ];
 
     // Columns added to existing tables by migrations after the SQL Server baseline, as "table.column".

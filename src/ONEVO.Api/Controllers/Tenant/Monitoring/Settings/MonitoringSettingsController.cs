@@ -14,7 +14,7 @@ namespace ONEVO.Api.Controllers.Tenant.Monitoring.Settings;
 
 /// <summary>
 /// Tenant admin CRUD for tenant-level monitoring capability toggles.
-/// Without this endpoint, MonitoringFeatureToggles has no write path and every
+/// Without this endpoint, the company defaults in monitoring_settings have no write path and every
 /// monitoring capability permanently resolves to false in production tenants
 /// (see MonitoringToggleResolverService and DevSmokeTestTenantSeeder's dev-only workaround).
 /// </summary>

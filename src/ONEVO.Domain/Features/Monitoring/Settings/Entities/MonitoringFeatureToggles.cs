@@ -5,6 +5,7 @@ namespace ONEVO.Domain.Features.Monitoring.Settings.Entities;
 /// <summary>
 /// Legal-entity-level ON/OFF switches for monitoring capabilities. A null LegalEntityId is a
 /// retained tenant fallback for backward compatibility only.
+/// <para>Legacy since Improvements task 36: the table is kept for one release and no code reads or writes it. Use <see cref="MonitoringSetting"/>.</para>
 /// </summary>
 public class MonitoringFeatureToggles : ITenantOwnedEntity
 {

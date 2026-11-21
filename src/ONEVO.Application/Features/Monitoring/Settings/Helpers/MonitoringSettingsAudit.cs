@@ -15,11 +15,16 @@ public static class MonitoringSettingsAudit
     public const string OverrideSaved = "monitoring.override_saved";
     public const string OverrideRemoved = "monitoring.override_removed";
 
+    // Audit resource types, unchanged by task 36 so earlier audit rows and new ones match.
+    public const string CompanySettingsResource = "MonitoringFeatureToggles";
+    public const string OverrideResource = "MonitoringPolicyOverride";
+
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
 
-    public static string Snapshot(MonitoringFeatureToggles t) => JsonSerializer.Serialize(new
+    /// <summary>A company default (base row), in the same JSON shape as before task 36.</summary>
+    public static string CompanySnapshot(MonitoringSetting t) => JsonSerializer.Serialize(new
     {
-        t.LegalEntityId,
+        LegalEntityId = t.ScopeType == MonitoringSettingScopes.LegalEntity ? t.ScopeId : (Guid?)null,
         t.ActivityMonitoring,
         t.ApplicationTracking,
         t.DocumentTracking,
@@ -35,7 +40,8 @@ public static class MonitoringSettingsAudit
         t.AllowedRadiusMeters
     }, JsonOptions);
 
-    public static string Snapshot(MonitoringPolicyOverride o) => JsonSerializer.Serialize(new
+    /// <summary>A scoped override, in the same JSON shape as before task 36.</summary>
+    public static string OverrideSnapshot(MonitoringSetting o) => JsonSerializer.Serialize(new
     {
         o.ScopeType,
         o.ScopeId,

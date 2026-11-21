@@ -19,6 +19,8 @@ public static class RlsTableRegistry
             ["support_tickets"] = RlsPredicate.Tenant,
             ["support_ticket_comments"] = RlsPredicate.Tenant,
             ["support_ticket_attachments"] = RlsPredicate.Tenant,
+            // 20261121144123_AddMonitoringSettings (Improvements task 36)
+            ["monitoring_settings"] = RlsPredicate.Tenant,
         };
 
     /// <summary>Every table under tenant isolation: the baseline plus everything added after it.</summary>

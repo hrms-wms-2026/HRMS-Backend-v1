@@ -11,17 +11,21 @@ public class EfMonitoringFeatureTogglesRepository : IMonitoringFeatureTogglesRep
 
     public EfMonitoringFeatureTogglesRepository(ApplicationDbContext db) => _db = db;
 
-    public async Task<MonitoringFeatureToggles?> GetByTenantIdAsync(Guid tenantId, CancellationToken ct = default) =>
-        await _db.MonitoringFeatureToggles
+    public async Task<MonitoringSetting?> GetByTenantIdAsync(Guid tenantId, CancellationToken ct = default) =>
+        await _db.MonitoringSettings
             .AsNoTracking()
-            .FirstOrDefaultAsync(t => t.TenantId == tenantId && t.LegalEntityId == null, ct);
+            .FirstOrDefaultAsync(t => t.TenantId == tenantId
+                && t.ScopeType == MonitoringSettingScopes.Tenant
+                && t.ScopeId == tenantId, ct);
 
-    public async Task<MonitoringFeatureToggles?> GetByLegalEntityIdAsync(
+    public async Task<MonitoringSetting?> GetByLegalEntityIdAsync(
         Guid tenantId, Guid legalEntityId, bool includeTenantFallback, CancellationToken ct = default)
     {
-        var exact = await _db.MonitoringFeatureToggles
+        var exact = await _db.MonitoringSettings
             .AsNoTracking()
-            .FirstOrDefaultAsync(t => t.TenantId == tenantId && t.LegalEntityId == legalEntityId, ct);
+            .FirstOrDefaultAsync(t => t.TenantId == tenantId
+                && t.ScopeType == MonitoringSettingScopes.LegalEntity
+                && t.ScopeId == legalEntityId, ct);
         return exact ?? (includeTenantFallback ? await GetByTenantIdAsync(tenantId, ct) : null);
     }
 
@@ -29,10 +33,10 @@ public class EfMonitoringFeatureTogglesRepository : IMonitoringFeatureTogglesRep
         _db.LegalEntities.AsNoTracking().AnyAsync(
             entity => entity.Id == legalEntityId && entity.TenantId == tenantId && entity.IsActive, ct);
 
-    public async Task AddAsync(MonitoringFeatureToggles toggles, CancellationToken ct = default) =>
-        await _db.MonitoringFeatureToggles.AddAsync(toggles, ct);
+    public async Task AddAsync(MonitoringSetting toggles, CancellationToken ct = default) =>
+        await _db.MonitoringSettings.AddAsync(toggles, ct);
 
-    public void Update(MonitoringFeatureToggles toggles) => _db.MonitoringFeatureToggles.Update(toggles);
+    public void Update(MonitoringSetting toggles) => _db.MonitoringSettings.Update(toggles);
 
     public async Task<int> SaveChangesAsync(CancellationToken ct = default) => await _db.SaveChangesAsync(ct);
 }
