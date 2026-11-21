@@ -85,7 +85,7 @@ public sealed class WorkAreaChangeRequestsArchitectureTests
         Assert.Contains("IDateTimeProvider", source);
         Assert.Contains("IEmployeeAuthorityResolver", source);
         Assert.Contains("EmployeeAuthorityPurpose.WorkAreaChangeApproval", source);
-        Assert.Contains("attendance:approve", source);
+        Assert.Contains("PermissionCatalog.Attendance.Approve", source);
         Assert.DoesNotContain("DateTime.UtcNow", source);
         Assert.DoesNotContain("DateTimeOffset.UtcNow", source);
         Assert.DoesNotContain("AddNotification", source);

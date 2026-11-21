@@ -226,7 +226,7 @@ public sealed class ApiRateLimitingTests
         var client = app.GetTestClient();
 
         for (var i = 0; i < 5; i++)
-            (await SendAsync(client, "/swagger/ping", OfficeIp)).StatusCode.Should().Be(HttpStatusCode.OK);
+            (await SendAsync(client, "/health/ping", OfficeIp)).StatusCode.Should().Be(HttpStatusCode.OK);
     }
 
     [Fact]
@@ -353,7 +353,7 @@ public sealed class ApiRateLimitingTests
         app.MapGet("/admin/v1/ping", () => "ok");
         app.MapGet("/health", () => "ok");
         app.MapGet("/health/ready", () => "ok");
-        app.MapGet("/swagger/ping", () => "ok");
+        app.MapGet("/health/ping", () => "ok");
 
         await app.StartAsync();
         return app;

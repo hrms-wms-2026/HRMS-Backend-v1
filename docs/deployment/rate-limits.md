@@ -27,7 +27,7 @@ instance. Task 21 moves the counters to a shared store before horizontal scaling
 | `/api/v1/...`, tray device bearer token | `TrayDevice`, then `TenantCeiling` | device registration id | token bucket |
 | `/admin/v1/...`, not signed in as a platform admin | `AdminAnonymous` | client IP | sliding window |
 | `/admin/v1/...`, platform admin session | `AdminSignedIn` | admin user | token bucket |
-| `/health`, `/health/ready`, Swagger, SignalR hubs, anything outside `/api/v1` and `/admin/v1` | none (exempt) | | |
+| `/health`, `/health/ready`, SignalR hubs, anything outside `/api/v1` and `/admin/v1` | none (exempt) | | |
 
 `TenantCeiling` is chained. A tenant user or tray device request must pass its own rule **and**
 the tenant's ceiling. The ceiling is shared by every user and device of that tenant. It is a

@@ -1,4 +1,5 @@
 using System.Text.Json;
+using ONEVO.Application.Common.Authorization;
 using ONEVO.Application.Features.CoreHr.EmployeeAuthority.Models;
 using ONEVO.Application.Features.Inbox.Contracts;
 
@@ -14,8 +15,8 @@ public static class AttendanceInboxKinds
     public const string DeviceChange = "device_change";
     /// <summary>An attendance alert (plan E1/E2): reviewed by the attendance approver, resolved with an outcome.</summary>
     public const string Alert = "alert";
-    public const string ApprovePermission = "attendance:approve";
-    public const string ReadPermission = "attendance:read";
+    public const string ApprovePermission = PermissionCatalog.Attendance.Approve;
+    public const string ReadPermission = PermissionCatalog.Attendance.Read;
 
     private const InboxCapabilities RequestBase = InboxCapabilities.Chat | InboxCapabilities.Revert;
 

@@ -42,6 +42,7 @@ public class AuthSessionController : ControllerBase
     /// the request host by HostTenantResolutionMiddleware, never from the request body/headers.
     /// </summary>
         [HttpPost("session-exchange")]
+    // Public by design: single-use exchange code bound to this tenant host; AuthRateLimiting per IP.
     [AllowAnonymous]
     [ONEVO.Api.Middleware.AllowWithoutActiveTray]
 

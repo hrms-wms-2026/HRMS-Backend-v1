@@ -2,6 +2,7 @@ using MediatR;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using ONEVO.Api.Filters;
+using ONEVO.Application.Common.Authorization;
 using ONEVO.Application.Features.Monitoring.Screenshots.Commands.RequestScreenshot;
 using ONEVO.Application.Features.Monitoring.Screenshots.DTOs.Requests;
 using ONEVO.Application.Features.Monitoring.Screenshots.Queries.GetScreenshots;
@@ -31,7 +32,7 @@ public class ScreenshotController : ControllerBase
     /// <response code="404">Agent device not found or does not belong to this tenant.</response>
     /// <response code="409">Agent device is not currently active.</response>
     [HttpPost("request")]
-    [RequirePermission("monitoring:screenshots:request")]
+    [RequirePermission(PermissionCatalog.Monitoring.ScreenshotsRequest)]
     [ProducesResponseType(StatusCodes.Status201Created)]
     [ProducesResponseType(StatusCodes.Status403Forbidden)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
@@ -54,7 +55,7 @@ public class ScreenshotController : ControllerBase
     /// </summary>
     /// <response code="200">Paginated list of evidence assets.</response>
     [HttpGet]
-    [RequirePermission("monitoring:read")]
+    [RequirePermission(PermissionCatalog.Monitoring.Read)]
     [ProducesResponseType(StatusCodes.Status200OK)]
     public async Task<IActionResult> ListScreenshots(
         [FromQuery] Guid? employeeId,
@@ -80,7 +81,7 @@ public class ScreenshotController : ControllerBase
     /// <response code="200">Signed URL and its expiry time.</response>
     /// <response code="404">Evidence asset not found.</response>
     [HttpGet("{id:guid}/url")]
-    [RequirePermission("monitoring:read")]
+    [RequirePermission(PermissionCatalog.Monitoring.Read)]
     [ProducesResponseType(StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
     public async Task<IActionResult> GetScreenshotUrl(Guid id, CancellationToken ct)

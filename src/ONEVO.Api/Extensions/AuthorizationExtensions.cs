@@ -1,3 +1,5 @@
+using Microsoft.AspNetCore.Authorization;
+
 namespace ONEVO.Api.Extensions;
 
 internal static class AuthorizationExtensions
@@ -18,8 +20,19 @@ internal static class AuthorizationExtensions
                 policy.AddAuthenticationSchemes("TrayDeviceScheme")
                       .RequireAuthenticatedUser()
                       .RequireClaim("token_type", "tray_device"));
+
+            // Task 15: deny by default. Any endpoint with no [Authorize], policy or [AllowAnonymous]
+            // requires a signed-in tenant user, admin or tray device (whichever scheme matches the
+            // request). Public endpoints must opt out with [AllowAnonymous] / AllowAnonymous().
+            // ControllerAuthorizationCoverageArchitectureTests keeps every controller action explicit.
+            options.FallbackPolicy = BuildFallbackPolicy();
         });
 
         return services;
     }
+
+    internal static AuthorizationPolicy BuildFallbackPolicy() =>
+        new AuthorizationPolicyBuilder(ONEVO.Api.Auth.FallbackAuthenticationScheme.Name)
+            .RequireAuthenticatedUser()
+            .Build();
 }
