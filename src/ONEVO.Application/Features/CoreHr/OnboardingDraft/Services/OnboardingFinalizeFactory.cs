@@ -64,17 +64,18 @@ public static class OnboardingFinalizeFactory
     };
 
     /// <summary>The clock-in evidence the wizard changed for this employee only, or null when it changed none.</summary>
-    public static EmployeeMonitoringOverride? NewMonitoringOverride(
+    public static MonitoringSetting? NewMonitoringOverride(
         OnboardingDraftEntity draft, Guid employeeId, Guid actingUserId, DateTimeOffset now)
     {
         if (!draft.PhotoRequiredOverride.HasValue && !draft.LocationCaptureOverride.HasValue)
             return null;
 
-        return new EmployeeMonitoringOverride
+        return new MonitoringSetting
         {
             Id = Guid.NewGuid(),
             TenantId = draft.TenantId,
-            EmployeeId = employeeId,
+            ScopeType = MonitoringSettingScopes.Employee,
+            ScopeId = employeeId,
             PhotoRequired = draft.PhotoRequiredOverride,
             WorkLocationVerification = draft.LocationCaptureOverride,
             OverrideReason = "Set during onboarding (Add Employee wizard).",

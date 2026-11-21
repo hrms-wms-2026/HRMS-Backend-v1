@@ -61,7 +61,7 @@ public class UpdateMonitoringFeatureTogglesCommandHandler
         var existing = await _toggles.GetByLegalEntityIdAsync(
             tenantId, legalEntityId, includeTenantFallback: false, ct);
 
-        var oldValuesJson = existing is null ? null : MonitoringSettingsAudit.Snapshot(existing);
+        var oldValuesJson = existing is null ? null : MonitoringSettingsAudit.CompanySnapshot(existing);
 
         if (existing is not null)
         {
@@ -83,11 +83,12 @@ public class UpdateMonitoringFeatureTogglesCommandHandler
         }
         else
         {
-            existing = new MonitoringFeatureToggles
+            existing = new MonitoringSetting
             {
                 Id = Guid.NewGuid(),
                 TenantId = tenantId,
-                LegalEntityId = legalEntityId,
+                ScopeType = MonitoringSettingScopes.LegalEntity,
+                ScopeId = legalEntityId,
                 ActivityMonitoring = request.ActivityMonitoring,
                 ApplicationTracking = request.ApplicationTracking,
                 DocumentTracking = request.DocumentTracking,
@@ -109,8 +110,8 @@ public class UpdateMonitoringFeatureTogglesCommandHandler
 
         await _auditLogs.AddAsync(MonitoringSettingsAudit.Entry(
             tenantId, _currentUser.UserId, MonitoringSettingsAudit.CompanySettingsUpdated,
-            nameof(MonitoringFeatureToggles), existing.Id,
-            oldValuesJson, MonitoringSettingsAudit.Snapshot(existing), now), ct);
+            MonitoringSettingsAudit.CompanySettingsResource, existing.Id,
+            oldValuesJson, MonitoringSettingsAudit.CompanySnapshot(existing), now), ct);
 
         await _toggles.SaveChangesAsync(ct);
 

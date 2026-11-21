@@ -19,7 +19,7 @@ public class OnboardingDraft : BaseEntity
 
     // Per-employee clock-in evidence overrides chosen in the wizard's Work setup step. Null =
     // inherit from the work mode / monitoring policy chain. Copied into an
-    // EmployeeMonitoringOverride row on finalize, so they only ever affect this employee.
+    // employee row in monitoring_settings on finalize, so they only ever affect this employee.
     public bool? PhotoRequiredOverride { get; set; }
     public bool? LocationCaptureOverride { get; set; }
 

@@ -30,7 +30,7 @@ public class GetMonitoringFeatureTogglesQueryHandlerTests
     public async Task Handle_NoExistingRow_ReturnsAllFalseDefaults()
     {
         _toggles.Setup(r => r.GetByLegalEntityIdAsync(TenantId, LegalEntityId, true, It.IsAny<CancellationToken>()))
-            .ReturnsAsync((MonitoringFeatureToggles?)null);
+            .ReturnsAsync((MonitoringSetting?)null);
         var sut = BuildSut();
 
         var result = await sut.Handle(new GetMonitoringFeatureTogglesQuery(), CancellationToken.None);
@@ -47,14 +47,16 @@ public class GetMonitoringFeatureTogglesQueryHandlerTests
     {
         var updatedAt = new DateTimeOffset(2026, 8, 17, 10, 0, 0, TimeSpan.Zero);
         _toggles.Setup(r => r.GetByLegalEntityIdAsync(TenantId, LegalEntityId, true, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new MonitoringFeatureToggles
+            .ReturnsAsync(new MonitoringSetting
             {
                 Id = Guid.NewGuid(),
-                TenantId = TenantId,
+                TenantId = TenantId, ScopeType = MonitoringSettingScopes.Tenant, ScopeId = TenantId,
                 ActivityMonitoring = true,
                 ScreenshotCapture = true,
                 IdleThresholdMinutes = 12,
-                UpdatedAt = updatedAt
+                UpdatedAt = updatedAt,
+                // A base row sets every switch (task 36).
+                ApplicationTracking = false, DocumentTracking = false, CommunicationTracking = false, AutoScreenshotCapture = false, MeetingDetection = false, DeviceTracking = false, WorkLocationVerification = false, IdentityVerification = false, Biometric = false,
             });
         var sut = BuildSut();
 

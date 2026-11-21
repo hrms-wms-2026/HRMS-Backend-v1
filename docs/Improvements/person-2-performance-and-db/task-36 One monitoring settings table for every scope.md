@@ -26,13 +26,13 @@ A new monitoring feature needs the same column added in three migrations, three 
 
 ## What to add and change
 
-1. Keep one table, `monitoring_settings`: `id`, `tenant_id`, `scope_type` (`tenant`, `legal_entity`, `department`, `position`, `employee`), `scope_id`, the switch columns, `override_reason`, `set_by_id`, audit columns.
+1. Keep one table, `monitoring_settings`: `id`, `tenant_id`, `scope_type` (`tenant`, `legal_entity`, `department`, `position`, `role`, `work_mode`, `employee`), `scope_id`, the switch columns, `override_reason`, `set_by_id`, audit columns. (2026-11-21, DEC-075: `role` and `work_mode` added, because the code already had them.)
 2. Decide the meaning of "not set at this level". For the base (legal entity) row every switch has a value. For override rows a switch is nullable and null means "inherit". Write this in the migration comment and the entity summary.
 3. Add a unique index on `(tenant_id, scope_type, scope_id)`.
 4. Add a check constraint on `scope_type` for the allowed values.
 5. Add `photo_required` to the shared list so all scopes have the same columns.
 6. Migration: copy the legal entity rows with `scope_type = 'legal_entity'`, the employee rows with `scope_type = 'employee'`, and the existing policy override rows as they are. Keep the old tables for one release.
-7. Rewrite the resolver as one ordered lookup: employee, then position, department, legal entity. One query with `scope_id IN (...)`, not one query per level.
+7. Rewrite the resolver as one ordered lookup: employee, then work mode, role, position, department, legal entity, tenant. One query with `scope_id IN (...)`, not one query per level.
 8. Register the table for RLS.
 
 ## Done when
@@ -40,3 +40,7 @@ A new monitoring feature needs the same column added in three migrations, three 
 - Adding a monitoring switch is one column in one table.
 - The resolver returns the same effective settings before and after for the test tenants (write this test first, against the old tables).
 - The old tables are dropped in a later migration after one release.
+
+## Status
+
+Built 2026-11-21 on `feat/task-36-monitoring-settings-table` (DEC-075 to DEC-077). Migration `20261121144123_AddMonitoringSettings` copies the three tables. Writes go only to `monitoring_settings`. The old tables stay for one release and are dropped in a later migration.

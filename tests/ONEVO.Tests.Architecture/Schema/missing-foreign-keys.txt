@@ -256,6 +256,8 @@ monitoring_permission_consents.tenant_id | tenant | foreign key to tenants, adde
 monitoring_policy_overrides.scope_id | polymorphic | the type column next to it names the table, so no foreign key is possible
 monitoring_policy_overrides.set_by_id | reference | not reviewed yet: task-39e
 monitoring_policy_overrides.tenant_id | tenant | foreign key to tenants, added in batches: task-39d
+monitoring_settings.scope_id | polymorphic | the type column next to it names the table, so no foreign key is possible
+monitoring_settings.set_by_id | reference | not reviewed yet: task-39e
 notification_deliveries.event_id | reference | not reviewed yet: task-39e
 notification_deliveries.notification_id | reference | not reviewed yet: task-39e
 notification_deliveries.recipient_user_id | reference | not reviewed yet: task-39e

@@ -103,7 +103,7 @@ public class MonitoringToggleResolverServiceTests
         ApplicationDbContext db, Guid tenantId, Guid workModeId,
         bool? workLocationVerification = null, int? idleThresholdMinutes = null, int? allowedRadiusMeters = null)
     {
-        db.MonitoringPolicyOverrides.Add(new MonitoringPolicyOverride
+        db.MonitoringSettings.Add(new MonitoringSetting
         {
             Id = Guid.NewGuid(),
             TenantId = tenantId,
@@ -121,7 +121,7 @@ public class MonitoringToggleResolverServiceTests
         ApplicationDbContext db, Guid tenantId, Guid roleId,
         bool? workLocationVerification = null)
     {
-        db.MonitoringPolicyOverrides.Add(new MonitoringPolicyOverride
+        db.MonitoringSettings.Add(new MonitoringSetting
         {
             Id = Guid.NewGuid(),
             TenantId = tenantId,
@@ -136,12 +136,14 @@ public class MonitoringToggleResolverServiceTests
     private static async Task SeedLegalEntityDefaultAsync(
         ApplicationDbContext db, Guid tenantId, int? allowedRadiusMeters = null)
     {
-        db.MonitoringFeatureToggles.Add(new MonitoringFeatureToggles
+        db.MonitoringSettings.Add(new MonitoringSetting
         {
             Id = Guid.NewGuid(),
-            TenantId = tenantId,
-            LegalEntityId = null,
-            AllowedRadiusMeters = allowedRadiusMeters
+            TenantId = tenantId, ScopeType = MonitoringSettingScopes.Tenant, ScopeId = tenantId,
+            
+            AllowedRadiusMeters = allowedRadiusMeters,
+            // A base row sets every switch (task 36).
+            ActivityMonitoring = false, ApplicationTracking = false, DocumentTracking = false, CommunicationTracking = false, ScreenshotCapture = false, AutoScreenshotCapture = false, MeetingDetection = false, DeviceTracking = false, WorkLocationVerification = false, IdentityVerification = false, Biometric = false,
         });
         await db.SaveChangesAsync();
     }
@@ -176,13 +178,15 @@ public class MonitoringToggleResolverServiceTests
         var employee = await SeedEmployeeAsync(db, tenantId);
         employee.Id.Should().NotBe(employee.UserId);
 
-        db.MonitoringFeatureToggles.Add(new MonitoringFeatureToggles
+        db.MonitoringSettings.Add(new MonitoringSetting
         {
             Id = Guid.NewGuid(),
-            TenantId = tenantId,
-            LegalEntityId = null,
+            TenantId = tenantId, ScopeType = MonitoringSettingScopes.Tenant, ScopeId = tenantId,
+            
             ActivityMonitoring = true,
-            ApplicationTracking = true
+            ApplicationTracking = true,
+            // A base row sets every switch (task 36).
+            DocumentTracking = false, CommunicationTracking = false, ScreenshotCapture = false, AutoScreenshotCapture = false, MeetingDetection = false, DeviceTracking = false, WorkLocationVerification = false, IdentityVerification = false, Biometric = false,
         });
         await db.SaveChangesAsync();
 
@@ -211,11 +215,12 @@ public class MonitoringToggleResolverServiceTests
         await SeedWorkModePolicyOverrideAsync(db, tenantId, workModeId, workLocationVerification: false);
         await SeedRolePolicyOverrideAsync(db, tenantId, roleId, workLocationVerification: true);
 
-        db.EmployeeMonitoringOverrides.Add(new EmployeeMonitoringOverride
+        db.MonitoringSettings.Add(new MonitoringSetting
         {
             Id = Guid.NewGuid(),
             TenantId = tenantId,
-            EmployeeId = employee.Id,
+            ScopeType = MonitoringSettingScopes.Employee,
+            ScopeId = employee.Id,
             WorkLocationVerification = true,
             SetById = Guid.NewGuid()
         });
@@ -297,9 +302,11 @@ public class MonitoringToggleResolverServiceTests
         db.Employees.AddRange(employeeA, employeeB);
         await db.SaveChangesAsync();
 
-        db.MonitoringFeatureToggles.Add(new MonitoringFeatureToggles
+        db.MonitoringSettings.Add(new MonitoringSetting
         {
-            Id = Guid.NewGuid(), TenantId = tenantId, LegalEntityId = legalEntityB, AllowedRadiusMeters = 250
+            Id = Guid.NewGuid(), TenantId = tenantId, ScopeType = MonitoringSettingScopes.LegalEntity, ScopeId = legalEntityB, AllowedRadiusMeters = 250,
+            // A base row sets every switch (task 36).
+            ActivityMonitoring = false, ApplicationTracking = false, DocumentTracking = false, CommunicationTracking = false, ScreenshotCapture = false, AutoScreenshotCapture = false, MeetingDetection = false, DeviceTracking = false, WorkLocationVerification = false, IdentityVerification = false, Biometric = false,
         });
         await db.SaveChangesAsync();
 

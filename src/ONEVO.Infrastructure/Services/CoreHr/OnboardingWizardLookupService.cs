@@ -76,7 +76,10 @@ public class OnboardingWizardLookupService : IOnboardingWizardLookupService
         if (positionId is Guid p) scopeIds.Add(p);
         if (departmentId is Guid d) scopeIds.Add(d);
 
-        var policies = await _db.MonitoringPolicyOverrides.AsNoTracking()
+        // One query for the policy levels and the company default (task 36).
+        scopeIds.Add(legalEntityId);
+        scopeIds.Add(tenantId);
+        var policies = await _db.MonitoringSettings.AsNoTracking()
             .Where(o => o.TenantId == tenantId && scopeIds.Contains(o.ScopeId))
             .ToListAsync(ct);
 
@@ -87,17 +90,15 @@ public class OnboardingWizardLookupService : IOnboardingWizardLookupService
                 .Select(o => o.WorkLocationVerification)
                 .FirstOrDefault(v => v.HasValue);
 
-        var toggles = await _db.MonitoringFeatureToggles.AsNoTracking()
-            .Where(t => t.TenantId == tenantId && (t.LegalEntityId == legalEntityId || t.LegalEntityId == null))
-            .OrderByDescending(t => t.LegalEntityId == legalEntityId)
-            .FirstOrDefaultAsync(ct);
+        var toggles = policies.FirstOrDefault(t => t.ScopeType == MonitoringSettingScopes.LegalEntity && t.ScopeId == legalEntityId)
+            ?? policies.FirstOrDefault(t => t.ScopeType == MonitoringSettingScopes.Tenant && t.ScopeId == tenantId);
 
         var locationCapture = MonitoringToggleResolution.Resolve(
             employeeOverride: null,
-            workModeOverride: TierValue("work_mode", workModeId),
+            workModeOverride: TierValue(MonitoringSettingScopes.WorkMode, workModeId),
             rolePolicy: null,
-            positionPolicy: TierValue("position", positionId),
-            departmentPolicy: TierValue("department", departmentId),
+            positionPolicy: TierValue(MonitoringSettingScopes.Position, positionId),
+            departmentPolicy: TierValue(MonitoringSettingScopes.Department, departmentId),
             tenantToggle: toggles?.WorkLocationVerification);
 
         return new OnboardingClockInDefaultsResponse(photoRequired, locationCapture);
@@ -142,8 +143,8 @@ public class OnboardingWizardLookupService : IOnboardingWizardLookupService
             .ToList();
     }
 
-    public async Task AddEmployeeOverrideAsync(EmployeeMonitoringOverride entity, CancellationToken ct = default) =>
-        await _db.EmployeeMonitoringOverrides.AddAsync(entity, ct);
+    public async Task AddEmployeeOverrideAsync(MonitoringSetting entity, CancellationToken ct = default) =>
+        await _db.MonitoringSettings.AddAsync(entity, ct);
 
     public async Task<bool> IsUsableDraftAvatarAsync(Guid tenantId, Guid userId, Guid fileId, CancellationToken ct = default)
     {

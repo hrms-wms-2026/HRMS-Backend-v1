@@ -33,7 +33,7 @@ public interface IOnboardingWizardLookupService
         Guid tenantId, Guid legalEntityId, string search, int limit, CancellationToken ct = default);
 
     /// <summary>Tracks a new override row; persisted by the caller's next SaveChanges.</summary>
-    Task AddEmployeeOverrideAsync(EmployeeMonitoringOverride entity, CancellationToken ct = default);
+    Task AddEmployeeOverrideAsync(MonitoringSetting entity, CancellationToken ct = default);
 
     /// <summary>
     /// Whether <paramref name="fileId"/> may be attached to a draft as its profile photo: an

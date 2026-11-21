@@ -89,7 +89,7 @@ public class MonitoringPolicyConfigurationServiceTests
         result.Value!.ScopeType.Should().Be("work_mode");
         result.Value!.AllowedRadiusMeters.Should().Be(150);
 
-        var persisted = await db.MonitoringPolicyOverrides
+        var persisted = await db.MonitoringSettings
             .FirstOrDefaultAsync(x => x.TenantId == tenantId && x.ScopeType == "work_mode" && x.ScopeId == workModeId);
         persisted.Should().NotBeNull();
         persisted!.AllowedRadiusMeters.Should().Be(150);

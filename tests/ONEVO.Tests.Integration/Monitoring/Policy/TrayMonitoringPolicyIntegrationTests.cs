@@ -136,18 +136,21 @@ public sealed class TrayMonitoringPolicyIntegrationTests : IAsyncLifetime
             .Where(entity => entity.TenantId == tenantId && entity.IsPrimary)
             .Select(entity => entity.Id)
             .SingleAsync();
-        db.MonitoringFeatureToggles.Add(new MonitoringFeatureToggles
+        db.MonitoringSettings.Add(new MonitoringSetting
         {
             Id = Guid.NewGuid(),
             TenantId = tenantId,
-            LegalEntityId = legalEntityId,
+            ScopeType = MonitoringSettingScopes.LegalEntity,
+            ScopeId = legalEntityId,
             ActivityMonitoring = activity,
             ApplicationTracking = true,
             ScreenshotCapture = screenshot,
             AutoScreenshotCapture = autoScreenshot,
             WorkLocationVerification = workLocationVerification,
             CreatedAt = DateTimeOffset.UtcNow,
-            UpdatedAt = DateTimeOffset.UtcNow
+            UpdatedAt = DateTimeOffset.UtcNow,
+            // A base row sets every switch (task 36).
+            DocumentTracking = false, CommunicationTracking = false, MeetingDetection = false, DeviceTracking = false, IdentityVerification = false, Biometric = false,
         });
         await db.SaveChangesAsync();
     }
