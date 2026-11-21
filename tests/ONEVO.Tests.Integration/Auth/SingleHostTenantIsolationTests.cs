@@ -94,12 +94,38 @@ public sealed class SingleHostTenantIsolationTests : IAsyncLifetime
         body.Should().NotContain($"\"slug\":\"{TenantB}\"");
     }
 
+    [Fact]
+    public async Task TokenForTenantA_WithoutTenantHeader_IsRefused()
+    {
+        // No header resolves to System context; a tenant session must not run there, because
+        // TenantOrSystem / PlatformShared RLS predicates match system mode across tenants.
+        var sessionCookie = await SignInAsync("iso-a-noheader@test.onevo.dev");
+
+        var me = await GetMeAsync(sessionCookie, headerTenant: null);
+
+        me.StatusCode.Should().Be(HttpStatusCode.Forbidden);
+        var body = await me.Content.ReadAsStringAsync();
+        using (var json = JsonDocument.Parse(body))
+        {
+            json.RootElement.GetProperty("detail").GetString()
+                .Should().Be(ONEVO.Api.Middleware.TenantEnforcementMiddleware.TenantSessionWithoutTenantContextDetail);
+        }
+        body.Should().NotContain($"\"slug\":\"{TenantA}\"");
+        // The session itself stays valid for its own tenant.
+        var cookies = me.Headers.TryGetValues("Set-Cookie", out var values) ? values : Enumerable.Empty<string>();
+        cookies.Should().NotContain(c => c.StartsWith("crownus_session=;", StringComparison.Ordinal));
+
+        var withHeader = await GetMeAsync(sessionCookie, TenantA);
+        withHeader.StatusCode.Should().Be(HttpStatusCode.OK, await withHeader.Content.ReadAsStringAsync());
+    }
+
     // ---- helpers ----
 
-    private async Task<HttpResponseMessage> GetMeAsync(string sessionCookie, string headerTenant)
+    private async Task<HttpResponseMessage> GetMeAsync(string sessionCookie, string? headerTenant)
     {
         using var request = new HttpRequestMessage(HttpMethod.Get, "/api/v1/auth/me");
-        request.Headers.Add(TenancyHeaders.Tenant, headerTenant);
+        if (headerTenant is not null)
+            request.Headers.Add(TenancyHeaders.Tenant, headerTenant);
         request.Headers.Add("Cookie", $"crownus_session={sessionCookie}");
         return await _client.SendAsync(request);
     }

@@ -56,6 +56,7 @@ public sealed class AdminLegalDocumentVersionsController : ControllerBase
     }
 
     [HttpPost("admin/v1/legal-document-versions")]
+    [RequestSizeLimit(ONEVO.Api.Configuration.RequestBodyLimits.LegalDocumentVersion)]
     [RequirePlatformPermission(PlatformPermissionCatalog.ComplianceManage)]
     public async Task<IActionResult> Create(
         [FromBody] CreateLegalDocumentVersionRequest request, CancellationToken ct)
@@ -81,6 +82,7 @@ public sealed class AdminLegalDocumentVersionsController : ControllerBase
     }
 
     [HttpPut("admin/v1/legal-document-versions/{id:guid}")]
+    [RequestSizeLimit(ONEVO.Api.Configuration.RequestBodyLimits.LegalDocumentVersion)]
     [RequirePlatformPermission(PlatformPermissionCatalog.ComplianceManage)]
     public async Task<IActionResult> Update(
         Guid id, [FromBody] UpdateLegalDocumentVersionRequest request, CancellationToken ct)

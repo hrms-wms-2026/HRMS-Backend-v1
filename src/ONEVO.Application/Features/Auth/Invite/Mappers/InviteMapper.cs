@@ -28,8 +28,6 @@ internal static class InviteMapper
         var (first, last) = SplitName(inv.InvitedFullName);
 
         return new InvitationDetailDto(
-            InvitationId: inv.Id,
-            TenantId: inv.TenantId,
             TenantName: tenant.Name,
             InvitedEmail: inv.InvitedEmail,
             FirstName: first,

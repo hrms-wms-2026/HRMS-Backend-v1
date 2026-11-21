@@ -1,4 +1,5 @@
 using MediatR;
+using ONEVO.Application.Common.Authorization;
 using ONEVO.Application.Common.Models;
 using ONEVO.Application.Common.ServiceInterfaces;
 using ONEVO.Application.Features.Storage.File.DTOs.Responses;
@@ -24,7 +25,7 @@ public sealed class UploadLeaveDocumentCommandHandler
         if (!_currentUser.IsAuthenticated)
             return Result<FileRecordDto>.Forbidden("Authentication required.");
 
-        if (!_currentUser.HasPermission("leave:read-own") && !_currentUser.HasPermission("leave:manage"))
+        if (!_currentUser.HasPermission(PermissionCatalog.Leave.ReadOwn) && !_currentUser.HasPermission(PermissionCatalog.Leave.Manage))
             return Result<FileRecordDto>.Forbidden("Permission 'leave:read-own' or 'leave:manage' required.");
 
         return await _fileStorage.UploadAsync(

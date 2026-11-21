@@ -2,6 +2,7 @@ using MediatR;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using ONEVO.Api.Filters;
+using ONEVO.Application.Common.Authorization;
 using ONEVO.Application.Features.TimeAttendance.Queries.GetClockInPolicyById;
 using ONEVO.Application.Features.TimeAttendance.Queries.ListClockInPolicies;
 
@@ -25,7 +26,7 @@ public class ClockInPoliciesController : ControllerBase
     }
 
     [HttpGet]
-    [RequirePermission("attendance:read")]
+    [RequirePermission(PermissionCatalog.Attendance.Read)]
     public async Task<IActionResult> List(
         [FromQuery] Guid legalEntityId,
         [FromQuery] bool includeInactive = false,
@@ -43,7 +44,7 @@ public class ClockInPoliciesController : ControllerBase
     }
 
     [HttpGet("{id:guid}")]
-    [RequirePermission("attendance:read")]
+    [RequirePermission(PermissionCatalog.Attendance.Read)]
     public async Task<IActionResult> Get(Guid id, CancellationToken ct = default)
     {
         var result = await _mediator.Send(new GetClockInPolicyByIdQuery(id), ct);

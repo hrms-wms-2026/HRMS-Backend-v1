@@ -1,4 +1,5 @@
 using MediatR;
+using ONEVO.Application.Common.Authorization;
 using ONEVO.Application.Common.Models;
 using ONEVO.Application.Common.ServiceInterfaces;
 using ONEVO.Application.Features.Auth.Login.RepositoryInterfaces;
@@ -47,7 +48,7 @@ public class UpdateMonitoringFeatureTogglesCommandHandler
         if (tenantId == Guid.Empty)
             return Result<MonitoringFeatureTogglesResponse>.Forbidden("Tenant context missing.");
 
-        if (!_currentUser.HasPermission("monitoring:configure"))
+        if (!_currentUser.HasPermission(PermissionCatalog.Monitoring.Configure))
             return Result<MonitoringFeatureTogglesResponse>.Forbidden(
                 "You do not have permission to configure monitoring settings.");
 

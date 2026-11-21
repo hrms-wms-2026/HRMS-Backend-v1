@@ -12,9 +12,10 @@ public class TaskCommentReactionConfiguration : IEntityTypeConfiguration<TaskCom
         builder.HasKey(r => r.Id);
         builder.Property(r => r.Emoji).HasMaxLength(32).IsRequired();
 
-        builder.HasIndex(r => new { r.CommentId, r.EmployeeId, r.Emoji })
+        // One reaction per employee per comment - reacting again replaces the emoji.
+        builder.HasIndex(r => new { r.CommentId, r.EmployeeId })
             .IsUnique()
-            .HasDatabaseName("ix_task_comment_reactions_comment_id_employee_id_emoji");
+            .HasDatabaseName("ix_task_comment_reactions_comment_id_employee_id");
 
         builder.HasOne<TaskComment>().WithMany().HasForeignKey(r => r.CommentId).OnDelete(DeleteBehavior.Restrict);
     }

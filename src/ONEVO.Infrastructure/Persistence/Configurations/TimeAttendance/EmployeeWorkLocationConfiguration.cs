@@ -26,6 +26,6 @@ public sealed class EmployeeWorkLocationConfiguration : IEntityTypeConfiguration
             .HasDatabaseName("ux_employee_work_locations_tenant_employee");
 
         builder.HasOne<ONEVO.Domain.Features.CoreHr.Entities.Employee>()
-            .WithMany().HasForeignKey(x => x.EmployeeId).OnDelete(DeleteBehavior.Cascade);
+            .WithMany().HasForeignKey(x => x.EmployeeId).OnDelete(DeleteBehavior.NoAction);
     }
 }

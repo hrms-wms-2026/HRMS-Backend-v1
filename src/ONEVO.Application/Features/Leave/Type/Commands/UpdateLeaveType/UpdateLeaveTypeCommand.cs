@@ -1,4 +1,5 @@
 using MediatR;
+using ONEVO.Application.Features.Leave.Type.Validation;
 using ONEVO.Application.Common.Models;
 using ONEVO.Application.Features.Leave.Type.DTOs.Responses;
 
@@ -15,4 +16,4 @@ public record UpdateLeaveTypeCommand(
     decimal? DocumentRequiredAfterHours,
     string[] AcceptedDocumentTypes,
     // Icon: null keeps the current icon; empty clears it.
-    string? Icon = null) : IRequest<Result<LeaveTypeResponse>>;
+    string? Icon = null) : IRequest<Result<LeaveTypeResponse>>, ILeaveTypeInput;

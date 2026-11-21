@@ -11,6 +11,7 @@ namespace ONEVO.Api.Controllers.Tenant.Monitoring.TrayActivation;
 /// client-side via sha256. Anonymous so the tray can check for updates before/without a session.
 /// </summary>
 [ApiController]
+// Public by design: public installer metadata only, no tenant data; per-IP /api/v1 rate limit.
 [AllowAnonymous]
 [Route("api/v1/tray/releases")]
 public sealed class TrayReleasesPublicController : ControllerBase

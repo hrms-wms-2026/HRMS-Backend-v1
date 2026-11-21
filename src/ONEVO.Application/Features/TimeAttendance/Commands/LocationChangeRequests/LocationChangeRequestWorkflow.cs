@@ -1,4 +1,5 @@
 using MediatR;
+using ONEVO.Application.Common.Authorization;
 using ONEVO.Application.Common.Models;
 using ONEVO.Application.Common.RepositoryInterfaces;
 using ONEVO.Application.Common.ServiceInterfaces;
@@ -31,7 +32,7 @@ public sealed class LocationChangeRequestWorkflow(
     IEmployeeAuthorityResolver authority,
     IUnitOfWork unitOfWork)
 {
-    private const string ApprovalPermission = "attendance:approve";
+    private const string ApprovalPermission = PermissionCatalog.Attendance.Approve;
 
     public async Task<Result<LocationChangeRequestResponse>> CreateAsync(
         CreateLocationChangeRequestCommand command, CancellationToken ct)

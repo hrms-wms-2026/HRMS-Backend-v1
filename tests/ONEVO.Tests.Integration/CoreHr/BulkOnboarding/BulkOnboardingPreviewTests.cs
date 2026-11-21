@@ -110,7 +110,8 @@ public sealed class BulkOnboardingPreviewTests : IAsyncLifetime
     {
         var upload = new UploadBulkOnboardingBatchCommandHandler(
             new EfBulkOnboardingBatchRepository(db),
-            new StubCurrentUser(_tenantId, _userId));
+            new StubCurrentUser(_tenantId, _userId),
+            new ONEVO.Infrastructure.Services.Storage.File.UploadPurposePolicy());
         var result = await upload.Handle(
             new UploadBulkOnboardingBatchCommand("employees.csv", System.Text.Encoding.UTF8.GetBytes(csv), _legalEntityId, null, null, null),
             CancellationToken.None);
