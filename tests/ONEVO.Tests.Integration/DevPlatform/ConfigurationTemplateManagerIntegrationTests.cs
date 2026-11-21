@@ -53,11 +53,12 @@ public sealed class ConfigurationTemplateManagerIntegrationTests : IAsyncLifetim
     public async Task Apply_writes_a_real_row_and_reapply_is_append_only()
     {
         using var scope = _factory.Services.CreateScope();
+        // Admin mode through the tenant context, as an admin request has it: the RLS interceptor writes
+        // SESSION_CONTEXT from it, so a value written behind its back would not survive a commit.
+        scope.ServiceProvider.GetRequiredService<IWritableTenantContext>().SetAdminMode();
         var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
         await db.Database.OpenConnectionAsync();
-        await db.Database.ExecuteSqlRawAsync(
-            "EXEC sp_MSforeachtable 'ALTER TABLE ? NOCHECK CONSTRAINT ALL'; " +
-            "EXEC sp_set_session_context N'app.tenant_context_mode', N'admin';");
+        await db.Database.ExecuteSqlRawAsync("EXEC sp_MSforeachtable 'ALTER TABLE ? NOCHECK CONSTRAINT ALL';");
 
         var platformUser = new PlatformUser { Id = Guid.NewGuid(), Email = "op@onevo.test", FullName = "Op" };
         db.PlatformUsers.Add(platformUser);

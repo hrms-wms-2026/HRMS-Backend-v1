@@ -194,6 +194,8 @@ app.UseApiRateLimiting();
 // Middleware removed as part of cookie auth migration
 app.UseMiddleware<CsrfProtectionMiddleware>();
 app.UseMiddleware<TenantEnforcementMiddleware>();
+// One connection per request, once the request is authenticated and its tenant enforced.
+app.UseMiddleware<RequestDbConnectionMiddleware>();
 app.UseMiddleware<ONEVO.Api.Middleware.WebActivityTrackingMiddleware>();
 app.UseMiddleware<TrayPresenceEnforcementMiddleware>();
 
