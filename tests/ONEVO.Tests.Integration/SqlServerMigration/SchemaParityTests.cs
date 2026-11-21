@@ -20,6 +20,9 @@ public sealed class SchemaParityTests(SqlServerFixture fixture)
         ["ix_attendance_records_tenant_employee_date"] = "ix_attendance_records_tenant_id_employee_id_date",
         ["ix_break_records_tenant_employee_start"] = "ix_break_records_tenant_id_employee_id_break_start",
         ["ix_presence_sessions_tenant_employee_date"] = "ix_presence_sessions_tenant_id_employee_id_date",
+        // Replaced on purpose, not renamed: 20261119120000_SingleReactionPerCommentEmployee allows one
+        // reaction per employee per comment, so the unique index drops the emoji column.
+        ["ix_task_comment_reactions_comment_id_employee_id_emoji"] = "ix_task_comment_reactions_comment_id_employee_id",
     };
 
     // Primary keys are compared by table, as EF names some differently. "t" is a deferred trigger:
@@ -75,6 +78,16 @@ public sealed class SchemaParityTests(SqlServerFixture fixture)
         "platform_announcements", "support_tickets", "support_ticket_comments", "support_ticket_attachments",
         // 20261113045306_AddPlatformAuditLogs
         "platform_audit_logs",
+        // 20261119155238_AddPermissionLifecycle
+        "permission_changes",
+    ];
+
+    // Columns added to existing tables by migrations after the SQL Server baseline, as "table.column".
+    // Add a column here in the same change as the migration that creates it.
+    private static readonly string[] ColumnsAddedAfterBaseline =
+    [
+        // 20261119155238_AddPermissionLifecycle
+        "permissions.retired_at",
     ];
 
     [Fact]
@@ -96,7 +109,8 @@ public sealed class SchemaParityTests(SqlServerFixture fixture)
         Assert.Empty(expected.Except(actual).Except(DroppedColumns));
         Assert.Empty(actual.Except(expected)
             .Where(c => !AddedColumns.Contains(c.Split('.')[1]))
-            .Where(c => !TablesAddedAfterBaseline.Contains(c.Split('.')[0])));
+            .Where(c => !TablesAddedAfterBaseline.Contains(c.Split('.')[0]))
+            .Where(c => !ColumnsAddedAfterBaseline.Contains(c)));
     }
 
     /// <summary>

@@ -17,16 +17,223 @@ public class HostTenantResolutionMiddlewareTests
     private readonly IMemoryCache _cache = new MemoryCache(new MemoryCacheOptions());
     private readonly Mock<IWritableTenantContext> _ctx = new();
 
-    private HostTenantResolutionMiddleware Build(string rootDomain = "onevo.com")
+    private bool _nextCalled;
+
+    private HostTenantResolutionMiddleware Build(string rootDomain = "onevo.com", string? mode = null)
     {
+        var settings = new Dictionary<string, string?>
+        {
+            ["Tenancy:RootDomain"] = rootDomain
+        };
+        if (mode is not null)
+            settings["Tenancy:Mode"] = mode;
         var config = new ConfigurationBuilder()
-            .AddInMemoryCollection(new Dictionary<string, string?>
-            {
-                ["Tenancy:RootDomain"] = rootDomain
-            })
+            .AddInMemoryCollection(settings)
             .Build();
         return new HostTenantResolutionMiddleware(
-            _ => Task.CompletedTask, _cache, config);
+            _ => { _nextCalled = true; return Task.CompletedTask; }, _cache, config);
+    }
+
+    private HostTenantResolutionMiddleware BuildSingleHost(string rootDomain = "app.example.net")
+        => Build(rootDomain, "SingleHost");
+
+    private HttpContext MakeSingleHostContext(
+        string path, string? header = null, string? query = null, string host = "app.example.net")
+    {
+        var ctx = MakeContext(host, path);
+        if (header is not null)
+            ctx.Request.Headers[ONEVO.Application.Common.Tenancy.TenancyHeaders.Tenant] = header;
+        if (query is not null)
+            ctx.Request.QueryString = new QueryString("?" + query);
+        return ctx;
+    }
+
+    private void SetupTenant(string slug, Guid? id = null)
+        => _tenants.Setup(r => r.GetBySlugAsync(slug, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new Tenant { Id = id ?? Guid.NewGuid(), Slug = slug, Status = TenantStatus.Active });
+
+    [Fact]
+    public async Task SingleHost_HeaderSlug_ResolvesTenant()
+    {
+        var id = Guid.NewGuid();
+        SetupTenant("acme", id);
+        var ctx = MakeSingleHostContext("/api/v1/x", header: "acme");
+
+        await BuildSingleHost().InvokeAsync(ctx);
+
+        _ctx.Verify(c => c.Resolve(It.Is<TenantRegistryEntry>(e => e.TenantId == id && e.Slug == "acme")), Times.Once);
+        _nextCalled.Should().BeTrue();
+    }
+
+    [Fact]
+    public async Task SingleHost_HubQuerySlug_ResolvesTenant()
+    {
+        var id = Guid.NewGuid();
+        SetupTenant("acme", id);
+        var ctx = MakeSingleHostContext("/hubs/inbox", query: "tenant=acme");
+
+        await BuildSingleHost().InvokeAsync(ctx);
+
+        _ctx.Verify(c => c.Resolve(It.Is<TenantRegistryEntry>(e => e.TenantId == id)), Times.Once);
+        _nextCalled.Should().BeTrue();
+    }
+
+    [Fact]
+    public async Task SingleHost_QuerySlugOutsideHubs_Ignored()
+    {
+        SetupTenant("acme");
+        var ctx = MakeSingleHostContext("/api/v1/x", query: "tenant=acme");
+
+        await BuildSingleHost().InvokeAsync(ctx);
+
+        _ctx.Verify(c => c.SetSystemMode(), Times.Once);
+        _ctx.Verify(c => c.Resolve(It.IsAny<TenantRegistryEntry>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task SingleHost_AdminPath_SetsAdminMode()
+    {
+        SetupTenant("acme");
+        var ctx = MakeSingleHostContext("/admin/v1/tenants", header: "acme");
+
+        await BuildSingleHost().InvokeAsync(ctx);
+
+        _ctx.Verify(c => c.SetAdminMode(), Times.Once);
+        _ctx.Verify(c => c.Resolve(It.IsAny<TenantRegistryEntry>()), Times.Never);
+        _nextCalled.Should().BeTrue();
+    }
+
+    [Fact]
+    public async Task SingleHost_NoSlug_SystemMode()
+    {
+        var ctx = MakeSingleHostContext("/api/v1/auth/login");
+
+        await BuildSingleHost().InvokeAsync(ctx);
+
+        _ctx.Verify(c => c.SetSystemMode(), Times.Once);
+        _nextCalled.Should().BeTrue();
+    }
+
+    [Theory]
+    [InlineData("admin")]
+    [InlineData("console")]
+    [InlineData("www")]
+    [InlineData("assets")]
+    [InlineData("api")]
+    public async Task SingleHost_ReservedSlug_400(string slug)
+    {
+        var ctx = MakeSingleHostContext("/api/v1/x", header: slug);
+
+        await BuildSingleHost().InvokeAsync(ctx);
+
+        ctx.Response.StatusCode.Should().Be(400);
+        _nextCalled.Should().BeFalse();
+        _ctx.Verify(c => c.Resolve(It.IsAny<TenantRegistryEntry>()), Times.Never);
+    }
+
+    [Theory]
+    [InlineData("ACME")]
+    [InlineData("a")]
+    [InlineData("x.y")]
+    [InlineData("-bad")]
+    public async Task SingleHost_InvalidSlug_400(string slug)
+    {
+        var ctx = MakeSingleHostContext("/api/v1/x", header: slug);
+
+        await BuildSingleHost().InvokeAsync(ctx);
+
+        ctx.Response.StatusCode.Should().Be(400);
+        _nextCalled.Should().BeFalse();
+    }
+
+    [Fact]
+    public async Task SingleHost_UnknownSlug_404()
+    {
+        _tenants.Setup(r => r.GetBySlugAsync("ghost", It.IsAny<CancellationToken>()))
+            .ReturnsAsync((Tenant?)null);
+        var ctx = MakeSingleHostContext("/api/v1/x", header: "ghost");
+
+        await BuildSingleHost().InvokeAsync(ctx);
+
+        ctx.Response.StatusCode.Should().Be(404);
+        _nextCalled.Should().BeFalse();
+    }
+
+    [Fact]
+    public async Task SingleHost_OtherHost_400()
+    {
+        var ctx = MakeSingleHostContext("/api/v1/x", header: "acme", host: "evil.net");
+
+        await BuildSingleHost().InvokeAsync(ctx);
+
+        ctx.Response.StatusCode.Should().Be(400);
+        _nextCalled.Should().BeFalse();
+    }
+
+    [Fact]
+    public async Task SingleHost_TenantSubdomainHost_400()
+    {
+        SetupTenant("acme");
+        var ctx = MakeSingleHostContext("/api/v1/x", header: "acme", host: "acme.app.example.net");
+
+        await BuildSingleHost().InvokeAsync(ctx);
+
+        ctx.Response.StatusCode.Should().Be(400);
+        _nextCalled.Should().BeFalse();
+        _ctx.Verify(c => c.Resolve(It.IsAny<TenantRegistryEntry>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task DefaultMode_HeaderIgnored()
+    {
+        var id = Guid.NewGuid();
+        SetupTenant("acme", id);
+        SetupTenant("other");
+        var ctx = MakeSingleHostContext("/api/v1/x", header: "other", host: "acme.app.example.net");
+
+        await Build("app.example.net").InvokeAsync(ctx);
+
+        _ctx.Verify(c => c.Resolve(It.Is<TenantRegistryEntry>(e => e.TenantId == id && e.Slug == "acme")), Times.Once);
+    }
+
+    [Theory]
+    [InlineData("")]
+    [InlineData("   ")]
+    public async Task SingleHost_BlankHeader_SystemMode(string header)
+    {
+        var ctx = MakeSingleHostContext("/api/v1/x", header: header);
+
+        await BuildSingleHost().InvokeAsync(ctx);
+
+        _ctx.Verify(c => c.SetSystemMode(), Times.Once);
+        _ctx.Verify(c => c.Resolve(It.IsAny<TenantRegistryEntry>()), Times.Never);
+        _nextCalled.Should().BeTrue();
+    }
+
+    [Fact]
+    public async Task SingleHost_HubHeaderWinsOverQuery()
+    {
+        var id = Guid.NewGuid();
+        SetupTenant("acme", id);
+        SetupTenant("other");
+        var ctx = MakeSingleHostContext("/hubs/inbox", header: "acme", query: "tenant=other");
+
+        await BuildSingleHost().InvokeAsync(ctx);
+
+        _ctx.Verify(c => c.Resolve(It.Is<TenantRegistryEntry>(e => e.TenantId == id && e.Slug == "acme")), Times.Once);
+    }
+
+    [Fact]
+    public async Task Subdomain_HeaderIgnored()
+    {
+        var id = Guid.NewGuid();
+        SetupTenant("acme", id);
+        SetupTenant("other");
+        var ctx = MakeSingleHostContext("/api/v1/x", header: "other", host: "acme.app.example.net");
+
+        await Build("app.example.net", "Subdomain").InvokeAsync(ctx);
+
+        _ctx.Verify(c => c.Resolve(It.Is<TenantRegistryEntry>(e => e.TenantId == id && e.Slug == "acme")), Times.Once);
     }
 
     private HttpContext MakeContext(string host, string path = "/api/v1/test")

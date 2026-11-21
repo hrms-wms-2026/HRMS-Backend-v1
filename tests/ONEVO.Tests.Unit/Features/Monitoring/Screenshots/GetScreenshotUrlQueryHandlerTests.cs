@@ -4,6 +4,7 @@ using ONEVO.Application.Common.Models;
 using ONEVO.Application.Common.RepositoryInterfaces;
 using ONEVO.Application.Common.ServiceInterfaces;
 using ONEVO.Application.Features.Auth.Login.RepositoryInterfaces;
+using ONEVO.Application.Features.CoreHr.Employee.Access;
 using ONEVO.Application.Features.Monitoring.Screenshots.Queries.GetScreenshotUrl;
 using ONEVO.Application.Features.Monitoring.Screenshots.RepositoryInterfaces;
 using ONEVO.Application.Features.Storage.File.ServiceInterfaces;
@@ -22,6 +23,8 @@ public class GetScreenshotUrlQueryHandlerTests
     private readonly Mock<IAuditLogRepository> _auditLogs = new();
     private readonly Mock<IUnitOfWork> _unitOfWork = new();
     private readonly FakeDateTimeProvider _clock = new();
+    private readonly Mock<IEmployeeViewAccess> _viewAccess = new();
+    private readonly Mock<IEmployeeRepository> _employees = new();
 
     private readonly Guid _tenantId = Guid.NewGuid();
     private readonly Guid _userId = Guid.NewGuid();
@@ -32,6 +35,7 @@ public class GetScreenshotUrlQueryHandlerTests
     {
         _tenantContext.Setup(t => t.TenantId).Returns(_tenantId);
         _currentUser.SetupGet(x => x.UserId).Returns(_userId);
+        _viewAccess.Setup(v => v.CanViewAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>())).ReturnsAsync(true);
     }
 
     private GetScreenshotUrlQueryHandler CreateHandler() => new(
@@ -41,7 +45,9 @@ public class GetScreenshotUrlQueryHandlerTests
         _currentUser.Object,
         _auditLogs.Object,
         _unitOfWork.Object,
-        _clock);
+        _clock,
+        _viewAccess.Object,
+        _employees.Object);
 
     private MonitoringEvidenceAsset MakeAsset() => new()
     {
@@ -115,5 +121,41 @@ public class GetScreenshotUrlQueryHandlerTests
                 && log.NewValuesJson != null && log.NewValuesJson.Contains(asset.EmployeeId.ToString())),
             It.IsAny<CancellationToken>()), Times.Once);
         _unitOfWork.Verify(x => x.SaveChangesAsync(It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Fact]
+    public async Task Handle_EmployeeOutsideCoverage_Returns404_WithoutSigningOrAuditing()
+    {
+        var asset = MakeAsset();
+        _assetsRepo.Setup(r => r.GetByIdAsync(_tenantId, _assetId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(asset);
+        _viewAccess.Setup(v => v.CanViewAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>())).ReturnsAsync(false);
+
+        var result = await CreateHandler().Handle(new GetScreenshotUrlQuery(_assetId), default);
+
+        result.IsSuccess.Should().BeFalse();
+        result.StatusCode.Should().Be(404);
+        _fileStorage.Verify(s => s.GetSignedUrlAsync(
+            It.IsAny<Guid>(), It.IsAny<Guid>(), It.IsAny<TimeSpan>(), It.IsAny<CancellationToken>()), Times.Never);
+        _auditLogs.Verify(x => x.AddAsync(It.IsAny<AuditLog>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task Handle_LegacyAssetStoredUnderUserId_ChecksThatUsersEmployee()
+    {
+        var asset = MakeAsset();
+        var employeeId = Guid.NewGuid();
+        _assetsRepo.Setup(r => r.GetByIdAsync(_tenantId, _assetId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(asset);
+        _viewAccess.Setup(v => v.CanViewAsync(asset.EmployeeId, It.IsAny<CancellationToken>())).ReturnsAsync(false);
+        _viewAccess.Setup(v => v.CanViewAsync(employeeId, It.IsAny<CancellationToken>())).ReturnsAsync(true);
+        _employees.Setup(e => e.GetByUserIdAsync(_tenantId, asset.EmployeeId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new ONEVO.Domain.Features.CoreHr.Entities.Employee { Id = employeeId, TenantId = _tenantId, UserId = asset.EmployeeId });
+        _fileStorage.Setup(s => s.GetSignedUrlAsync(_tenantId, _fileRecordId, TimeSpan.FromMinutes(15), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(Result<string>.Success("https://r2.example.com/legacy.png"));
+
+        var result = await CreateHandler().Handle(new GetScreenshotUrlQuery(_assetId), default);
+
+        result.IsSuccess.Should().BeTrue();
     }
 }

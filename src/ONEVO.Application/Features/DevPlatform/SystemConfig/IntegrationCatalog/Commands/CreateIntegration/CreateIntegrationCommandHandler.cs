@@ -7,12 +7,13 @@ using ONEVO.Application.Features.DevPlatform.SystemConfig.IntegrationCatalog.Rep
 using ONEVO.Application.Features.DevPlatform.SystemConfig.PlatformOAuthApps.RepositoryInterfaces;
 using ONEVO.Domain.Features.DevPlatform.SystemConfig.IntegrationCatalog.Entities;
 using ONEVO.Application.Common.Auditing;
+using ONEVO.Application.Features.DevPlatform.SystemConfig.Validation;
 
 namespace ONEVO.Application.Features.DevPlatform.SystemConfig.IntegrationCatalog.Commands.CreateIntegration;
 
 public sealed record CreateIntegrationCommand(string IntegrationKey, string DisplayName, string? Description,
     string ConnectionScope, string CrownusAppProvider, string? LogoUrl, bool IsActive, Guid ActorPlatformUserId)
-    : IRequest<Result<IntegrationCatalogDto>>, IAuditedCommand<Result<IntegrationCatalogDto>>
+    : IRequest<Result<IntegrationCatalogDto>>, IAuditedCommand<Result<IntegrationCatalogDto>>, IIntegrationCatalogInput
 {
     public AuditEntry DescribeAudit(Result<IntegrationCatalogDto>? response)
         => new("integration.created", "integration", IntegrationKey, null, new { DisplayName, Description, ConnectionScope, CrownusAppProvider, LogoUrl, IsActive });

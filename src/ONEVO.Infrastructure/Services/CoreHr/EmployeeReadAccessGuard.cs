@@ -1,3 +1,4 @@
+using ONEVO.Application.Common.Authorization;
 using ONEVO.Application.Common.Models;
 using ONEVO.Application.Common.ServiceInterfaces;
 using ONEVO.Application.Features.CoreHr.Employee.DTOs.Responses;
@@ -21,7 +22,7 @@ public sealed class EmployeeReadAccessGuard(
         if (existing is null)
             return Result<EmployeeListItemResponse>.NotFound(NotFoundMessage);
 
-        var scope = currentUser.HasPermission("org:manage")
+        var scope = currentUser.HasPermission(PermissionCatalog.Org.Manage)
             ? EmployeeVisibilityScope.Unrestricted()
             : await visibilityScopeResolver.ResolveAsync(tenantId, currentUser.UserId, ct);
 

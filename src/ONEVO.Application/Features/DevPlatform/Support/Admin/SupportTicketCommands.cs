@@ -9,6 +9,7 @@ using ONEVO.Application.Features.DevPlatform.Support.Mappers;
 using ONEVO.Application.Features.DevPlatform.Support.RepositoryInterfaces;
 using ONEVO.Application.Features.DevPlatform.Support.Services;
 using ONEVO.Domain.Features.DevPlatform.Support.Entities;
+using ONEVO.Application.Features.DevPlatform.Support.Validation;
 
 namespace ONEVO.Application.Features.DevPlatform.Support.Admin;
 
@@ -19,7 +20,7 @@ public sealed record CreateSupportTicketCommand(
     string? Description,
     string? Priority,
     string? Category,
-    Guid ActorPlatformUserId) : IRequest<Result<SupportTicketDto>>, IAuditedCommand<Result<SupportTicketDto>>
+    Guid ActorPlatformUserId) : IRequest<Result<SupportTicketDto>>, IAuditedCommand<Result<SupportTicketDto>>, ISupportTicketInput
 {
     // Subject, description and category are customer text: never copied into the audit row.
     public AuditEntry DescribeAudit(Result<SupportTicketDto>? response)
@@ -243,7 +244,7 @@ public sealed record UpdateSupportTicketCommand(
     string? Subject,
     string? Description,
     string? Priority,
-    string? Category) : IRequest<Result<SupportTicketDto>>, IAuditedCommand<Result<SupportTicketDto>>
+    string? Category) : IRequest<Result<SupportTicketDto>>, IAuditedCommand<Result<SupportTicketDto>>, ISupportTicketInput
 {
     // Subject, description and category are customer text: never copied into the audit row.
     public AuditEntry DescribeAudit(Result<SupportTicketDto>? response)

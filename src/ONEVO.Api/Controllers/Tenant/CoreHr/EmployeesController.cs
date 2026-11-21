@@ -4,6 +4,7 @@ using Microsoft.AspNetCore.Mvc;
 using ONEVO.Api.Contracts.CoreHr.Employees;
 using ONEVO.Api.Contracts.Storage;
 using ONEVO.Api.Filters;
+using ONEVO.Application.Common.Authorization;
 using ONEVO.Application.Features.CoreHr.Employee.Commands.AddDependent;
 using ONEVO.Application.Features.CoreHr.Employee.Commands.AddMyDocument;
 using ONEVO.Application.Features.CoreHr.Employee.Commands.DeleteMyDocument;
@@ -149,7 +150,7 @@ public class EmployeesController : ControllerBase
     /// <summary>Reveal an employee's complete primary bank details. The normal detail response
     /// remains masked; every successful reveal is recorded in the append-only audit log.</summary>
     [HttpPost("{id:guid}/bank-details/reveal")]
-    [RequirePermission("employees:read:sensitive")]
+    [RequirePermission(PermissionCatalog.Employees.ReadSensitive)]
     [ProducesResponseType(StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status403Forbidden)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
@@ -422,7 +423,7 @@ public class EmployeesController : ControllerBase
     /// <summary>Reassign an employee's primary position. Minimal capacity-checked reassignment -
     /// not an approval-routed workflow. See ChangeEmployeePositionCommandHandler.</summary>
     [HttpPost("{id:guid}/change-position")]
-    [RequirePermission("employees:write")]
+    [RequirePermission(PermissionCatalog.Employees.Write)]
     public async Task<IActionResult> ChangePosition(
         Guid id, [FromBody] ChangePositionRequest request, CancellationToken ct = default)
     {
@@ -438,7 +439,7 @@ public class EmployeesController : ControllerBase
     /// the three Job & Organizational Details fields with no other dedicated update flow.
     /// Position/reporting-manager changes stay on change-position.</summary>
     [HttpPut("{id:guid}/job-details")]
-    [RequirePermission("employees:write")]
+    [RequirePermission(PermissionCatalog.Employees.Write)]
     public async Task<IActionResult> UpdateJobDetails(
         Guid id, [FromBody] UpdateEmployeeJobDetailsRequest request, CancellationToken ct = default)
     {
@@ -453,7 +454,7 @@ public class EmployeesController : ControllerBase
     /// <summary>Promote/transfer many employees into one position. Each employee goes through the
     /// single change-position rules; the response reports the outcome per employee.</summary>
     [HttpPost("bulk/change-position")]
-    [RequirePermission("employees:write")]
+    [RequirePermission(PermissionCatalog.Employees.Write)]
     public async Task<IActionResult> BulkChangePosition(
         [FromBody] BulkChangePositionRequest request, CancellationToken ct = default)
     {
@@ -466,7 +467,7 @@ public class EmployeesController : ControllerBase
     }
 
     [HttpPost("bulk/employment-type")]
-    [RequirePermission("employees:write")]
+    [RequirePermission(PermissionCatalog.Employees.Write)]
     public async Task<IActionResult> BulkChangeEmploymentType(
         [FromBody] BulkChangeEmploymentTypeRequest request, CancellationToken ct = default)
     {
@@ -478,7 +479,7 @@ public class EmployeesController : ControllerBase
     }
 
     [HttpPost("bulk/offboarding/start")]
-    [RequirePermission("employees:offboard")]
+    [RequirePermission(PermissionCatalog.Employees.Offboard)]
     public async Task<IActionResult> BulkStartOffboarding(
         [FromBody] BulkStartOffboardingRequest request, CancellationToken ct = default)
     {
@@ -678,7 +679,7 @@ public class EmployeesController : ControllerBase
     /// caller's own record - bank-detail edits are HR-mediated to prevent unauthorized
     /// payroll-redirection (see design spec §6).</summary>
     [HttpPut("me/payroll")]
-    [RequirePermission("employees:write")]
+    [RequirePermission(PermissionCatalog.Employees.Write)]
     public async Task<IActionResult> UpdateMyPayroll([FromBody] UpdateBankDetailsRequest request, CancellationToken ct = default)
     {
         var result = await _mediator.Send(

@@ -29,3 +29,34 @@ Tenant isolation is the top security rule of this backend and row-level security
 - The test set runs in the integration suite and covers every module.
 - A table of endpoint, test and result is saved in `docs/reports/security/`.
 - Any real finding is reported to the team the same day.
+
+## Results (2026-11-19)
+
+Full table: `docs/reports/security/2026-11-19-task-27-cross-tenant-and-object-access.md`.
+
+- The test set is `tests/ONEVO.Tests.Integration/Security/TenantAndObjectAccess/` and runs in the integration
+  suite on SQL Server with row-level security on. It has 94 tests and all pass. Two tenants are provisioned and
+  signed in through the real flows. Tenant A has an employee, a colleague, a manager of another team (no
+  coverage), HR and a covering manager for positive controls.
+- Cross-tenant: 38 probes across CoreHR, Org, Roles, Leave, Work, Storage, Support, Dashboard, Conversations and
+  Attendance. Every probe returns 403 or 404 with no tenant B data.
+- Same tenant: 33 probes for colleague and other-team ids, including file downloads, logos and banners. Every
+  probe returns 403 or 404 with no colleague data.
+- Ids in a request body, list filters with someone else's id, a session on another tenant's host and both SignalR
+  hubs: no leak.
+- **Real finding, fixed in this task:** the per-employee monitoring reads (activity, app usage, daily report and
+  export, device state, meeting signals, screenshots and their signed URLs) and the on-demand screenshot request
+  checked only the permission code, not management coverage. Any `monitoring:read` holder could read any employee
+  in the tenant. They now follow the same coverage rule as `/employees/{id}/overview/activity`. There are 12 new
+  probes that failed before the fix, a covering-manager positive control, unit tests, and an architecture test
+  that keeps new monitoring endpoints gated.
+- Open product decision: `GET /api/v1/monitoring/reports/productivity` still aggregates across the tenant for any
+  `monitoring:read` holder. It is left unchanged.
+
+### Not leaks
+
+- Inside a tenant, a colleague's employee id returns 403 while an unknown id returns 404, so anyone can tell an id
+  exists. The employee API is documented this way.
+- Leave approve or reject: the policy check runs before the approver check. For a request with no policy, a
+  non-approver gets 409 instead of 403.
+- `employees:read` is a retired permission code, so tests must not seed it.

@@ -10,6 +10,7 @@ using ONEVO.Application.Features.DevPlatform.Support.Mappers;
 using ONEVO.Application.Features.DevPlatform.Support.RepositoryInterfaces;
 using ONEVO.Application.Features.DevPlatform.Support.Services;
 using ONEVO.Domain.Features.DevPlatform.Support.Entities;
+using ONEVO.Application.Features.DevPlatform.Support.Validation;
 
 namespace ONEVO.Application.Features.DevPlatform.Support.Tenant;
 
@@ -75,7 +76,7 @@ public sealed class GetTenantSupportTicketQueryHandler
 }
 
 public sealed record CreateTenantSupportTicketCommand(string? Subject, string? Description, string? Priority, string? Category)
-    : IRequest<Result<TenantSupportTicketDto>>, IAuditedCommand<Result<TenantSupportTicketDto>>
+    : IRequest<Result<TenantSupportTicketDto>>, IAuditedCommand<Result<TenantSupportTicketDto>>, ISupportTicketInput
 {
     // Subject, description and category are customer text: never copied into the audit row.
     public AuditEntry DescribeAudit(Result<TenantSupportTicketDto>? response)
@@ -141,7 +142,7 @@ public sealed class CreateTenantSupportTicketCommandHandler
 /// </summary>
 public sealed record UpdateTenantSupportTicketCommand(
     Guid TicketId, string? Subject, string? Description, string? Priority, string? Category)
-    : IRequest<Result<TenantSupportTicketDto>>, IAuditedCommand<Result<TenantSupportTicketDto>>
+    : IRequest<Result<TenantSupportTicketDto>>, IAuditedCommand<Result<TenantSupportTicketDto>>, ISupportTicketInput
 {
     // Subject, description and category are customer text: never copied into the audit row.
     public AuditEntry DescribeAudit(Result<TenantSupportTicketDto>? response)

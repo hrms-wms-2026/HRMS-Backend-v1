@@ -1,6 +1,7 @@
 using System.Text.RegularExpressions;
 using Microsoft.Extensions.Caching.Memory;
 using ONEVO.Application.Common.ServiceInterfaces;
+using ONEVO.Application.Common.Tenancy;
 using ONEVO.Application.Features.DevPlatform.Tenancy.RepositoryInterfaces;
 using ONEVO.Domain.Features.InfrastructureModule.Entities;
 
@@ -11,9 +12,12 @@ public sealed class HostTenantResolutionMiddleware
     private readonly RequestDelegate _next;
     private readonly IMemoryCache _cache;
     private readonly string _rootDomain;
+    private readonly TenancyMode _mode;
 
-    private static readonly HashSet<string> AdminSubdomains =
+    private static readonly HashSet<string> AdminSubdomainSet =
         new(StringComparer.OrdinalIgnoreCase) { "admin", "console" };
+
+    internal static IReadOnlySet<string> AdminSubdomains => AdminSubdomainSet;
 
     private static readonly HashSet<string> SystemSubdomains =
         new(StringComparer.OrdinalIgnoreCase) { "www", "assets" };
@@ -33,6 +37,7 @@ public sealed class HostTenantResolutionMiddleware
         _cache = cache;
         _rootDomain = configuration["Tenancy:RootDomain"]
             ?? throw new InvalidOperationException("Tenancy:RootDomain is not configured.");
+        _mode = TenancyModeReader.Read(configuration);
     }
 
     public async Task InvokeAsync(HttpContext context)
@@ -47,6 +52,12 @@ public sealed class HostTenantResolutionMiddleware
         if (host != _rootDomain && !host.EndsWith("." + _rootDomain, StringComparison.Ordinal))
         {
             context.Response.StatusCode = StatusCodes.Status400BadRequest;
+            return;
+        }
+
+        if (_mode == TenancyMode.SingleHost)
+        {
+            await InvokeSingleHostAsync(context, writableCtx, tenants, host);
             return;
         }
 
@@ -91,7 +102,73 @@ public sealed class HostTenantResolutionMiddleware
             return;
         }
 
-        var cacheKey = $"tenant:slug:{subdomain}";
+        if (!await ResolveSlugAsync(context, writableCtx, tenants, subdomain))
+            return;
+
+        await _next(context);
+    }
+
+    private async Task InvokeSingleHostAsync(
+        HttpContext context,
+        IWritableTenantContext writableCtx,
+        ITenantRepository tenants,
+        string host)
+    {
+        if (host != _rootDomain)
+        {
+            context.Response.StatusCode = StatusCodes.Status400BadRequest;
+            return;
+        }
+
+        var path = context.Request.Path;
+
+        if (path.StartsWithSegments("/admin", StringComparison.OrdinalIgnoreCase))
+        {
+            writableCtx.SetAdminMode();
+            await _next(context);
+            return;
+        }
+
+        string? slug = context.Request.Headers[TenancyHeaders.Tenant].ToString();
+        if (string.IsNullOrEmpty(slug)
+            && path.StartsWithSegments("/hubs", StringComparison.OrdinalIgnoreCase))
+        {
+            slug = context.Request.Query[TenancyHeaders.HubQueryKey].ToString();
+        }
+
+        if (string.IsNullOrWhiteSpace(slug))
+        {
+            writableCtx.SetSystemMode();
+            await _next(context);
+            return;
+        }
+
+        if (AdminSubdomainSet.Contains(slug)
+            || SystemSubdomains.Contains(slug)
+            || RejectedSubdomains.Contains(slug)
+            || !SlugPattern.IsMatch(slug))
+        {
+            context.Response.StatusCode = StatusCodes.Status400BadRequest;
+            return;
+        }
+
+        if (!await ResolveSlugAsync(context, writableCtx, tenants, slug))
+            return;
+
+        await _next(context);
+    }
+
+    /// <summary>
+    /// Looks the slug up (cache first) and resolves the tenant context. Returns false after
+    /// writing a 404 when the slug is unknown.
+    /// </summary>
+    private async Task<bool> ResolveSlugAsync(
+        HttpContext context,
+        IWritableTenantContext writableCtx,
+        ITenantRepository tenants,
+        string slug)
+    {
+        var cacheKey = $"tenant:slug:{slug}";
 
         // Sentinel: null entry = known-missing slug
         if (_cache.TryGetValue(cacheKey, out TenantRegistryEntry? entry))
@@ -99,17 +176,17 @@ public sealed class HostTenantResolutionMiddleware
             if (entry is null)
             {
                 context.Response.StatusCode = StatusCodes.Status404NotFound;
-                return;
+                return false;
             }
         }
         else
         {
-            var tenant = await tenants.GetBySlugAsync(subdomain, context.RequestAborted);
+            var tenant = await tenants.GetBySlugAsync(slug, context.RequestAborted);
             if (tenant is null)
             {
                 _cache.Set(cacheKey, (TenantRegistryEntry?)null, TimeSpan.FromSeconds(30));
                 context.Response.StatusCode = StatusCodes.Status404NotFound;
-                return;
+                return false;
             }
 
             entry = new TenantRegistryEntry(tenant.Id, tenant.Slug, tenant.Status, null);
@@ -117,6 +194,6 @@ public sealed class HostTenantResolutionMiddleware
         }
 
         writableCtx.Resolve(entry!);
-        await _next(context);
+        return true;
     }
 }

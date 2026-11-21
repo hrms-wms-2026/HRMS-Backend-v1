@@ -6,10 +6,11 @@ using ONEVO.Application.Features.DevPlatform.SystemConfig.IntegrationCatalog.Map
 using ONEVO.Application.Features.DevPlatform.SystemConfig.IntegrationCatalog.RepositoryInterfaces;
 using ONEVO.Application.Features.DevPlatform.SystemConfig.PlatformOAuthApps.RepositoryInterfaces;
 using ONEVO.Application.Common.Auditing;
+using ONEVO.Application.Features.DevPlatform.SystemConfig.Validation;
 
 namespace ONEVO.Application.Features.DevPlatform.SystemConfig.IntegrationCatalog.Commands.UpdateIntegration;
 
-public sealed record UpdateIntegrationCommand(string IntegrationKey, string DisplayName, string? Description, string ConnectionScope, string CrownusAppProvider, string? LogoUrl, bool IsActive) : IRequest<Result<IntegrationCatalogDto>>, IAuditedCommand<Result<IntegrationCatalogDto>>
+public sealed record UpdateIntegrationCommand(string IntegrationKey, string DisplayName, string? Description, string ConnectionScope, string CrownusAppProvider, string? LogoUrl, bool IsActive) : IRequest<Result<IntegrationCatalogDto>>, IAuditedCommand<Result<IntegrationCatalogDto>>, IIntegrationCatalogInput
 {
     public AuditEntry DescribeAudit(Result<IntegrationCatalogDto>? response)
         => new("integration.updated", "integration", IntegrationKey, null, new { DisplayName, Description, ConnectionScope, CrownusAppProvider, LogoUrl, IsActive });

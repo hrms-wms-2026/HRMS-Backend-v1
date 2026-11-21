@@ -18,6 +18,6 @@ public class EmployeeEmergencyContactConfiguration : IEntityTypeConfiguration<Em
         builder.Property(c => c.EmployeeId).HasColumnName("employee_id").IsRequired();
         builder.HasIndex(c => new { c.TenantId, c.EmployeeId });
         builder.HasOne<ONEVO.Domain.Features.CoreHr.Entities.Employee>()
-            .WithMany().HasForeignKey(c => c.EmployeeId).OnDelete(DeleteBehavior.Cascade);
+            .WithMany().HasForeignKey(c => c.EmployeeId).OnDelete(DeleteBehavior.NoAction);
     }
 }

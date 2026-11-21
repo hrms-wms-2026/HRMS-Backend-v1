@@ -305,6 +305,9 @@ public sealed class ListEmployeesQueryHandlerAuthorityResolverIntegrationTests
         public Task<EmployeeListItemResponse?> GetVisibleByIdAsync(
             Guid tenantId, EmployeeVisibilityScope scope, Guid employeeId, CancellationToken ct = default)
             => throw new NotImplementedException();
+        public Task<IReadOnlyList<Guid>> ListVisibleIdsAsync(
+            Guid tenantId, EmployeeVisibilityScope scope, CancellationToken ct = default)
+            => throw new NotImplementedException();
         public Task<EmployeeEntity?> GetByIdAsync(Guid tenantId, Guid employeeId, CancellationToken ct = default)
             => throw new NotImplementedException();
         public Task<Guid?> GetLegalEntityIdAsync(Guid tenantId, Guid employeeId, CancellationToken ct = default)

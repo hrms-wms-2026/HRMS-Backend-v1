@@ -162,6 +162,7 @@ public class ApplicationDbContext : DbContext
     public DbSet<RoleTemplate> RoleTemplates => Set<RoleTemplate>();
     public DbSet<Role> Roles => Set<Role>();
     public DbSet<Permission> Permissions => Set<Permission>();
+    public DbSet<PermissionChange> PermissionChanges => Set<PermissionChange>();
     public DbSet<RolePermission> RolePermissions => Set<RolePermission>();
     public DbSet<UserRole> UserRoles => Set<UserRole>();
     public DbSet<UserPermissionOverride> UserPermissionOverrides => Set<UserPermissionOverride>();
@@ -427,6 +428,8 @@ public class ApplicationDbContext : DbContext
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         modelBuilder.ApplyConfigurationsFromAssembly(typeof(ApplicationDbContext).Assembly);
+        ONEVO.Infrastructure.Persistence.Integrity.ReferenceForeignKeys.Apply(modelBuilder);
+        ONEVO.Infrastructure.Persistence.Integrity.StatusCheckConstraints.Apply(modelBuilder);
 
         // Case-sensitive so = keeps PostgreSQL behaviour on hashes, tokens and unique indexes.
         modelBuilder.UseCollation("Latin1_General_100_CS_AS_SC");

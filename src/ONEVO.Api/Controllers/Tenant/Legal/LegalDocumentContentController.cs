@@ -24,6 +24,7 @@ public sealed class LegalDocumentContentController : ControllerBase
     }
 
     [HttpGet("api/v1/legal/documents/current")]
+    // Public by design: published legal text only, no tenant data; per-IP /api/v1 rate limit.
     [AllowAnonymous]
     public async Task<IActionResult> GetCurrent(CancellationToken ct)
     {
@@ -32,6 +33,7 @@ public sealed class LegalDocumentContentController : ControllerBase
     }
 
     [HttpGet("api/v1/legal/documents/{documentType}/{version}")]
+    // Public by design: published legal text only, no tenant data; per-IP /api/v1 rate limit.
     [AllowAnonymous]
     public async Task<IActionResult> GetByVersion(string documentType, string version, CancellationToken ct)
     {
