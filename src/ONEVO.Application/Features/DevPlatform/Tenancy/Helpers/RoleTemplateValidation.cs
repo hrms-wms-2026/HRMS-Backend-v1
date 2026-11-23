@@ -1,3 +1,4 @@
+using ONEVO.Application.Common.Authorization;
 using ONEVO.Application.Features.Auth.Permission;
 using ONEVO.Domain.Features.Auth.Entities;
 
@@ -15,7 +16,7 @@ internal static class RoleTemplateValidation
 
         foreach (var code in distinct)
         {
-            if (code == "*")
+            if (code == PermissionCatalog.SuperAdmin)
                 return "Wildcard permission cannot be used in role templates.";
 
             if (ModuleAutoGrants.Contains(code))

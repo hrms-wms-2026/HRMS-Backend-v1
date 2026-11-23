@@ -34,6 +34,7 @@ public class AuthPasswordController : ControllerBase
     /// tenant-vs-base branching). Always returns the same generic response either way.
     /// </summary>
     [HttpPost("forgot-password")]
+    // Public by design: always the same generic 200; AuthRateLimiting per IP and per email.
     [AllowAnonymous]
     public async Task<IActionResult> ForgotPassword([FromBody] ForgotPasswordRequest request, CancellationToken ct)
     {
@@ -47,6 +48,7 @@ public class AuthPasswordController : ControllerBase
 
     /// <summary>Reset password using a valid reset token.</summary>
     [HttpPost("reset-password")]
+    // Public by design: single-use hashed reset token; AuthRateLimiting per IP and per token.
     [AllowAnonymous]
     public async Task<IActionResult> ResetPassword([FromBody] ResetPasswordRequest request, CancellationToken ct)
     {
@@ -58,6 +60,7 @@ public class AuthPasswordController : ControllerBase
 
     /// <summary>Forced password change when must_change_password is true.</summary>
     [HttpPost("force-change-password")]
+    // Public by design: tenant host + current (temporary) password, generic 401; AuthRateLimiting per IP and per email.
     [AllowAnonymous]
     public async Task<IActionResult> ForceChangePassword([FromBody] ForcePasswordChangeRequest request, CancellationToken ct)
     {

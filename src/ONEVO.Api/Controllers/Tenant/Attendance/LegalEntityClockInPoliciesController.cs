@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using ONEVO.Api.Contracts.Attendance.ClockInPolicies;
 using ONEVO.Api.Filters;
+using ONEVO.Application.Common.Authorization;
 using ONEVO.Application.Features.TimeAttendance.Commands.ArchiveClockInPolicy;
 using ONEVO.Application.Features.TimeAttendance.Commands.CreateClockInPolicy;
 using ONEVO.Application.Features.TimeAttendance.Commands.RestoreClockInPolicy;
@@ -30,7 +31,7 @@ public class LegalEntityClockInPoliciesController : ControllerBase
     }
 
     [HttpGet]
-    [RequirePermission("attendance:read")]
+    [RequirePermission(PermissionCatalog.Attendance.Read)]
     public async Task<IActionResult> List(
         Guid legalEntityId,
         [FromQuery] bool includeInactive = false,
@@ -45,7 +46,7 @@ public class LegalEntityClockInPoliciesController : ControllerBase
     }
 
     [HttpGet("{id:guid}")]
-    [RequirePermission("attendance:read")]
+    [RequirePermission(PermissionCatalog.Attendance.Read)]
     public async Task<IActionResult> Get(
         Guid legalEntityId,
         Guid id,
@@ -58,7 +59,7 @@ public class LegalEntityClockInPoliciesController : ControllerBase
     }
 
     [HttpPost]
-    [RequirePermission("attendance:write")]
+    [RequirePermission(PermissionCatalog.Attendance.Write)]
     public async Task<IActionResult> Create(
         Guid legalEntityId,
         [FromBody] UpsertClockInPolicyRequest request,
@@ -71,7 +72,7 @@ public class LegalEntityClockInPoliciesController : ControllerBase
     }
 
     [HttpPut("{id:guid}")]
-    [RequirePermission("attendance:write")]
+    [RequirePermission(PermissionCatalog.Attendance.Write)]
     public async Task<IActionResult> Update(
         Guid legalEntityId,
         Guid id,
@@ -85,7 +86,7 @@ public class LegalEntityClockInPoliciesController : ControllerBase
     }
 
     [HttpPost("{id:guid}/archive")]
-    [RequirePermission("attendance:write")]
+    [RequirePermission(PermissionCatalog.Attendance.Write)]
     public async Task<IActionResult> Archive(
         Guid legalEntityId,
         Guid id,
@@ -98,7 +99,7 @@ public class LegalEntityClockInPoliciesController : ControllerBase
     }
 
     [HttpPost("{id:guid}/restore")]
-    [RequirePermission("attendance:write")]
+    [RequirePermission(PermissionCatalog.Attendance.Write)]
     public async Task<IActionResult> Restore(
         Guid legalEntityId,
         Guid id,

@@ -162,7 +162,11 @@ internal static class AuthenticationExtensions
                         });
                     }
                 };
-            });
+            })
+            // Task 15: used only by the authorization fallback policy. Forwards to the one scheme
+            // that matches the request; see FallbackAuthenticationScheme.
+            .AddPolicyScheme(ONEVO.Api.Auth.FallbackAuthenticationScheme.Name, displayName: null, options =>
+                options.ForwardDefaultSelector = ONEVO.Api.Auth.FallbackAuthenticationScheme.Select);
 
         // SEC-15: ES256 only (HS256 too while a legacy window is configured), and a token's kid must
         // name a listed key. TryAllIssuerSigningKeys stays off: with it on, a token signed by a listed

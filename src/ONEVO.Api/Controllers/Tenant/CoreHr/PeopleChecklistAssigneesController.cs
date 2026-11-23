@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using ONEVO.Api.Contracts.CoreHr.People;
 using ONEVO.Api.Filters;
+using ONEVO.Application.Common.Authorization;
 using ONEVO.Application.Features.CoreHr.Onboarding.Queries.ListChecklistAssigneePositions;
 using ONEVO.Application.Features.CoreHr.Onboarding.Queries.ListChecklistAssignees;
 
@@ -17,7 +18,7 @@ public sealed class PeopleChecklistAssigneesController(IMediator mediator) : Con
     /// (employees:write) and the checklist template builder (checklists:manage), so neither depends
     /// on org:read. Tenant is server-derived.</summary>
     [HttpGet("checklist-assignee-positions")]
-    [RequireAnyPermission("employees:write", "checklists:manage")]
+    [RequireAnyPermission(PermissionCatalog.Employees.Write, PermissionCatalog.Checklists.Manage)]
     public async Task<IActionResult> ListPositions(
         [FromQuery] Guid legalEntityId,
         CancellationToken ct = default)
@@ -32,7 +33,7 @@ public sealed class PeopleChecklistAssigneesController(IMediator mediator) : Con
     /// to assign a checklist task. Used by Add Employee and the checklist template builder; tenant
     /// is server-derived.</summary>
     [HttpGet("checklist-assignees")]
-    [RequireAnyPermission("employees:write", "checklists:manage")]
+    [RequireAnyPermission(PermissionCatalog.Employees.Write, PermissionCatalog.Checklists.Manage)]
     public async Task<IActionResult> List(
         [FromQuery] Guid legalEntityId,
         [FromQuery] Guid positionId,

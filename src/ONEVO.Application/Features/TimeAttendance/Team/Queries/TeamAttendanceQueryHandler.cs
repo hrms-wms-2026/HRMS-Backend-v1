@@ -1,4 +1,5 @@
 using MediatR;
+using ONEVO.Application.Common.Authorization;
 using ONEVO.Application.Common.Models;
 using ONEVO.Application.Common.ServiceInterfaces;
 using ONEVO.Application.Features.CoreHr.Employee.RepositoryInterfaces;
@@ -28,7 +29,7 @@ public sealed class TeamAttendanceQueryHandler(
     : IRequestHandler<GetTeamAttendanceSummaryQuery, Result<TeamAttendanceSummaryResponse>>,
       IRequestHandler<GetTeamAttendanceEmployeesQuery, Result<PagedResult<TeamAttendanceEmployeeRow>>>
 {
-    private const string AttendanceReadPermission = "attendance:read";
+    private const string AttendanceReadPermission = PermissionCatalog.Attendance.Read;
     /// <summary>GetCoveredTeamTodayQuery's own maximum; employees past it keep the reader's bucket for today.</summary>
     private const int TodayLimit = 200;
     private const int PreviewLimit = 6;

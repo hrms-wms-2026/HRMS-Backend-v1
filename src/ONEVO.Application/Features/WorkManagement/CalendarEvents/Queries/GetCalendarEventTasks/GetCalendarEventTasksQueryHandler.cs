@@ -1,4 +1,5 @@
 using MediatR;
+using ONEVO.Application.Common.Authorization;
 using ONEVO.Application.Common.Models;
 using ONEVO.Application.Common.ServiceInterfaces;
 using ONEVO.Application.Features.Auth.Permission.ServiceInterfaces;
@@ -73,7 +74,7 @@ public sealed class GetCalendarEventTasksQueryHandler : IRequestHandler<GetCalen
         // Same per-objective read gate GetObjectiveTasksQueryHandler uses - a milestone can span
         // several objectives, and project membership alone is a weaker check than that endpoint's.
         var permissions = await _permissionResolver.ResolveAsync(_currentUser.UserId, tenantId, null, ct);
-        var hasReadPermission = permissions.Contains("*");
+        var hasReadPermission = permissions.Contains(PermissionCatalog.SuperAdmin);
         var objectives = await _objectives.GetAllByProjectIdAsync(tenantId, calendarEvent.ProjectId, ct);
         var objectivesById = objectives.ToDictionary(o => o.Id);
         if (!hasReadPermission)

@@ -1,5 +1,6 @@
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
+using ONEVO.Application.Common.Authorization;
 using ONEVO.Application.Common.RepositoryInterfaces;
 using ONEVO.Application.Common.ServiceInterfaces;
 using ONEVO.Application.Features.Auth.Permission.RepositoryInterfaces;
@@ -32,13 +33,13 @@ public class FaceVerificationRetryPolicy : IFaceVerificationRetryPolicy
     public const string RelatedEntityType = "face_verification_attempt";
 
     /// <summary>The employee's manager is whoever approves their attendance.</summary>
-    public const string ReviewerPermission = "attendance:approve";
+    public const string ReviewerPermission = PermissionCatalog.Attendance.Approve;
 
     /// <summary>
     /// With no manager above the employee (e.g. the owner), HR — whoever can edit employee
     /// records — is alerted instead.
     /// </summary>
-    public const string HrFallbackPermission = "employees:write";
+    public const string HrFallbackPermission = PermissionCatalog.Employees.Write;
 
     private const string NoReferencePhoto = "no_reference_photo";
     private const string VerificationFailed = "verification_failed";

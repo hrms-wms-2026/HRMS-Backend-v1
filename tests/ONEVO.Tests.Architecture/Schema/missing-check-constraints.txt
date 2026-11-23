@@ -1,0 +1,109 @@
+# Text columns named like status, type, kind or state that no check constraint covers. Task 39 ratchet,
+# checked by SchemaIntegrityInventoryTests: add a line only with a reason, and delete it once the
+# constraint exists (see StatusCheckConstraints).
+# Format: table.column | group | reason
+# Groups: todo (constraint still to add), free (an open value such as a MIME type).
+access_grant_requests.action_type | todo | not reviewed yet: task-39f
+access_grant_requests.approval_status | todo | not reviewed yet: task-39f
+agent_commands.command_type | todo | not reviewed yet: task-39f
+agent_commands.status | todo | not reviewed yet: task-39f
+attendance_corrections.correction_type | todo | not reviewed yet: task-39f
+attendance_corrections.status | todo | not reviewed yet: task-39f
+attendance_records.work_time_type | todo | not reviewed yet: task-39f
+audit_logs.resource_type | todo | not reviewed yet: task-39f
+biometric_enrollment_attempts.challenge_type | todo | not reviewed yet: task-39f
+break_records.break_type | todo | not reviewed yet: task-39f
+bulk_onboarding_batches.default_employment_type | todo | not reviewed yet: task-39f
+calendar_event_meetings.owner_kind | todo | not reviewed yet: task-39f
+calendar_event_meetings.status | todo | not reviewed yet: task-39f
+calendar_event_participant_rsvp_history.from_status | todo | not reviewed yet: task-39f
+calendar_event_participant_rsvp_history.to_status | todo | not reviewed yet: task-39f
+calendar_event_participants.response_status | todo | not reviewed yet: task-39f
+calendar_events.status | todo | not reviewed yet: task-39f
+checklist_templates.template_type | todo | not reviewed yet: task-39f
+clock_in_policies.scope_type | todo | not reviewed yet: task-39f
+configuration_templates.template_type | todo | not reviewed yet: task-39f
+conversation_message_attachments.content_type | free | a MIME type, not a closed list
+conversation_message_revisions.kind | todo | not reviewed yet: task-39f
+conversation_messages.kind | todo | not reviewed yet: task-39f
+conversations.subject_kind | todo | not reviewed yet: task-39f
+daily_work_location_confirmations.location_type | todo | not reviewed yet: task-39f
+device_change_requests.status | todo | not reviewed yet: task-39f
+employee_addresses.address_type | todo | not reviewed yet: task-39f
+employee_bank_details.account_type | todo | not reviewed yet: task-39f
+employee_checklist_tasks.lifecycle_type | todo | not reviewed yet: task-39f
+employee_checklist_tasks.owner_type | todo | not reviewed yet: task-39f
+employee_checklist_tasks.status | todo | not reviewed yet: task-39f
+entity_assets.created_by_type | todo | not reviewed yet: task-39f
+entity_assets.owner_type | todo | not reviewed yet: task-39f
+external_calendar_connections.status | todo | not reviewed yet: task-39f
+external_calendar_event_links.sync_status | todo | not reviewed yet: task-39f
+feature_access_grants.grantee_type | todo | not reviewed yet: task-39f
+file_records.content_type | free | a MIME type, not a closed list
+file_records.detected_content_type | free | a MIME type, not a closed list
+file_records.status | todo | not reviewed yet: task-39f
+file_upload_reservations.status | todo | not reviewed yet: task-39f
+global_app_catalog.logo_content_type | free | a MIME type, not a closed list
+idempotency_records.status | todo | not reviewed yet: task-39f
+inbox_decision_journal.kind | todo | not reviewed yet: task-39f
+invitation_tokens.status | todo | not reviewed yet: task-39f
+leave_policy_assignments.target_kind | todo | not reviewed yet: task-39f
+legal_acceptance_records.document_type | todo | not reviewed yet: task-39f
+legal_document_versions.document_type | todo | not reviewed yet: task-39f
+legal_document_versions.status | todo | not reviewed yet: task-39f
+location_change_requests.status | todo | not reviewed yet: task-39f
+management_coverage_records.covered_target_type | todo | not reviewed yet: task-39f
+management_coverage_records.status | todo | not reviewed yet: task-39f
+meeting_details.attendance_status | todo | not reviewed yet: task-39f
+meeting_occurrence_attendees.attendee_kind | todo | not reviewed yet: task-39f
+meeting_occurrence_attendees.response_status | todo | not reviewed yet: task-39f
+monitoring_evidence_assets.evidence_type | todo | not reviewed yet: task-39f
+monitoring_evidence_assets.trigger_type | todo | not reviewed yet: task-39f
+monitoring_face_scans.content_type | free | a MIME type, not a closed list
+monitoring_face_scans.status | todo | not reviewed yet: task-39f
+monitoring_policy_overrides.scope_type | todo | not reviewed yet: task-39f
+notification_deliveries.related_entity_type | todo | not reviewed yet: task-39f
+notification_deliveries.status | todo | not reviewed yet: task-39f
+notification_template_versions.status | todo | not reviewed yet: task-39f
+notifications.related_entity_type | todo | not reviewed yet: task-39f
+offboarding_records.status | todo | not reviewed yet: task-39f
+offboarding_task_bypass_requests.prior_task_status | todo | not reviewed yet: task-39f
+offboarding_task_bypass_requests.status | todo | not reviewed yet: task-39f
+onboarding_drafts.employment_type | todo | not reviewed yet: task-39f
+outbox_messages.type | todo | not reviewed yet: task-39f
+permission_changes.kind | todo | values are string literals in PermissionCatalogSynchronizer (rename, default-grant, soft-retire, remove); move them to constants first: task-39f
+personal_calendar_events.event_status | todo | not reviewed yet: task-39f
+personal_calendar_events.source_type | todo | not reviewed yet: task-39f
+platform_auth_events.event_type | todo | not reviewed yet: task-39f
+platform_users.invite_status | todo | not reviewed yet: task-39f
+platform_users.mfa_status | todo | not reviewed yet: task-39f
+platform_users.status | todo | not reviewed yet: task-39f
+position_assignments.assignment_kind | todo | not reviewed yet: task-39f
+positions.position_type | todo | not reviewed yet: task-39f
+presence_sessions.status | todo | not reviewed yet: task-39f
+project_member_invitations.invite_type | todo | not reviewed yet: task-39f
+project_member_invitations.status | todo | not reviewed yet: task-39f
+release_calendar.reminder_type | todo | not reviewed yet: task-39f
+seat_increase_requests.status | todo | not reviewed yet: task-39f
+sprint_activity_logs.from_status | todo | not reviewed yet: task-39f
+sprint_activity_logs.to_status | todo | not reviewed yet: task-39f
+subscription_invoices.status | todo | not reviewed yet: task-39f
+support_ticket_attachments.content_type | free | a MIME type, not a closed list
+support_tickets.status | todo | not reviewed yet: task-39f
+task_categories.kind | todo | not reviewed yet: task-39f
+tasks.task_kind | todo | not reviewed yet: task-39f
+tenant_configuration_template_applications.template_type | todo | not reviewed yet: task-39f
+tenant_one_time_charges.status | todo | not reviewed yet: task-39f
+tenant_setup_selections.status | todo | not reviewed yet: task-39f
+tenant_subscriptions.maintenance_status | todo | not reviewed yet: task-39f
+tenant_subscriptions.status | todo | not reviewed yet: task-39f
+user_mfa.method_type | todo | not reviewed yet: task-39f
+user_permission_overrides.grant_type | todo | not reviewed yet: task-39f
+wm_approval_requests.action_type | todo | not reviewed yet: task-39f
+wm_approval_requests.status | todo | not reviewed yet: task-39f
+wm_approval_requests.target_type | todo | not reviewed yet: task-39f
+wm_monitor_alerts.target_type | todo | not reviewed yet: task-39f
+wm_notification_log.action_type | todo | not reviewed yet: task-39f
+wm_notification_log.kind | todo | not reviewed yet: task-39f
+wm_notification_log.target_type | todo | not reviewed yet: task-39f
+work_area_change_requests.status | todo | not reviewed yet: task-39f

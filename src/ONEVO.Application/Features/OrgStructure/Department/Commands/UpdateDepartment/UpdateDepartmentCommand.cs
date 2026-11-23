@@ -1,4 +1,5 @@
 using MediatR;
+using ONEVO.Application.Features.OrgStructure.Commands.DepartmentValidation;
 using ONEVO.Application.Common.Models;
 using ONEVO.Application.Features.OrgStructure.DTOs.Responses;
 
@@ -11,4 +12,4 @@ public record UpdateDepartmentCommand(
     string? Code,
     Guid? ParentDepartmentId,
     Guid? HeadPositionId,
-    string? Version = null) : IRequest<Result<DepartmentResponse>>;
+    string? Version = null) : IRequest<Result<DepartmentResponse>>, IDepartmentInput;

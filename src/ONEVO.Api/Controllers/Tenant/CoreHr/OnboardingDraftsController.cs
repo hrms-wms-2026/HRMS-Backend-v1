@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using ONEVO.Api.Contracts.CoreHr.OnboardingDrafts;
 using ONEVO.Api.Filters;
+using ONEVO.Application.Common.Authorization;
 using ONEVO.Application.Features.CoreHr.OnboardingDrafts.Commands.CancelOnboardingDraft;
 using ONEVO.Application.Features.CoreHr.OnboardingDrafts.Commands.FinalizeOnboardingDraft;
 using ONEVO.Application.Features.CoreHr.OnboardingDrafts.Commands.SaveOnboardingDraft;
@@ -27,7 +28,7 @@ public class OnboardingDraftsController : ControllerBase
     /// <summary>List onboarding drafts. Defaults to the caller's own drafts unless they hold
     /// employees:write.</summary>
     [HttpGet]
-    [RequirePermission("employees:write")]
+    [RequirePermission(PermissionCatalog.Employees.Write)]
     public async Task<IActionResult> List(
         [FromQuery] int page = 1, [FromQuery] int pageSize = 25, [FromQuery] bool mine = false, CancellationToken ct = default)
     {
@@ -38,7 +39,7 @@ public class OnboardingDraftsController : ControllerBase
     /// <summary>The chosen reporting manager's chain up to the organisation root (root first,
     /// manager last), for the wizard's Reporting step preview.</summary>
     [HttpGet("reporting-chain")]
-    [RequirePermission("employees:write")]
+    [RequirePermission(PermissionCatalog.Employees.Write)]
     public async Task<IActionResult> GetReportingChain([FromQuery] Guid managerEmployeeId, CancellationToken ct = default)
     {
         var result = await _mediator.Send(new GetOnboardingReportingChainQuery(managerEmployeeId), ct);
@@ -48,7 +49,7 @@ public class OnboardingDraftsController : ControllerBase
     /// <summary>Who will have to approve adding someone to <paramref name="positionId"/>: the position access
     /// approvers when its template requires approval, and the billing managers when no seat is free.</summary>
     [HttpGet("approval-preview")]
-    [RequirePermission("employees:write")]
+    [RequirePermission(PermissionCatalog.Employees.Write)]
     public async Task<IActionResult> GetApprovalPreview([FromQuery] Guid? positionId = null, CancellationToken ct = default)
     {
         var result = await _mediator.Send(
@@ -59,7 +60,7 @@ public class OnboardingDraftsController : ControllerBase
     /// <summary>Anyone with an active seat in the company matching <paramref name="search"/>
     /// (name, position or department) - the Reporting step's "Choose someone else" box.</summary>
     [HttpGet("manager-candidates")]
-    [RequirePermission("employees:write")]
+    [RequirePermission(PermissionCatalog.Employees.Write)]
     public async Task<IActionResult> SearchManagerCandidates(
         [FromQuery] Guid legalEntityId, [FromQuery] string? search = null, CancellationToken ct = default)
     {
@@ -70,7 +71,7 @@ public class OnboardingDraftsController : ControllerBase
     /// <summary>Clock-in evidence (camera photo, location capture) a new employee would inherit
     /// from the chosen work mode and organisation policy, for the wizard's Work setup step.</summary>
     [HttpGet("clock-in-defaults")]
-    [RequirePermission("employees:write")]
+    [RequirePermission(PermissionCatalog.Employees.Write)]
     public async Task<IActionResult> GetClockInDefaults(
         [FromQuery] Guid legalEntityId, [FromQuery] Guid workModeId,
         [FromQuery] Guid? positionId = null, [FromQuery] Guid? departmentId = null, CancellationToken ct = default)
@@ -84,7 +85,7 @@ public class OnboardingDraftsController : ControllerBase
     /// tenant, 403 if it exists but the caller neither started it nor holds
     /// employees:write.</summary>
     [HttpGet("{id:guid}")]
-    [RequirePermission("employees:write")]
+    [RequirePermission(PermissionCatalog.Employees.Write)]
     public async Task<IActionResult> GetById(Guid id, CancellationToken ct = default)
     {
         var result = await _mediator.Send(new GetOnboardingDraftQuery(id), ct);
@@ -97,7 +98,7 @@ public class OnboardingDraftsController : ControllerBase
     /// handler, not the caller. Idempotency-Key is honored so a duplicate retry does not
     /// create a second draft row.</summary>
     [HttpPost]
-    [RequirePermission("employees:write")]
+    [RequirePermission(PermissionCatalog.Employees.Write)]
     [Idempotent]
     public async Task<IActionResult> Create([FromBody] SaveOnboardingDraftRequest request, CancellationToken ct = default)
     {
@@ -117,7 +118,7 @@ public class OnboardingDraftsController : ControllerBase
     /// <summary>Update/resume an existing draft. If-Match, when present, is checked against
     /// the draft's current version; a stale write returns 409.</summary>
     [HttpPut("{id:guid}")]
-    [RequirePermission("employees:write")]
+    [RequirePermission(PermissionCatalog.Employees.Write)]
     public async Task<IActionResult> Update(Guid id, [FromBody] SaveOnboardingDraftRequest request, CancellationToken ct = default)
     {
         var ifMatch = Request.Headers.IfMatch.FirstOrDefault()?.Trim('"');
@@ -136,7 +137,7 @@ public class OnboardingDraftsController : ControllerBase
     /// <summary>Discards a draft (soft state change to cancelled). Idempotent; a finalized draft
     /// cannot be cancelled.</summary>
     [HttpDelete("{id:guid}")]
-    [RequirePermission("employees:write")]
+    [RequirePermission(PermissionCatalog.Employees.Write)]
     public async Task<IActionResult> Cancel(Guid id, CancellationToken ct = default)
     {
         var result = await _mediator.Send(new CancelOnboardingDraftCommand(id), ct);
@@ -149,7 +150,7 @@ public class OnboardingDraftsController : ControllerBase
     /// an access grant request and leaves the draft waiting for that approval. TenantId is
     /// always server-derived; the request carries no body.</summary>
     [HttpPost("{id:guid}/finalize")]
-    [RequirePermission("employees:write")]
+    [RequirePermission(PermissionCatalog.Employees.Write)]
     public async Task<IActionResult> Finalize(Guid id, CancellationToken ct = default)
     {
         var result = await _mediator.Send(new FinalizeOnboardingDraftCommand(id), ct);

@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using ONEVO.Api.Contracts.Leave.Holidays;
 using ONEVO.Api.Filters;
+using ONEVO.Application.Common.Authorization;
 using ONEVO.Application.Features.Leave.Calendar.Commands;
 
 namespace ONEVO.Api.Controllers.Tenant.Leave;
@@ -17,7 +18,7 @@ public sealed class LeaveHolidaysController : ControllerBase
     public LeaveHolidaysController(IMediator mediator) => _mediator = mediator;
 
     [HttpGet]
-    [RequireAnyPermission("leave:manage", "calendar:read")]
+    [RequireAnyPermission(PermissionCatalog.Leave.Manage, PermissionCatalog.Calendar.Read)]
     public async Task<IActionResult> List([FromQuery] DateOnly from, [FromQuery] DateOnly to, CancellationToken ct)
     {
         var result = await _mediator.Send(new ListLeaveHolidaysQuery(from, to), ct);
@@ -25,7 +26,7 @@ public sealed class LeaveHolidaysController : ControllerBase
     }
 
     [HttpPost]
-    [RequirePermission("leave:manage")]
+    [RequirePermission(PermissionCatalog.Leave.Manage)]
     public async Task<IActionResult> Create([FromBody] CreateLeaveHolidayRequest request, CancellationToken ct)
     {
         var result = await _mediator.Send(new CreateLeaveHolidayCommand(request.Name, request.Date, request.EndDate), ct);
@@ -33,7 +34,7 @@ public sealed class LeaveHolidaysController : ControllerBase
     }
 
     [HttpDelete("{id:guid}")]
-    [RequirePermission("leave:manage")]
+    [RequirePermission(PermissionCatalog.Leave.Manage)]
     public async Task<IActionResult> Delete(Guid id, CancellationToken ct)
     {
         var result = await _mediator.Send(new DeleteLeaveHolidayCommand(id), ct);

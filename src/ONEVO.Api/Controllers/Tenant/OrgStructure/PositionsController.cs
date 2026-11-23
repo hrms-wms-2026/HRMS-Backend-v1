@@ -1,3 +1,4 @@
+using ONEVO.Application.Common.Authorization;
 using ONEVO.Application.Features.OrgStructure.Queries.GetPositionPeopleChart;
 using MediatR;
 using Microsoft.AspNetCore.Authorization;
@@ -34,7 +35,7 @@ public class PositionsController : ControllerBase
     /// <summary>List positions for a specific legal entity. Supports filtering by department,
     /// search, sort, and pagination. Active positions only unless includeInactive=true.</summary>
     [HttpGet]
-    [RequirePermission("org:read")]
+    [RequirePermission(PermissionCatalog.Org.Read)]
     public async Task<IActionResult> List(
         Guid legalEntityId,
         [FromQuery] Guid? departmentId = null,
@@ -58,7 +59,7 @@ public class PositionsController : ControllerBase
 
     /// <summary>Get the full position hierarchy for a legal entity.</summary>
     [HttpGet("tree")]
-    [RequirePermission("org:read")]
+    [RequirePermission(PermissionCatalog.Org.Read)]
     public async Task<IActionResult> Tree(
         Guid legalEntityId,
         [FromQuery] bool includeInactive = false,
@@ -73,7 +74,7 @@ public class PositionsController : ControllerBase
     /// <summary>Person-level reporting chart: one card per position holder under the person
     /// they actually report to (including one-off managers), plus vacant-position cards.</summary>
     [HttpGet("people-chart")]
-    [RequirePermission("org:read")]
+    [RequirePermission(PermissionCatalog.Org.Read)]
     public async Task<IActionResult> PeopleChart(Guid legalEntityId, CancellationToken ct = default)
     {
         var result = await _mediator.Send(new GetPositionPeopleChartQuery(legalEntityId), ct);
@@ -84,7 +85,7 @@ public class PositionsController : ControllerBase
 
     /// <summary>Validates a reporting-branch move and returns its exact impact without saving it.</summary>
     [HttpPost("people-chart/reporting-line/preview")]
-    [RequirePermission("org:manage")]
+    [RequirePermission(PermissionCatalog.Org.Manage)]
     public async Task<IActionResult> PreviewReportingLineMove(
         Guid legalEntityId,
         [FromBody] ReportingLineMoveRequest request,
@@ -100,7 +101,7 @@ public class PositionsController : ControllerBase
     /// <summary>Moves the top-most selected reporting branches under a new manager atomically.
     /// Relationships inside each moved branch are preserved.</summary>
     [HttpPost("people-chart/reporting-line/move")]
-    [RequirePermission("org:manage")]
+    [RequirePermission(PermissionCatalog.Org.Manage)]
     public async Task<IActionResult> MoveReportingLines(
         Guid legalEntityId,
         [FromBody] ReportingLineMoveRequest request,
@@ -115,7 +116,7 @@ public class PositionsController : ControllerBase
 
     /// <summary>Get a single position by Legal Entity ID and Position ID.</summary>
     [HttpGet("{positionId:guid}")]
-    [RequirePermission("org:read")]
+    [RequirePermission(PermissionCatalog.Org.Read)]
     public async Task<IActionResult> Get(
         Guid legalEntityId,
         Guid positionId,
@@ -130,7 +131,7 @@ public class PositionsController : ControllerBase
     /// <summary>Current active PrimaryEmployment holders of a position — used to disambiguate
     /// reporting-manager selection when the target position has multiple occupants.</summary>
     [HttpGet("{positionId:guid}/active-holders")]
-    [RequirePermission("org:read")]
+    [RequirePermission(PermissionCatalog.Org.Read)]
     public async Task<IActionResult> GetActiveHolders(
         Guid legalEntityId,
         Guid positionId,
@@ -144,7 +145,7 @@ public class PositionsController : ControllerBase
 
     /// <summary>Create a position under a specific legal entity.</summary>
     [HttpPost]
-    [RequirePermission("org:manage")]
+    [RequirePermission(PermissionCatalog.Org.Manage)]
     public async Task<IActionResult> Create(
         Guid legalEntityId,
         [FromBody] CreatePositionRequest request,
@@ -167,7 +168,7 @@ public class PositionsController : ControllerBase
 
     /// <summary>Update position details. Legal Entity ID and Position ID are sourced from the route.</summary>
     [HttpPut("{positionId:guid}")]
-    [RequirePermission("org:manage")]
+    [RequirePermission(PermissionCatalog.Org.Manage)]
     public async Task<IActionResult> Update(
         Guid legalEntityId,
         Guid positionId,
@@ -193,7 +194,7 @@ public class PositionsController : ControllerBase
 
     /// <summary>Checks whether a position can be archived. Read-only - does not mutate the position.</summary>
     [HttpPost("{positionId:guid}/archive-check")]
-    [RequirePermission("org:read")]
+    [RequirePermission(PermissionCatalog.Org.Read)]
     public async Task<IActionResult> ArchiveCheck(
         Guid legalEntityId,
         Guid positionId,
@@ -207,7 +208,7 @@ public class PositionsController : ControllerBase
 
     /// <summary>Archives a position by setting IsActive = false. Soft deactivation only, not a physical delete.</summary>
     [HttpPost("{positionId:guid}/archive")]
-    [RequirePermission("org:manage")]
+    [RequirePermission(PermissionCatalog.Org.Manage)]
     public async Task<IActionResult> Archive(
         Guid legalEntityId,
         Guid positionId,
@@ -221,7 +222,7 @@ public class PositionsController : ControllerBase
 
     /// <summary>Restores an archived position by setting IsActive = true.</summary>
     [HttpPost("{positionId:guid}/restore")]
-    [RequirePermission("org:manage")]
+    [RequirePermission(PermissionCatalog.Org.Manage)]
     public async Task<IActionResult> Restore(
         Guid legalEntityId,
         Guid positionId,
@@ -235,7 +236,7 @@ public class PositionsController : ControllerBase
 
     /// <summary>Gets the System Access Role template for a position.</summary>
     [HttpGet("{positionId:guid}/access")]
-    [RequirePermission("org:read")]
+    [RequirePermission(PermissionCatalog.Org.Read)]
     public async Task<IActionResult> GetAccess(
         Guid legalEntityId,
         Guid positionId,
@@ -249,7 +250,7 @@ public class PositionsController : ControllerBase
 
     /// <summary>Sets or updates the System Access Role template for a position.</summary>
     [HttpPut("{positionId:guid}/access")]
-    [RequirePermission("org:manage")]
+    [RequirePermission(PermissionCatalog.Org.Manage)]
     public async Task<IActionResult> SetAccess(
         Guid legalEntityId,
         Guid positionId,
@@ -271,7 +272,7 @@ public class PositionsController : ControllerBase
 
     /// <summary>Resolves coverage for a covered target to specific employees.</summary>
     [HttpGet("coverage/resolve")]
-    [RequirePermission("org:read")]
+    [RequirePermission(PermissionCatalog.Org.Read)]
     public async Task<IActionResult> ResolveCoverage(
         Guid legalEntityId,
         [FromQuery] string coveredTargetType,
@@ -291,7 +292,7 @@ public class PositionsController : ControllerBase
 
     /// <summary>Gets management coverage records where this position is the owner/manager.</summary>
     [HttpGet("{positionId:guid}/coverage")]
-    [RequirePermission("org:read")]
+    [RequirePermission(PermissionCatalog.Org.Read)]
     public async Task<IActionResult> GetCoverage(
         Guid legalEntityId,
         Guid positionId,
@@ -308,7 +309,7 @@ public class PositionsController : ControllerBase
 
     /// <summary>Expanded, read-only coverage scope for the position and people charts.</summary>
     [HttpGet("{positionId:guid}/coverage-visualization")]
-    [RequirePermission("org:read")]
+    [RequirePermission(PermissionCatalog.Org.Read)]
     public async Task<IActionResult> GetCoverageVisualization(
         Guid legalEntityId,
         Guid positionId,
@@ -323,7 +324,7 @@ public class PositionsController : ControllerBase
 
     /// <summary>Adds a manual management coverage rule for this position.</summary>
     [HttpPost("{positionId:guid}/coverage")]
-    [RequirePermission("org:manage")]
+    [RequirePermission(PermissionCatalog.Org.Manage)]
     public async Task<IActionResult> AddCoverage(
         Guid legalEntityId,
         Guid positionId,
@@ -348,7 +349,7 @@ public class PositionsController : ControllerBase
 
     /// <summary>Updates the responsibility level (ownerOrder) of a manual management coverage rule.</summary>
     [HttpPut("{positionId:guid}/coverage/{coverageId:guid}")]
-    [RequirePermission("org:manage")]
+    [RequirePermission(PermissionCatalog.Org.Manage)]
     public async Task<IActionResult> UpdateCoverage(
         Guid legalEntityId,
         Guid positionId,
@@ -372,7 +373,7 @@ public class PositionsController : ControllerBase
 
     /// <summary>Removes a management coverage rule for this position.</summary>
     [HttpPost("{positionId:guid}/coverage/{coverageId:guid}/remove")]
-    [RequirePermission("org:manage")]
+    [RequirePermission(PermissionCatalog.Org.Manage)]
     public async Task<IActionResult> RemoveCoverage(
         Guid legalEntityId,
         Guid positionId,

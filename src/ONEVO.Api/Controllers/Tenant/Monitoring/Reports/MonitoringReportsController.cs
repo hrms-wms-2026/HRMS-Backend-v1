@@ -2,6 +2,7 @@ using MediatR;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using ONEVO.Api.Filters;
+using ONEVO.Application.Common.Authorization;
 using ONEVO.Application.Features.Monitoring.Reports.Queries.GetProductivityReport;
 
 namespace ONEVO.Api.Controllers.Tenant.Monitoring.Reports;
@@ -21,7 +22,7 @@ public class MonitoringReportsController : ControllerBase
     /// is just the caller choosing a from/to range - there is no separate endpoint per period.
     /// </summary>
     [HttpGet("productivity")]
-    [RequirePermission("monitoring:read")]
+    [RequirePermission(PermissionCatalog.Monitoring.Read)]
     public async Task<IActionResult> GetProductivityReport(
         [FromQuery] ProductivityReportScope scope,
         [FromQuery] Guid? scopeId,
