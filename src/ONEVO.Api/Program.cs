@@ -27,6 +27,10 @@ if (!generatingOpenApiDocuments)
     ConfigurationStartupValidator.ValidateRequiredLocalConfiguration(
         builder.Configuration,
         builder.Environment.EnvironmentName);
+    // Outside Development/Test: refuse to start on a missing, placeholder or local-host setting (task 05).
+    ONEVO.Infrastructure.Configuration.DeploymentConfigurationValidator.Validate(
+        builder.Configuration,
+        builder.Environment.EnvironmentName);
     ConfigurationStartupValidator.ValidateTrayJwtSigningKeys(
         builder.Configuration,
         builder.Environment.EnvironmentName);
