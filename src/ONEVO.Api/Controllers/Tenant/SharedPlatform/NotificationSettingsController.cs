@@ -2,6 +2,7 @@ using MediatR;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using ONEVO.Api.Filters;
+using ONEVO.Application.Common.Authorization;
 using ONEVO.Application.Common.Models;
 using ONEVO.Application.Features.SharedPlatform.Notifications.Settings.Commands.ResetNotificationSetting;
 using ONEVO.Application.Features.SharedPlatform.Notifications.Settings.Commands.UpdateNotificationSetting;
@@ -15,7 +16,7 @@ namespace ONEVO.Api.Controllers.Tenant.SharedPlatform;
 [ApiController]
 [Route("api/v1/settings/notifications")]
 [Authorize(Policy = "TenantPolicy")]
-[RequirePermission("notifications:manage")]
+[RequirePermission(PermissionCatalog.Notifications.Manage)]
 public sealed class NotificationSettingsController : ControllerBase
 {
     private readonly IMediator _mediator;

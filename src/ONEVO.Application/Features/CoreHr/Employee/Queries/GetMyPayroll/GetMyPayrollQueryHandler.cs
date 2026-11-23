@@ -1,4 +1,5 @@
 using MediatR;
+using ONEVO.Application.Common.Authorization;
 using ONEVO.Application.Common.Models;
 using ONEVO.Application.Common.ServiceInterfaces;
 using ONEVO.Application.Features.CoreHr.Employee.DTOs.Responses;
@@ -41,6 +42,6 @@ public class GetMyPayrollQueryHandler : IRequestHandler<GetMyPayrollQuery, Resul
 
         return Result<MyPayrollResponse>.Success(new MyPayrollResponse(
             bankDetail is not null, bankDetail?.BankName, masked, bankDetail?.AccountType,
-            _currentUser.HasPermission("employees:write")));
+            _currentUser.HasPermission(PermissionCatalog.Employees.Write)));
     }
 }

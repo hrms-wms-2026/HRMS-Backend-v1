@@ -2,6 +2,7 @@ using MediatR;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using ONEVO.Api.Filters;
+using ONEVO.Application.Common.Authorization;
 using ONEVO.Application.Features.Auth.Permission.Queries.ListTenantPermissionCatalog;
 
 namespace ONEVO.Api.Controllers.Tenant.Permissions;
@@ -17,7 +18,7 @@ public sealed class PermissionsController : ControllerBase
 
     /// <summary>Permission catalog for the current tenant (assignable + universal read-only).</summary>
     [HttpGet]
-    [RequirePermission("roles:read")]
+    [RequirePermission(PermissionCatalog.Roles.Read)]
     public async Task<IActionResult> ListCatalog(CancellationToken ct)
     {
         var result = await _mediator.Send(new ListTenantPermissionCatalogQuery(), ct);

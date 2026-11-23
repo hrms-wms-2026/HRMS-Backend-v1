@@ -8,6 +8,7 @@ using ONEVO.Application.Features.DevPlatform.Support.Mappers;
 using ONEVO.Application.Features.DevPlatform.Support.RepositoryInterfaces;
 using ONEVO.Application.Features.DevPlatform.Support.Services;
 using ONEVO.Domain.Features.DevPlatform.Support.Entities;
+using ONEVO.Application.Features.DevPlatform.Support.Validation;
 
 namespace ONEVO.Application.Features.DevPlatform.Support.Admin;
 
@@ -18,7 +19,7 @@ public sealed record CreateSupportTicketCommand(
     string? Description,
     string? Priority,
     string? Category,
-    Guid ActorPlatformUserId) : IRequest<Result<SupportTicketDto>>;
+    Guid ActorPlatformUserId) : IRequest<Result<SupportTicketDto>>, ISupportTicketInput;
 
 public sealed class CreateSupportTicketCommandHandler : IRequestHandler<CreateSupportTicketCommand, Result<SupportTicketDto>>
 {
@@ -219,7 +220,7 @@ public sealed record UpdateSupportTicketCommand(
     string? Subject,
     string? Description,
     string? Priority,
-    string? Category) : IRequest<Result<SupportTicketDto>>;
+    string? Category) : IRequest<Result<SupportTicketDto>>, ISupportTicketInput;
 
 public sealed class UpdateSupportTicketCommandHandler : IRequestHandler<UpdateSupportTicketCommand, Result<SupportTicketDto>>
 {

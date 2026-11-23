@@ -2,7 +2,6 @@ namespace ONEVO.Application.Features.TimeAttendance.DTOs.Responses;
 
 public sealed record WorkAreaChangeApproverResponse(
     Guid EmployeeId,
-    Guid UserId,
     string DisplayName,
     string? PositionName);
 

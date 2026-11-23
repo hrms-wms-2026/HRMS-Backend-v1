@@ -1,4 +1,5 @@
 using MediatR;
+using ONEVO.Application.Common.Authorization;
 using ONEVO.Application.Common.Models;
 using ONEVO.Application.Common.ServiceInterfaces;
 using ONEVO.Application.Features.CoreHr.Employee.RepositoryInterfaces;
@@ -33,7 +34,7 @@ public class UpdateBankDetailsCommandHandler : IRequestHandler<UpdateBankDetails
         // future callers that skip the controller's attribute).
         if (!_currentUser.IsAuthenticated)
             return Result.Forbidden("Authentication required.");
-        if (!_currentUser.HasPermission("employees:write"))
+        if (!_currentUser.HasPermission(PermissionCatalog.Employees.Write))
             return Result.Forbidden("You do not have permission to edit payroll details.");
 
         var tenantId = _currentUser.TenantId;
