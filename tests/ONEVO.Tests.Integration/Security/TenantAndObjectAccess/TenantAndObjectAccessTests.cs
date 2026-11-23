@@ -228,6 +228,62 @@ public sealed class TenantAndObjectAccessTests : IClassFixture<TenantAndObjectAc
         failures.Should().BeEmpty();
     }
 
+    // ── 2c. Productivity report (aggregate) follows coverage ─────────────────
+    // Product decision 2026-11-23 ("coverage only"): a manager's report sums only the employees they
+    // cover; org:manage (HR / admin) keeps the tenant-wide view. The colleague is the only employee
+    // with any minutes, so every report is either 777 active minutes (colleague included) or 0.
+
+    private static string ProductivityPath(string scope, Guid? scopeId = null) =>
+        $"/api/v1/monitoring/reports/productivity?scope={scope}"
+        + (scopeId is null ? "" : $"&scopeId={scopeId}")
+        + $"&from={ColleagueSummaryDate:yyyy-MM-dd}&to={ColleagueSummaryDate:yyyy-MM-dd}";
+
+    private async Task<int> ActiveMinutesAsync(TenantSession actor, string path)
+    {
+        using var response = await _f.SendAsync(actor, Get, path);
+        var text = await response.Content.ReadAsStringAsync();
+        _output.WriteLine($"PROBE|Productivity|GET {path}|{(int)response.StatusCode}|{text}");
+        response.StatusCode.Should().Be(HttpStatusCode.OK, $"{path}: {text}");
+        return (await ReadJsonAsync(response)).GetProperty("totalActiveMinutes").GetInt32();
+    }
+
+    [Fact]
+    public async Task Productivity_OtherTeamManager_TenantAndDepartmentScopes_LeaveOutTheColleague()
+    {
+        (await ActiveMinutesAsync(_f.OtherTeamManager, ProductivityPath("Tenant"))).Should().Be(0);
+        (await ActiveMinutesAsync(_f.OtherTeamManager, ProductivityPath("Department", _f.A.DepartmentId))).Should().Be(0);
+    }
+
+    [Fact]
+    public async Task Productivity_OtherTeamManager_EmployeeScopeOnColleague_IsRefused()
+    {
+        using var response = await _f.SendAsync(_f.OtherTeamManager, Get, ProductivityPath("Employee", _f.ColleagueEmployeeId));
+        var text = await response.Content.ReadAsStringAsync();
+        _output.WriteLine($"PROBE|Productivity: other-team manager employee scope|GET|{(int)response.StatusCode}|{ProblemDetail(text)}");
+
+        response.StatusCode.Should().Be(HttpStatusCode.Forbidden, text);
+        text.Should().NotContain(ColleagueActiveMinutes.ToString());
+    }
+
+    [Fact]
+    public async Task Productivity_CoveringManager_SeesTheColleagueInEveryScope()
+    {
+        (await ActiveMinutesAsync(_f.CoveringManager, ProductivityPath("Tenant"))).Should().Be(ColleagueActiveMinutes);
+        (await ActiveMinutesAsync(_f.CoveringManager, ProductivityPath("Department", _f.A.DepartmentId))).Should().Be(ColleagueActiveMinutes);
+        (await ActiveMinutesAsync(_f.CoveringManager, ProductivityPath("Employee", _f.ColleagueEmployeeId))).Should().Be(ColleagueActiveMinutes);
+    }
+
+    [Fact]
+    public async Task Productivity_HrAndAdmin_KeepTheTenantWideView()
+    {
+        foreach (var actor in new[] { _f.HrMonitoring, _f.OwnerA })
+        {
+            (await ActiveMinutesAsync(actor, ProductivityPath("Tenant"))).Should().Be(ColleagueActiveMinutes);
+            (await ActiveMinutesAsync(actor, ProductivityPath("Department", _f.A.DepartmentId))).Should().Be(ColleagueActiveMinutes);
+            (await ActiveMinutesAsync(actor, ProductivityPath("Employee", _f.ColleagueEmployeeId))).Should().Be(ColleagueActiveMinutes);
+        }
+    }
+
     // ── 3. Positive controls: the same endpoints work for the rightful user ──
 
     [Fact]

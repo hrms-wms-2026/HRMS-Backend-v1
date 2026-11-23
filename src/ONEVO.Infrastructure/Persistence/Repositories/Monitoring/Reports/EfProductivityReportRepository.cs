@@ -43,6 +43,32 @@ public class EfProductivityReportRepository : IProductivityReportRepository
         return await AggregateAsync(tenantId, employeeIds, from, to, ct);
     }
 
+    public Task<ProductivityAggregate> GetEmployeesAggregateAsync(
+        Guid tenantId, IReadOnlyCollection<Guid> employeeIds, DateOnly from, DateOnly to, CancellationToken ct) =>
+        AggregateAsync(tenantId, employeeIds.ToList(), from, to, ct);
+
+    public async Task<ProductivityAggregate?> GetDepartmentAggregateForEmployeesAsync(
+        Guid tenantId, Guid departmentId, IReadOnlyCollection<Guid> employeeIds,
+        DateOnly from, DateOnly to, CancellationToken ct)
+    {
+        var departmentExists = await _db.Departments
+            .AsNoTracking()
+            .AnyAsync(d => d.TenantId == tenantId && d.Id == departmentId, ct);
+        if (!departmentExists)
+            return null;
+
+        var allowed = employeeIds.ToList();
+        var inDepartment = allowed.Count == 0
+            ? new List<Guid>()
+            : await _db.Employees
+                .AsNoTracking()
+                .Where(e => e.TenantId == tenantId && e.DepartmentId == departmentId && allowed.Contains(e.Id))
+                .Select(e => e.Id)
+                .ToListAsync(ct);
+
+        return await AggregateAsync(tenantId, inDepartment, from, to, ct);
+    }
+
     private async Task<ProductivityAggregate> AggregateAsync(
         Guid tenantId, IReadOnlyList<Guid> employeeIds, DateOnly from, DateOnly to, CancellationToken ct)
     {
