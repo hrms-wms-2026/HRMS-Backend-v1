@@ -23,4 +23,19 @@ public interface IProductivityReportRepository
 
     Task<ProductivityAggregate> GetTenantAggregateAsync(
         Guid tenantId, DateOnly from, DateOnly to, CancellationToken ct);
+
+    /// <summary>
+    /// The aggregate over exactly <paramref name="employeeIds"/> - a coverage-limited caller's
+    /// tenant view. An empty set is an all-zero aggregate.
+    /// </summary>
+    Task<ProductivityAggregate> GetEmployeesAggregateAsync(
+        Guid tenantId, IReadOnlyCollection<Guid> employeeIds, DateOnly from, DateOnly to, CancellationToken ct);
+
+    /// <summary>
+    /// The department's employees that are also in <paramref name="employeeIds"/>. Null if the
+    /// department doesn't exist for this tenant.
+    /// </summary>
+    Task<ProductivityAggregate?> GetDepartmentAggregateForEmployeesAsync(
+        Guid tenantId, Guid departmentId, IReadOnlyCollection<Guid> employeeIds,
+        DateOnly from, DateOnly to, CancellationToken ct);
 }

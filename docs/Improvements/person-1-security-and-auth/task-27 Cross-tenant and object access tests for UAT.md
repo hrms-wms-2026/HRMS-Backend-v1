@@ -50,8 +50,10 @@ Full table: `docs/reports/security/2026-11-19-task-27-cross-tenant-and-object-ac
   in the tenant. They now follow the same coverage rule as `/employees/{id}/overview/activity`. There are 12 new
   probes that failed before the fix, a covering-manager positive control, unit tests, and an architecture test
   that keeps new monitoring endpoints gated.
-- Open product decision: `GET /api/v1/monitoring/reports/productivity` still aggregates across the tenant for any
-  `monitoring:read` holder. It is left unchanged.
+- Productivity report decision resolved (2026-11-23, "coverage only"): `GET /api/v1/monitoring/reports/productivity`
+  now sums only the employees a manager covers, in every scope. HR and admins (`org:manage`) keep the
+  tenant-wide view. Four integration tests and seven new handler unit tests cover it. See the report's
+  "Productivity report" section.
 
 ### Not leaks
 
