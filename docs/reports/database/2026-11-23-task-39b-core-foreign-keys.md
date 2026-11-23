@@ -164,4 +164,17 @@ The integration fixtures wrote rows that point at nothing. They were fixed; no t
 
 ## Gate
 
-Filled in below once the full gate has run.
+`verify.ps1 -Full`, folder `dev-env/reports/improve-task-39b-core-fks/verify-20261123-142935`:
+
+| Step | Result |
+|---|---|
+| build | PASS |
+| unit | 8345 passed, 0 failed |
+| architecture | 841 passed, 0 failed |
+| integration | 1399 passed, 0 failed, 1 skipped |
+
+Earlier runs on this branch:
+
+- `verify-20261123-112250`: unit failed only on `WidgetDataOrchestratorTests.Slow_provider_times_out_into_error`, a timing test that passed 3 of 3 times on its own (a flake; not changed).
+- `verify-20261123-125232`: 11 integration failures, all `fk_employees_users_user_id`. They failed on their own too, so they were real. Four fixtures (employee profile, sensitive position change, monitoring legal-entity scoping, department archive) now call `TestUsers.AddForNewEmployees`, and the four classes pass 70 of 70.
+- `QueryTranslationSweepTests` timed out once while populating, under load, in a targeted run. It passed on its own and in every full run.
