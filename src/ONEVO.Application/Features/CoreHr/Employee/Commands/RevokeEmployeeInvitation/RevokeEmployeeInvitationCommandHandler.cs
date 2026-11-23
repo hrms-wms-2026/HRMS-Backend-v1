@@ -57,7 +57,7 @@ public sealed class RevokeEmployeeInvitationCommandHandler
         var employee = await _employeeRepository.GetByIdAsync(tenantId, request.EmployeeId, ct);
         if (employee is null)
             return Result<Unit>.NotFound("The employee could not be found.");
-        if (!await _invitationAccess.CanManageAsync(current, employee.CreatedById, ct))
+        if (!await _invitationAccess.CanManageAsync(current, (employee.CreatedById ?? Guid.Empty), ct))
             return Result<Unit>.Forbidden(
                 "Only the person who added this employee, or a user manager, can revoke the invitation.");
 

@@ -44,7 +44,7 @@ public sealed class GetCalendarEventsQueryHandler(
             items.Add(new CalendarEventItem(
                 e.Id, e.Title, e.Description, e.StartDate, e.EndDate, e.SourceType, e.Color,
                 e.Recurrence, e.IsAllDay, e.Timezone, e.EventStatus, e.IsPrivate, e.Location,
-                e.MeetingLink, e.ExternalSource, e.CreatedById, Participants: participants,
+                e.MeetingLink, e.ExternalSource, (e.CreatedById ?? Guid.Empty), Participants: participants,
                 Guests: GuestSummaries(guestsByEvent, e.Id)));
         }
 
@@ -73,7 +73,7 @@ public sealed class GetCalendarEventsQueryHandler(
                     occurrenceId, master.Title, master.Description, occurrenceStart, occurrenceStart + duration,
                     master.SourceType, master.Color, master.Recurrence, master.IsAllDay, master.Timezone,
                     master.EventStatus, master.IsPrivate, master.Location, master.MeetingLink,
-                    master.ExternalSource, master.CreatedById,
+                    master.ExternalSource, (master.CreatedById ?? Guid.Empty),
                     IsRecurringOccurrence: true, RecurrenceMasterId: master.Id, OriginalStart: occurrenceStart,
                     Participants: masterParticipants, Guests: masterGuests));
             }

@@ -74,7 +74,7 @@ public sealed class ResendEmployeeInvitationCommandHandler
         if (current is null)
             return Result<ResendEmployeeInvitationResponse>.Failure("No invitation has been sent to this employee.", 400);
 
-        if (!await _invitationAccess.CanManageAsync(current, employee.CreatedById, ct))
+        if (!await _invitationAccess.CanManageAsync(current, (employee.CreatedById ?? Guid.Empty), ct))
             return Result<ResendEmployeeInvitationResponse>.Forbidden(
                 "Only the person who added this employee, or a user manager, can resend the invitation.");
 

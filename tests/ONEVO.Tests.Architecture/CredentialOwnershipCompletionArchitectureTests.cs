@@ -182,8 +182,22 @@ public sealed class CredentialOwnershipCompletionArchitectureTests
                     StringComparison.Ordinal))
             .ToArray();
 
-        var baseline = Assert.Single(paymentGatewayMigrations);
-        Assert.EndsWith("_InitialSqlServer.cs", baseline, StringComparison.Ordinal);
+        var baseline = Assert.Single(paymentGatewayMigrations, path => path.EndsWith("_InitialSqlServer.cs", StringComparison.Ordinal));
+
+        // A later migration may touch these tables only to add the created_by_id audit key to
+        // platform_users and its index (task 39c). Every line naming a payment_gateway table must be
+        // one of those generated operations, so no trigger or hand-written SQL can slip in.
+        var auditKeyLine = new System.Text.RegularExpressions.Regex(
+            @"^\s*(name: ""(fk_payment_gateway_\w+_platform_users_created_by_id|ix_payment_gateway_\w+_created_by_id)"",|table: ""payment_gateway_\w+""(,|\);))$");
+        foreach (var later in paymentGatewayMigrations.Where(path => path != baseline))
+        {
+            var offending = File.ReadAllLines(later)
+                .Where(line => line.Contains("payment_gateway", StringComparison.Ordinal) && !auditKeyLine.IsMatch(line))
+                .ToList();
+            Assert.True(offending.Count == 0,
+                $"{Path.GetFileName(later)} touches payment_gateway tables beyond the audit key: {string.Join(" | ", offending)}");
+        }
+
         Assert.Contains(
             "fk_payment_gateway_configs_platform_providers_provider",
             File.ReadAllText(baseline),

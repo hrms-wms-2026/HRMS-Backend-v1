@@ -186,7 +186,7 @@ public class MoveTaskStatusCommandHandler : IRequestHandler<MoveTaskStatusComman
             task.UpdatedAt = now;
             objective.UpdatedAt = now;
 
-            var creatorEmployeeId = await _identity.ResolveCallerEmployeeIdAsync(tenantId, task.CreatedById, innerCt);
+            var creatorEmployeeId = await _identity.ResolveCallerEmployeeIdAsync(tenantId, (task.CreatedById ?? Guid.Empty), innerCt);
             await _notifications.NotifyAsync(new WorkNotificationEvent(
                 tenantId, task.ProjectId, callerEmployeeId.Value, WorkNotificationKinds.Direct,
                 WorkActionTypes.TaskStatusChange, WorkTargetTypes.Task, task.Id, task.Title, null,

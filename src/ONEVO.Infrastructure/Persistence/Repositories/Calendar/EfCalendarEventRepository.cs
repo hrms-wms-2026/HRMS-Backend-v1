@@ -160,7 +160,7 @@ public class EfCalendarEventRepository : ICalendarEventRepository
         // CalendarEvent.CreatedById is a User id (set by AuditableEntityInterceptor from
         // ICurrentUser.UserId), not an Employee id - it cannot be compared to `employeeId`
         // directly. Resolve the employee's own User id first via a correlated subquery.
-        var ownerUserId = _db.Employees.Where(emp => emp.TenantId == tenantId && emp.Id == employeeId).Select(emp => emp.UserId);
+        var ownerUserId = _db.Employees.Where(emp => emp.TenantId == tenantId && emp.Id == employeeId).Select(emp => (Guid?)emp.UserId);
 
         return await _db.PersonalCalendarEvents.AsNoTracking()
             .Where(e => e.TenantId == tenantId
@@ -182,7 +182,7 @@ public class EfCalendarEventRepository : ICalendarEventRepository
     public async Task<IReadOnlyList<CalendarEvent>> GetRecurringMastersForEmployeeAsync(
         Guid tenantId, Guid employeeId, DateTimeOffset to, CancellationToken ct = default)
     {
-        var ownerUserId = _db.Employees.Where(emp => emp.TenantId == tenantId && emp.Id == employeeId).Select(emp => emp.UserId);
+        var ownerUserId = _db.Employees.Where(emp => emp.TenantId == tenantId && emp.Id == employeeId).Select(emp => (Guid?)emp.UserId);
 
         return await _db.PersonalCalendarEvents.AsNoTracking()
             .Where(e => e.TenantId == tenantId

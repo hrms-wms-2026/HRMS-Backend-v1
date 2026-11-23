@@ -1,6 +1,13 @@
 using System.Linq.Expressions;
 using Microsoft.EntityFrameworkCore;
+using ONEVO.Domain.Common;
 using ONEVO.Domain.Features.Auth.Entities;
+using ONEVO.Domain.Features.DevPlatform.AppCatalog.Entities;
+using ONEVO.Domain.Features.DevPlatform.PlatformAccess.Entities;
+using ONEVO.Domain.Features.DevPlatform.SystemConfig.TrayReleases.Entities;
+using ONEVO.Domain.Features.SharedPlatform.Entities;
+using ONEVO.Domain.Features.SharedPlatform.PaymentGateway.Entities;
+using ONEVO.Infrastructure.Persistence.Interceptors;
 using ONEVO.Domain.Features.CoreHr.Entities;
 using ONEVO.Domain.Features.InfrastructureModule.Entities;
 using ONEVO.Domain.Features.Leave.BalanceAudit.Entities;
@@ -45,6 +52,51 @@ public static class ReferenceForeignKeys
         ApplyLeave(modelBuilder);
         ApplyTimeAttendance(modelBuilder);
         ApplyWorkManagement(modelBuilder);
+        ApplyAuditColumns(modelBuilder);
+    }
+
+    /// <summary>
+    /// Task 39c: <c>created_by_id</c> audit columns.
+    ///
+    /// Every <see cref="BaseEntity"/> table gets a key to <c>users</c>: <see cref="AuditableEntityInterceptor"/>
+    /// writes the signed-in tenant user or <c>NULL</c> (seeders, jobs, anonymous paths and platform admins), never
+    /// <c>Guid.Empty</c>. The loop also covers <see cref="BaseEntity"/> tables added later, so a new table cannot
+    /// miss the key.
+    ///
+    /// Tables with their own <c>CreatedById</c> are listed one by one: tenant tables written by a tenant user point
+    /// at <c>users</c> (project <c>calendar_events</c>, which stores an employee, at <c>employees</c>), platform tables written by a platform admin point at <c>platform_users</c> (like
+    /// <c>configuration_templates</c>). <c>invitation_tokens.created_by_id</c> holds both (a platform admin for the
+    /// tenant owner's invitation, a tenant user otherwise), so it has no key and is on the allow-list.
+    /// </summary>
+    private static void ApplyAuditColumns(ModelBuilder b)
+    {
+        foreach (var entityType in b.Model.GetEntityTypes().ToList())
+        {
+            if (entityType.IsOwned() || entityType.BaseType is not null
+                || !typeof(BaseEntity).IsAssignableFrom(entityType.ClrType)
+                || entityType.GetTableName() is null
+                || entityType.FindProperty(nameof(BaseEntity.CreatedById)) is null)
+            {
+                continue;
+            }
+
+            b.Entity(entityType.ClrType)
+                .HasOne(typeof(User))
+                .WithMany()
+                .HasForeignKey(nameof(BaseEntity.CreatedById))
+                .OnDelete(DeleteBehavior.NoAction);
+        }
+
+        Fk<ClockInPolicy, User>(b, x => x.CreatedById);
+        Fk<MeetingSeries, User>(b, x => x.CreatedById);
+        // Project calendar events store the creating employee (CreateCalendarEventCommandHandler), not a user.
+        Fk<CalendarEvent, Employee>(b, x => x.CreatedById);
+
+        Fk<TenantSubscription, PlatformUser>(b, x => x.CreatedById);
+        Fk<GlobalApplication, PlatformUser>(b, x => x.CreatedById);
+        Fk<PaymentGatewayConfig, PlatformUser>(b, x => x.CreatedById);
+        Fk<PaymentGatewayCountryRoute, PlatformUser>(b, x => x.CreatedById);
+        Fk<TrayAppRelease, PlatformUser>(b, x => x.CreatedById);
     }
 
     // Task 39a: core HR and org structure.

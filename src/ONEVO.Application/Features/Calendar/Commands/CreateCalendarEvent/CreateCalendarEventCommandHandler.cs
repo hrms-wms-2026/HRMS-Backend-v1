@@ -107,7 +107,7 @@ public sealed class CreateCalendarEventCommandHandler(
                 calendarEvent.Id, calendarEvent.Title, calendarEvent.Description, calendarEvent.StartDate,
                 calendarEvent.EndDate, calendarEvent.SourceType, calendarEvent.Color, calendarEvent.Recurrence,
                 calendarEvent.IsAllDay, calendarEvent.Timezone, calendarEvent.EventStatus, calendarEvent.IsPrivate,
-                calendarEvent.Location, calendarEvent.MeetingLink, calendarEvent.ExternalSource, calendarEvent.CreatedById));
+                calendarEvent.Location, calendarEvent.MeetingLink, calendarEvent.ExternalSource, (calendarEvent.CreatedById ?? Guid.Empty)));
         }, ct);
     }
 }

@@ -64,7 +64,7 @@ public class GetEmployeePositionHistoryQueryHandler
         var positions = await _positionRepository.GetByIdsAsync(tenantId, positionIds, ct);
         var positionsById = positions.ToDictionary(p => p.Id);
 
-        var userIds = history.Select(h => h.CreatedById).Distinct().ToList();
+        var userIds = history.Where(h => h.CreatedById.HasValue).Select(h => h.CreatedById!.Value).Distinct().ToList();
         var approvedByUserIds = await _accessGrantRequestRepository.GetApprovedByUserIdsForAssignmentsAsync(
             tenantId, history.Select(h => h.Id).ToList(), ct);
         userIds.AddRange(approvedByUserIds.Values);
@@ -79,7 +79,7 @@ public class GetEmployeePositionHistoryQueryHandler
                 position?.Name ?? "Unknown position",
                 null,
                 h.EffectiveFrom, h.EffectiveTo, h.ChangeReason,
-                FormatUserName(usersById.GetValueOrDefault(h.CreatedById)),
+                FormatUserName(h.CreatedById is { } createdBy ? usersById.GetValueOrDefault(createdBy) : null),
                 approvedByUserId != Guid.Empty ? FormatApprovedByName(usersById.GetValueOrDefault(approvedByUserId)) : null);
         }).ToList();
 
