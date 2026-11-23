@@ -1,4 +1,5 @@
 using MediatR;
+using ONEVO.Application.Common.Authorization;
 using ONEVO.Application.Common.Models;
 using ONEVO.Application.Common.ServiceInterfaces;
 using ONEVO.Application.Features.CoreHr.Employee.Helpers;
@@ -60,7 +61,7 @@ public sealed class AttendanceReadHandler(
       IRequestHandler<GetMyAttendanceMonthlySummaryQuery, Result<AttendanceMonthlySummaryResponse>>,
       IRequestHandler<GetCoveredTeamTodayQuery, Result<TeamTodayResponse>>
 {
-    private const string AttendanceReadPermission = "attendance:read";
+    private const string AttendanceReadPermission = PermissionCatalog.Attendance.Read;
     private static readonly TimeSpan ScreenshotUrlExpiry = TimeSpan.FromMinutes(15);
     private const int MaxScreenshotsPerDay = 100;
 
@@ -212,7 +213,7 @@ public sealed class AttendanceReadHandler(
             if (!visibility.EmployeeIds.Contains(query.EmployeeId))
                 return Result<AttendanceDayDetailResponse>.Forbidden();
 
-            canSeeActivity = currentUser.HasPermission("monitoring:read");
+            canSeeActivity = currentUser.HasPermission(PermissionCatalog.Monitoring.Read);
         }
 
         var record = await attendance.GetRecordAsync(currentUser.TenantId, query.EmployeeId, query.Date, ct);

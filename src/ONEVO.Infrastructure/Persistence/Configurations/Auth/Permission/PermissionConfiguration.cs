@@ -17,6 +17,12 @@ public class PermissionConfiguration : IEntityTypeConfiguration<PermissionEntity
 
         builder.HasIndex(p => p.Code).IsUnique();
 
+        builder.Property(p => p.RetiredAt).HasColumnName("retired_at");
+
+        // A soft-retired code stops working: the resolver, the role screen, entitlement and
+        // assignability all read through this filter. Only PermissionCatalogSynchronizer reads past it.
+        builder.HasQueryFilter(p => p.RetiredAt == null);
+
         builder.HasMany(p => p.RolePermissions)
                .WithOne(rp => rp.Permission)
                .HasForeignKey(rp => rp.PermissionId)

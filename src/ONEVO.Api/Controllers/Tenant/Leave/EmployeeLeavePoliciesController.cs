@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using ONEVO.Api.Contracts.Leave.Policies;
 using ONEVO.Api.Filters;
+using ONEVO.Application.Common.Authorization;
 using ONEVO.Application.Features.Leave.Policy.Commands.EmployeeLeavePolicy;
 using ONEVO.Application.Features.Leave.Policy.Queries.GetEmployeeLeavePolicies;
 
@@ -23,7 +24,7 @@ public class EmployeeLeavePoliciesController : ControllerBase
     }
 
     [HttpGet]
-    [RequireAnyPermission("leave:read", "leave:read-own", "leave:read-team", "leave:manage", "leave:create")]
+    [RequireAnyPermission(PermissionCatalog.Leave.Read, PermissionCatalog.Leave.ReadOwn, PermissionCatalog.Leave.ReadTeam, PermissionCatalog.Leave.Manage, PermissionCatalog.Leave.Create)]
     [RequireVisibleEmployee("employeeId")]
     public async Task<IActionResult> List(Guid employeeId, CancellationToken ct = default)
     {
@@ -32,7 +33,7 @@ public class EmployeeLeavePoliciesController : ControllerBase
     }
 
     [HttpPut("{leaveTypeId:guid}")]
-    [RequireAnyPermission("leave:manage", "leave:create")]
+    [RequireAnyPermission(PermissionCatalog.Leave.Manage, PermissionCatalog.Leave.Create)]
     [RequireVisibleEmployee("employeeId")]
     public async Task<IActionResult> Set(
         Guid employeeId, Guid leaveTypeId, [FromBody] SetEmployeeLeavePolicyRequest request, CancellationToken ct = default)
@@ -42,7 +43,7 @@ public class EmployeeLeavePoliciesController : ControllerBase
     }
 
     [HttpDelete("{leaveTypeId:guid}")]
-    [RequireAnyPermission("leave:manage", "leave:create")]
+    [RequireAnyPermission(PermissionCatalog.Leave.Manage, PermissionCatalog.Leave.Create)]
     [RequireVisibleEmployee("employeeId")]
     public async Task<IActionResult> Reset(Guid employeeId, Guid leaveTypeId, CancellationToken ct = default)
     {

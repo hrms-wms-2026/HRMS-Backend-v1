@@ -60,12 +60,11 @@ public sealed class UploadPurposePolicy : IUploadPurposePolicy
         return Result.Success();
     }
 
-    // Magic-number signatures for the extensions ValidateUpload's rules actually allow today
-    // (UploadPurposeCatalog.cs). .docx/.xlsx share the ZIP signature at the byte level - that is
-    // intentional, not a bug: Office Open XML documents ARE zip archives. Extensions with no entry
-    // here (anything not covered by an UploadPurposeRule's AllowedExtensions) are left to
-    // ValidateUpload's existing extension+content-type check; this table never grows the allowlist,
-    // only adds a second, byte-level check on top of it.
+    // Magic-number signatures for the extensions ValidateUpload's rules allow (UploadPurposeCatalog.cs).
+    // .docx/.xlsx share the ZIP signature at the byte level - that is intentional, not a bug: Office
+    // Open XML documents ARE zip archives. Formats whose signature is not a fixed prefix (WebP, WAV,
+    // MP4/MOV/M4A, MP3, CSV) are checked in MatchesSignature below. This table never grows the
+    // allow-list; it only adds a byte-level check on top of it.
     private static readonly IReadOnlyDictionary<string, byte[][]> Signatures = new Dictionary<string, byte[][]>(StringComparer.OrdinalIgnoreCase)
     {
         [".png"] = [[0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A]],
@@ -82,15 +81,16 @@ public sealed class UploadPurposePolicy : IUploadPurposePolicy
         [".webp"] = [[0x52, 0x49, 0x46, 0x46]],
     };
 
+    // Task 23: the chat video/audio formats and bulk-onboarding CSV used to pass unchecked, because
+    // they had no entry above. Every allowed extension now has a check, and an extension with none
+    // is refused (fail closed) instead of being let through.
+    private static readonly HashSet<string> FtypContainers = new(StringComparer.OrdinalIgnoreCase) { ".mp4", ".mov", ".m4a" };
+
+    private const int CsvInspectBytes = 8 * 1024;
+
     public Result ValidateSignature(string originalFileName, Stream content)
     {
         var extension = System.IO.Path.GetExtension(originalFileName).ToLowerInvariant();
-        if (!Signatures.TryGetValue(extension, out var candidates))
-        {
-            // Ambiguous/unlisted extension - nothing to check against, handled explicitly by
-            // doing nothing rather than guessing or rejecting.
-            return Result.Success();
-        }
 
         if (!content.CanSeek)
         {
@@ -98,22 +98,84 @@ public sealed class UploadPurposePolicy : IUploadPurposePolicy
             return Result.Failure("File content could not be inspected for signature verification.", 400);
         }
 
-        var header = new byte[16];
+        var header = new byte[extension == ".csv" ? CsvInspectBytes : 16];
         var originalPosition = content.Position;
         content.Position = 0;
-        var read = content.Read(header, 0, header.Length);
+        var read = ReadUpTo(content, header);
         content.Position = originalPosition;
 
-        var matches = candidates.Any(sig => read >= sig.Length && header.AsSpan(0, sig.Length).SequenceEqual(sig));
-        if (matches && extension == ".webp")
+        var known = MatchesSignature(extension, header.AsSpan(0, read));
+        return known switch
         {
+            true => Result.Success(),
+            false => Result.Failure($"File content does not match the expected format for extension '{extension}'.", 400),
+            null => Result.Failure($"Files with extension '{extension}' cannot be verified and are not accepted.", 400),
+        };
+    }
+
+    /// <summary>True/false when the extension has a check; null when it has none (refused).</summary>
+    private static bool? MatchesSignature(string extension, ReadOnlySpan<byte> header)
+    {
+        if (Signatures.TryGetValue(extension, out var candidates))
+        {
+            var prefixMatches = false;
+            foreach (var sig in candidates)
+            {
+                if (header.Length >= sig.Length && header[..sig.Length].SequenceEqual(sig))
+                    prefixMatches = true;
+            }
+
             // RIFF container alone isn't enough - confirm the WEBP tag at offset 8.
-            matches = read >= 12 && header.AsSpan(8, 4).SequenceEqual(new byte[] { 0x57, 0x45, 0x42, 0x50 });
+            if (prefixMatches && extension == ".webp")
+                return header.Length >= 12 && header.Slice(8, 4).SequenceEqual("WEBP"u8);
+
+            return prefixMatches;
         }
 
-        return matches
-            ? Result.Success()
-            : Result.Failure($"File content does not match the expected format for extension '{extension}'.", 400);
+        if (FtypContainers.Contains(extension))
+            return header.Length >= 8 && header.Slice(4, 4).SequenceEqual("ftyp"u8);
+
+        return extension switch
+        {
+            ".webm" => header.Length >= 4 && header[..4].SequenceEqual(new byte[] { 0x1A, 0x45, 0xDF, 0xA3 }),
+            ".ogg" => header.Length >= 4 && header[..4].SequenceEqual("OggS"u8),
+            ".wav" => header.Length >= 12 && header[..4].SequenceEqual("RIFF"u8) && header.Slice(8, 4).SequenceEqual("WAVE"u8),
+            // ID3 tag, or a bare MPEG audio frame (11 sync bits set).
+            ".mp3" => header.Length >= 3 && (header[..3].SequenceEqual("ID3"u8)
+                || (header[0] == 0xFF && (header[1] & 0xE0) == 0xE0)),
+            ".csv" => LooksLikeText(header),
+            _ => null,
+        };
+    }
+
+    /// <summary>CSV has no signature: accept text, refuse anything with NUL bytes or a known binary header.</summary>
+    private static bool LooksLikeText(ReadOnlySpan<byte> header)
+    {
+        if (header.Length == 0)
+            return false;
+        if (header.IndexOf((byte)0) >= 0)
+            return false;
+        if (header.Length >= 2 && header[0] == (byte)'M' && header[1] == (byte)'Z')
+            return false; // Windows executable
+        if (header.Length >= 4 && header[..4].SequenceEqual(new byte[] { 0x7F, 0x45, 0x4C, 0x46 }))
+            return false; // ELF executable
+        if (header.Length >= 4 && header[..4].SequenceEqual(new byte[] { 0x50, 0x4B, 0x03, 0x04 }))
+            return false; // ZIP/XLSX renamed to .csv
+        return true;
+    }
+
+    private static int ReadUpTo(Stream content, byte[] buffer)
+    {
+        var total = 0;
+        while (total < buffer.Length)
+        {
+            var read = content.Read(buffer, total, buffer.Length - total);
+            if (read == 0)
+                break;
+            total += read;
+        }
+
+        return total;
     }
 
     /// <summary>Best-effort content-type sniffed from the same signature table used by
@@ -194,7 +256,18 @@ public sealed class UploadPurposePolicy : IUploadPurposePolicy
 
     public string GenerateStorageKey(Guid tenantId, Guid reservationId, string purpose, string safeFileName)
     {
-        return $"tenants/{tenantId:N}/{purpose}/{reservationId:N}/{safeFileName}";
+        // Task 23: the object name is generated here, never taken from the client. Only the
+        // (already sanitized and allow-listed) extension is kept, so the stored type stays visible.
+        // The client's name is kept for display in file_records.original/safe_file_name only.
+        return $"tenants/{tenantId:N}/{purpose}/{reservationId:N}/{ServerObjectName(safeFileName)}";
+    }
+
+    /// <summary>"content" plus the file's sanitized extension, e.g. "content.pdf".</summary>
+    public static string ServerObjectName(string safeFileName)
+    {
+        var extension = System.IO.Path.GetExtension(System.IO.Path.GetFileName(safeFileName)).ToLowerInvariant();
+        var safeExtension = new string(extension.Where(c => Array.IndexOf(SafeCharacters, c) >= 0).ToArray());
+        return "content" + (safeExtension.Length > 1 ? safeExtension : string.Empty);
     }
 
     private static bool ContentTypeMatchesExtension(string contentType, string extension)

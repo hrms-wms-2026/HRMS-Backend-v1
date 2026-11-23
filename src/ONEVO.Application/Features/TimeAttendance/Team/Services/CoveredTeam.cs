@@ -1,3 +1,4 @@
+using ONEVO.Application.Common.Authorization;
 using ONEVO.Application.Features.CoreHr.Employee.Models;
 using ONEVO.Application.Features.CoreHr.Employee.RepositoryInterfaces;
 using ONEVO.Application.Features.CoreHr.EmployeeAuthority.Models;
@@ -11,7 +12,7 @@ namespace ONEVO.Application.Features.TimeAttendance.Team.Services;
 /// and GetTeamWorkingHoursQuery so the two can never disagree on who is in the team or whose leave the caller may see.</summary>
 public static class CoveredTeam
 {
-    public const string AttendanceReadPermission = "attendance:read";
+    public const string AttendanceReadPermission = PermissionCatalog.Attendance.Read;
 
     /// <summary>attendance:read TimeTrackingRead coverage, the caller stripped: IncludeSelf:false stops the self channel, but
     /// company-wide or department coverage can still re-introduce the caller.</summary>

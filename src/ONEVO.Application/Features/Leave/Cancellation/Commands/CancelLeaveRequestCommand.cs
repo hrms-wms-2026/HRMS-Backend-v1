@@ -1,6 +1,7 @@
 using FluentValidation;
 using MediatR;
 using Microsoft.Extensions.Options;
+using ONEVO.Application.Common.Authorization;
 using ONEVO.Application.Common.Exceptions;
 using ONEVO.Application.Common.Models;
 using ONEVO.Application.Common.RepositoryInterfaces;
@@ -114,7 +115,7 @@ public sealed class CancelLeaveRequestCommandHandler
             && (state.Request.Status != LeaveRequestStatuses.Approved || state.Request.ApprovedBy != currentEmployee.Id
                 || state.Request.SubmittedOnBehalfOfBy != _currentUser.UserId))
             return Result<CancelLeaveRequestResponse>.Forbidden(LeaveCancellationMessages.NotOwner);
-        if (isHrCancel && !command.RevertOfApproverBackdatedLeave && !_currentUser.HasPermission("leave:manage"))
+        if (isHrCancel && !command.RevertOfApproverBackdatedLeave && !_currentUser.HasPermission(PermissionCatalog.Leave.Manage))
             return Result<CancelLeaveRequestResponse>.Forbidden(LeaveCancellationMessages.NotOwner);
 
         if (isHrCancel && string.IsNullOrWhiteSpace(command.Reason))
