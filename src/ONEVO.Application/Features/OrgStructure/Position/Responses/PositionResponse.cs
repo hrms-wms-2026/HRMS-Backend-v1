@@ -16,4 +16,5 @@ public record PositionResponse(
     string? ReportsToPositionName,
     int ChildCount,
     int? CurrentOccupancy,
-    bool CurrentOccupancyCheckSupported);
+    bool CurrentOccupancyCheckSupported,
+    string? Version = null);

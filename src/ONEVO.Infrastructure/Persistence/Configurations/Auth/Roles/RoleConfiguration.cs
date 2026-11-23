@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata.Builders;
-using ONEVO.Domain.Features.Auth.Entities;
+using ONEVO.Domain.Features.Auth.Entities;
+using ONEVO.Infrastructure.Persistence.SqlServer;
 
 namespace ONEVO.Infrastructure.Persistence.Configurations.Auth.Roles;
 
@@ -8,6 +9,7 @@ public class RoleConfiguration : IEntityTypeConfiguration<Role>
 {
     public void Configure(EntityTypeBuilder<Role> builder)
     {
+        builder.HasRowVersionToken(); // task 42: lost-update protection (409 on a stale save)
         builder.ToTable("roles");
         builder.HasKey(r => r.Id);
 

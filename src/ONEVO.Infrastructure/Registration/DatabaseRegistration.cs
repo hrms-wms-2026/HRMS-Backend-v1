@@ -36,6 +36,7 @@ internal static class DatabaseRegistration
         });
 
         services.AddScoped<IUnitOfWork, UnitOfWork>();
+        services.AddScoped<ONEVO.Application.Common.ServiceInterfaces.IRowVersionStore, Persistence.SqlServer.EfRowVersionStore>(); // task 42
 
         return services;
     }

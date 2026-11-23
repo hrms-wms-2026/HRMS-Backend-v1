@@ -18,17 +18,20 @@ public class UpdateRoleCommandHandler : IRequestHandler<UpdateRoleCommand, Resul
     private readonly IRolePermissionRepository _rolePermissions;
     private readonly ICurrentUser _currentUser;
     private readonly IUnitOfWork _unitOfWork;
+    private readonly IRowVersionStore? _versions;
 
     public UpdateRoleCommandHandler(
         IRoleRepository roles,
         IRolePermissionRepository rolePermissions,
         ICurrentUser currentUser,
-        IUnitOfWork unitOfWork)
+        IUnitOfWork unitOfWork,
+        IRowVersionStore? versions = null)
     {
         _roles = roles;
         _rolePermissions = rolePermissions;
         _currentUser = currentUser;
         _unitOfWork = unitOfWork;
+        _versions = versions;
     }
 
     public async Task<Result<RoleSummaryDto>> Handle(UpdateRoleCommand request, CancellationToken ct)
@@ -57,12 +60,13 @@ public class UpdateRoleCommandHandler : IRequestHandler<UpdateRoleCommand, Resul
 
         role.Name = name;
         role.Description = request.Description?.Trim() ?? string.Empty;
+        _versions?.SetExpectedVersion(role, request.Version); // task 42: 409 when someone saved in between
 
         await _unitOfWork.SaveChangesAsync(ct);
 
         var permissionCount = (await _rolePermissions.ListByRoleAsync(role.Id, ct)).Count;
 
-        var dto = RoleMapper.ToSummaryDto(role, permissionCount);
+        var dto = RoleMapper.ToSummaryDto(role, permissionCount) with { Version = _versions?.GetVersion(role) };
 
         return Result<RoleSummaryDto>.Success(dto);
     }

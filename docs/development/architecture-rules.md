@@ -70,3 +70,47 @@ Sizes on 2026-11-20.
 | `Infrastructure/Persistence/Repositories/OrgStructure/Position/EfPositionRepository.cs` | 587 | Reads, writes, people chart queries |
 | `Application/Features/TimeAttendance/Commands/WorkAreaChangeRequests/WorkAreaChangeRequestWorkflow.cs` | 585 | As corrections |
 | `Infrastructure/Services/Monitoring/ActivityMonitoring/MonitoringToggleResolverService.cs` | 579 | Toggle resolution, caching |
+
+## Who a row is about: employee_id or user_id (task 42)
+
+- **Business tables refer to a person by `employee_id`.** Tasks, leave, attendance, monitoring, inbox, org structure:
+  everything HR and work data is about an employee.
+- **`user_id` is only for login, session and security tables**: user accounts, sessions, MFA, invitation and
+  password-reset tokens, permission overrides, legal acceptances.
+- Do not store both. If a business table needs the login (for example to send a notification), join `employees.user_id`.
+  When both are truly needed, write the reason in the entity's XML comment. The four tables that store both today and
+  the decision for each: `docs/reports/database/2026-11-20-task-42-concurrency-identity-empty-tables.md`.
+
+## Concurrency tokens (task 42)
+
+A table users edit through a form gets a rowversion token: `builder.HasRowVersionToken()` in its configuration
+(`Persistence/SqlServer/RowVersionConfiguration.cs`). Then:
+
+1. Return the version in the detail and update responses: `IRowVersionStore.GetVersionAsync<T>(id)` for a read,
+   `GetVersion(entity)` after a save. Add it as a trailing `string? Version = null` so existing callers keep compiling.
+2. Accept it on the update: `string? Version = null` on the request and command, and
+   `IRowVersionStore.SetExpectedVersion(entity, request.Version)` after the repository's `Update`, before the save.
+3. A stale version throws `DbUpdateConcurrencyException`; `ExceptionHandlerMiddleware` returns 409 with
+   `type: urn:crownus:error:concurrency-conflict`. The client reloads and reapplies its change.
+
+No version sent means the last save wins, as before. Rows loaded with `AsNoTracking` and then `Update()`d still save:
+`ApplicationDbContext.SaveChangesAsync` reads their current version first. Do not add a token to a table that raw SQL
+or `ExecuteUpdate` changes on a hot path (`projects` is left out: its task and meeting counters change on every new
+task), or every client version goes stale. Nor to a table a background process loads, waits on an external call and
+saves back while users edit it (`personal_calendar_events`: meeting links, calendar sync) until that writer updates only
+its own columns.
+
+## Checklist: designing a new table (task 42)
+
+- [ ] `tenant_id` column with a foreign key to `tenants`, and the table registered in `RlsTableRegistry` with its policy
+      created in the same migration (`RlsSql.CreatePolicy`).
+- [ ] Indexes start with `tenant_id`, in the order the queries filter.
+- [ ] Clustered key chosen on purpose and written in the configuration comment: the primary key by default, or a
+      tenant-first index for a large append-only table read by time (see the 2026-11-15 database design review).
+- [ ] A foreign key for every `_id` column, with the delete behaviour chosen on purpose.
+- [ ] A check constraint for every status or kind column, built from the constants class
+      (`InboxEntryConfiguration.InList` is an example). Use plain `'value'` literals so the in-process test schema accepts it.
+- [ ] Real string lengths (`HasMaxLength`), never unbounded `nvarchar(max)` except for documents and JSON.
+- [ ] `HasRowVersionToken()` if users edit it through a form (section above).
+- [ ] People referenced by `employee_id`, not `user_id`, unless it is a login or security table (identity rule above).
+- [ ] `created_at` / `updated_at` as `datetimeoffset`, and soft delete only if the feature needs undelete.

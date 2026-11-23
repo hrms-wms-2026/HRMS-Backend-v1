@@ -109,7 +109,8 @@ public class DepartmentsController : ControllerBase
                 request.Name,
                 request.Code,
                 request.ParentDepartmentId,
-                request.HeadPositionId),
+                request.HeadPositionId,
+                request.Version),
             ct);
 
         return result.IsSuccess
