@@ -54,6 +54,7 @@ public sealed class EmployeeProfileTablesRlsTests : IAsyncLifetime
         db.Employees.Add(employeeA);
         db.Employees.Add(NewEmployee(_tenantBId, "E-B-001"));
 
+        TestUsers.AddForNewEmployees(db);
         await db.SaveChangesAsync();
 
         db.EmployeeBankDetails.Add(new EmployeeBankDetail

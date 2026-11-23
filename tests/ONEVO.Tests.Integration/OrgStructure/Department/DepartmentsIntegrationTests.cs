@@ -1331,6 +1331,7 @@ public sealed class DepartmentsIntegrationTests : IClassFixture<DepartmentsInteg
                 EmploymentStatusId = activeStatus.Id,
                 HireDate = DateOnly.FromDateTime(DateTime.UtcNow)
             });
+            TestUsers.AddForNewEmployees(db);
             await db.SaveChangesAsync();
         }
 

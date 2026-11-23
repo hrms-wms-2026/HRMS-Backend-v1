@@ -172,6 +172,7 @@ public sealed class SensitivePositionChangeApprovalIntegrationTestsFixture : IAs
             NewSensitiveTemplate(_selfApproveSensitivePositionId, templateRoleId),
             NewSensitiveTemplate(_target2SensitivePositionId, templateRoleId));
 
+        TestUsers.AddForNewEmployees(seeded);
         await seeded.SaveChangesAsync();
 
         var assignmentRepo = PositionAssignmentRepositoryTestSupport.CreateRepository(seeded);
@@ -572,6 +573,7 @@ public sealed class SensitivePositionChangeApprovalIntegrationTests : IClassFixt
         await using (var seeded = _fixture.CreateContext())
         {
             seeded.Employees.Add(bypassActorEmployee);
+            TestUsers.AddForNewEmployees(seeded);
             await seeded.SaveChangesAsync();
         }
 

@@ -19,6 +19,11 @@ internal sealed class FakeLeavePolicyRepository : ILeavePolicyRepository
     public Dictionary<(string Kind, Guid Id), string> Targets { get; } = new();
     public int SaveCount { get; private set; }
     public HashSet<Guid> OwnEmployeeIds { get; } = [];
+    /// <summary>Versions that a leave request, entitlement or balance audit points at.</summary>
+    public HashSet<Guid> VersionsInUse { get; } = [];
+
+    public Task<bool> IsVersionInUseAsync(Guid tenantId, Guid versionId, CancellationToken ct = default) =>
+        Task.FromResult(VersionsInUse.Contains(versionId));
 
     private readonly List<Action> _pending = [];
 

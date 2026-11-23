@@ -78,6 +78,7 @@ public sealed class CalendarNotificationDb
             CompanySizeRange = "1-10", Status = TenantStatus.Active
         });
         db.Employees.Add(h.Organizer);
+        TestUsers.AddForNewEmployees(db);
         await db.SaveChangesAsync();
         return h;
     }
@@ -111,6 +112,7 @@ public sealed class CalendarNotificationDb
         await using var db = Context();
         var employee = NewEmployee(TenantId, first, last);
         db.Employees.Add(employee);
+        TestUsers.AddForNewEmployees(db);
         await db.SaveChangesAsync();
         return employee;
     }

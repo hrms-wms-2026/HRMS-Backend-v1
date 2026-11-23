@@ -32,6 +32,8 @@ public sealed class DeleteLeavePolicyVersionCommandHandler : IRequestHandler<Del
             return Result.Failure("This version is already in force and cannot be removed.");
         if (versions.Count == 1)
             return Result.Failure("A policy needs at least one version.");
+        if (await _policies.IsVersionInUseAsync(tenantId, version.Id, ct))
+            return Result.Failure("Leave requests or balances already use this version, so it cannot be removed. Add a new version instead.");
 
         _policies.RemoveVersion(version);
         await _policies.SaveChangesAsync(ct);

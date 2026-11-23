@@ -124,7 +124,7 @@ public sealed class MyTeamDb
     {
         var employee = new Employee
         {
-            Id = Guid.NewGuid(), TenantId = TenantId, UserId = Guid.NewGuid(),
+            Id = Guid.NewGuid(), TenantId = TenantId, UserId = TestUsers.New(db, TenantId),
             EmployeeNumber = $"MT-{Guid.NewGuid():N}"[..12], FirstName = "Team",
             LastName = lastName ?? $"Member{Guid.NewGuid():N}"[..14],
             Email = $"{Guid.NewGuid():N}@my-team-test.onevo.dev",
@@ -162,6 +162,24 @@ public sealed class MyTeamDb
             EffectiveFrom = DateOnly.FromDateTime(DateTime.UtcNow).AddYears(-1),
         });
         return position.Id;
+    }
+
+    /// <summary>
+    /// A real position assignment of the employee, for hand-written closure rows: since task 39b,
+    /// employee_hierarchy_closure.source_position_assignment_id has a foreign key to position_assignments.
+    /// Uses an assignment the employee already has; otherwise adds an ended one, which no visibility rule counts.
+    /// </summary>
+    public Guid ClosureSourceFor(ApplicationDbContext db, Guid employeeId)
+    {
+        var tracked = db.PositionAssignments.Local.FirstOrDefault(a => a.EmployeeId == employeeId);
+        if (tracked is not null)
+            return tracked.Id;
+        var stored = db.PositionAssignments.IgnoreQueryFilters()
+            .Where(a => a.EmployeeId == employeeId).Select(a => (Guid?)a.Id).FirstOrDefault();
+        if (stored is Guid id)
+            return id;
+        AddEndedPositionHeldBy(db, employeeId);
+        return db.PositionAssignments.Local.First(a => a.EmployeeId == employeeId).Id;
     }
 
     /// <summary>An expired/ended primary position assignment - never counted as "active" by
@@ -349,10 +367,15 @@ public sealed class MyTeamDb
         {
             db.TaskAssignments.Add(new TaskAssignment
             {
-                Id = Guid.NewGuid(), TaskId = task.Id, EmployeeId = assignee, UserId = Guid.NewGuid(),
+                Id = Guid.NewGuid(), TaskId = task.Id, EmployeeId = assignee, UserId = UserIdOf(db, assignee),
                 AssignedById = assignee, AssignedAt = DateTimeOffset.UtcNow,
             });
         }
         return task;
     }
+
+    /// <summary>The user id of a fixture employee, as task_assignments.user_id holds it.</summary>
+    public static Guid UserIdOf(ApplicationDbContext db, Guid employeeId) =>
+        db.Employees.Local.FirstOrDefault(e => e.Id == employeeId)?.UserId
+        ?? db.Employees.IgnoreQueryFilters().Where(e => e.Id == employeeId).Select(e => e.UserId).First();
 }

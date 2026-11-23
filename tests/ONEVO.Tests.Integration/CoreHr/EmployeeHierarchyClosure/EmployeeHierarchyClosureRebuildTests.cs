@@ -123,6 +123,7 @@ public sealed class EmployeeHierarchyClosureRebuildTests : IAsyncLifetime
             Email = $"{Guid.NewGuid():N}@hierarchy-closure.onevo.dev",
             HireDate = DateOnly.FromDateTime(DateTime.UtcNow),
         });
+        TestUsers.AddForNewEmployees(db);
         await db.SaveChangesAsync();
         return employeeId;
     }

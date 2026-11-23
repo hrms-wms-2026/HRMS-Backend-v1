@@ -85,7 +85,7 @@ public sealed class MeetingLeakIntegrationTests
         meeting.DueDate = DateOnly.FromDateTime(DateTime.UtcNow).AddDays(-1);
         db.TaskAssignments.Add(new TaskAssignment
         {
-            Id = Guid.NewGuid(), TaskId = meeting.Id, EmployeeId = at.OrganizerEmployeeId, UserId = Guid.NewGuid(),
+            Id = Guid.NewGuid(), TaskId = meeting.Id, EmployeeId = at.OrganizerEmployeeId, UserId = MyTeamDb.UserIdOf(db, at.OrganizerEmployeeId),
             AssignedById = at.OrganizerEmployeeId, AssignedAt = DateTimeOffset.UtcNow,
         });
         await db.SaveChangesAsync();

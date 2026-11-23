@@ -205,6 +205,7 @@ public class LeaveEntitlementsAndBalancesIntegrationTests : IAsyncLifetime
             HireDate = new DateOnly(2024, 1, 1),
             EmploymentStatusId = 1
         });
+        TestUsers.AddForNewEmployees(db);
         await db.SaveChangesAsync();
         return employeeId;
     }

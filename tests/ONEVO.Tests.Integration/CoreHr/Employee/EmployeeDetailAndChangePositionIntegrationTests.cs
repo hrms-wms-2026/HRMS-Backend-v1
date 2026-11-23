@@ -144,6 +144,7 @@ public sealed class EmployeeDetailAndChangePositionIntegrationTests : IAsyncLife
             IsPrimary = true,
         });
 
+        TestUsers.AddForNewEmployees(db);
         await db.SaveChangesAsync();
 
         var assignmentRepo = PositionAssignmentRepositoryTestSupport.CreateRepository(db);

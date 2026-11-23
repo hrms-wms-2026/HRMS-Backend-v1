@@ -115,6 +115,7 @@ public sealed class TryCreateActiveAssignmentTests : IAsyncLifetime
             Email = $"{Guid.NewGuid():N}@try-create-active.onevo.dev",
             HireDate = DateOnly.FromDateTime(DateTime.UtcNow),
         });
+        TestUsers.AddForNewEmployees(db);
         await db.SaveChangesAsync();
         return employeeId;
     }

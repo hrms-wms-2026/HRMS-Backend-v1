@@ -30,6 +30,9 @@ public sealed class TaskDraftRepositoryIntegrationTests : IAsyncLifetime
     private string _restrictedConnectionString = string.Empty;
     private Guid _tenantId;
     private Guid _otherTenantId;
+    private Guid _ownerUserId;
+    private Guid _otherUserId;
+    private Guid _projectId;
 
     public async Task InitializeAsync()
     {
@@ -43,6 +46,7 @@ public sealed class TaskDraftRepositoryIntegrationTests : IAsyncLifetime
         db.Tenants.AddRange(tenant, other);
         await db.SaveChangesAsync();
 
+        await SeedOwnersAndProjectAsync();
         await CreateRestrictedRoleAsync();
     }
 
@@ -51,11 +55,9 @@ public sealed class TaskDraftRepositoryIntegrationTests : IAsyncLifetime
     [Fact]
     public async Task Add_ListOwned_GetOwned_Remove_RoundTrip()
     {
-        var owner = Guid.NewGuid();
-        var other = Guid.NewGuid();
-        var project = Guid.NewGuid();
-        var mine = NewDraft(owner, project, "Fix login", "{\"priority\":\"high\"}");
-        var theirs = NewDraft(other, project, "Other", "{}");
+        var owner = _ownerUserId;
+        var mine = NewDraft(owner, _projectId, "Fix login", "{\"priority\":\"high\"}");
+        var theirs = NewDraft(_otherUserId, _projectId, "Other", "{}");
 
         await using (var db = CreateContext(_tenantId, restricted: true))
         {
@@ -90,8 +92,7 @@ public sealed class TaskDraftRepositoryIntegrationTests : IAsyncLifetime
     [Fact]
     public async Task RowLevelSecurity_HidesDraftsOfOtherTenants()
     {
-        var owner = Guid.NewGuid();
-        var draft = NewDraft(owner, Guid.NewGuid(), "Tenant A only", "{}");
+        var draft = NewDraft(_ownerUserId, _projectId, "Tenant A only", "{}");
 
         await using (var db = CreateContext(_tenantId, restricted: true))
         {
@@ -114,6 +115,46 @@ public sealed class TaskDraftRepositoryIntegrationTests : IAsyncLifetime
         PayloadJson = payload,
         CreatedById = owner,
     };
+
+    /// <summary>
+    /// Real owners and a real project: task_drafts.owner_user_id and task_drafts.project_id have foreign keys
+    /// to users and projects since task 39b.
+    /// </summary>
+    private async Task SeedOwnersAndProjectAsync()
+    {
+        await using var db = CreateContext(_tenantId);
+        _ownerUserId = TestUsers.New(db, _tenantId, "Draft", "Owner");
+        _otherUserId = TestUsers.New(db, _tenantId, "Other", "Owner");
+        var legalEntity = new ONEVO.Domain.Features.OrgStructure.Entities.LegalEntity
+        {
+            Id = Guid.NewGuid(), TenantId = _tenantId, Name = "Task Draft Co",
+            Timezone = "UTC", WorkStartTime = new TimeOnly(9, 0), WorkEndTime = new TimeOnly(17, 0),
+            StandardWorkingDays = "[1,2,3,4,5]", BreakDurationMinutes = 60,
+        };
+        db.LegalEntities.Add(legalEntity);
+        var lead = new ONEVO.Domain.Features.CoreHr.Entities.Employee
+        {
+            Id = Guid.NewGuid(), TenantId = _tenantId, UserId = _ownerUserId, LegalEntityId = legalEntity.Id,
+            EmployeeNumber = "TD-0001", FirstName = "Draft", LastName = "Owner", Email = "draft.owner@task-drafts.test",
+            HireDate = DateOnly.FromDateTime(DateTime.UtcNow).AddYears(-1), EmploymentStatusId = 1,
+        };
+        db.Employees.Add(lead);
+        var category = new ONEVO.Domain.Features.WorkManagement.Projects.Entities.ProjectCategory
+        {
+            Id = Guid.NewGuid(), TenantId = _tenantId, Name = "Drafts", IsActive = true, CreatedAt = DateTimeOffset.UtcNow,
+        };
+        db.Set<ONEVO.Domain.Features.WorkManagement.Projects.Entities.ProjectCategory>().Add(category);
+        var today = DateOnly.FromDateTime(DateTime.UtcNow);
+        var project = new ONEVO.Domain.Features.WorkManagement.Projects.Entities.Project
+        {
+            Id = Guid.NewGuid(), TenantId = _tenantId, OwningLegalEntityId = legalEntity.Id, CategoryId = category.Id,
+            Name = "Draft Project", Identifier = "DRAFT", LeadId = lead.Id,
+            StartDate = today.AddMonths(-1), TargetDate = today.AddMonths(3), IsActive = true,
+        };
+        db.Projects.Add(project);
+        _projectId = project.Id;
+        await db.SaveChangesAsync();
+    }
 
     private async Task CreateRestrictedRoleAsync()
     {

@@ -54,6 +54,9 @@ public sealed class AddLeavePolicyVersionCommandHandler : IRequestHandler<AddLea
         var sameDay = versions.FirstOrDefault(v => v.EffectiveFrom == request.ApplyFrom);
         if (sameDay is not null && sameDay.EffectiveFrom <= today)
             return Result<Guid>.Failure("A version of this policy already starts on that date. Choose a later date.");
+        // Replacing a future version deletes it, which the leave_policy_version_id keys refuse once it is used.
+        if (sameDay is not null && await _policies.IsVersionInUseAsync(tenantId, sameDay.Id, ct))
+            return Result<Guid>.Failure("Leave requests or balances already use the version that starts on that date. Choose a later date.");
 
         var versionNumber = sameDay?.VersionNumber ?? versions.Select(v => v.VersionNumber).DefaultIfEmpty(0).Max() + 1;
         var (version, blackouts) = LeavePolicyVersionFactory.Create(

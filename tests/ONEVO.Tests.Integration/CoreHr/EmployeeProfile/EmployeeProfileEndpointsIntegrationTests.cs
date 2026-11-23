@@ -74,6 +74,7 @@ public sealed class EmployeeProfileEndpointsIntegrationTests : IAsyncLifetime
         db.Employees.Add(employeeA);
         db.Employees.Add(NewEmployee(_tenantBId, Guid.NewGuid(), "E-B-001"));
 
+        TestUsers.AddForNewEmployees(db);
         await db.SaveChangesAsync();
     }
 

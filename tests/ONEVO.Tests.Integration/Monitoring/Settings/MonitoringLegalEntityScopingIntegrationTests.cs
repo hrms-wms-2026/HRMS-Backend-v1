@@ -322,6 +322,7 @@ public sealed class MonitoringLegalEntityScopingIntegrationTestsFixture : IAsync
             });
         }
 
+        TestUsers.AddForNewEmployees(db);
         await db.SaveChangesAsync();
 
         var sessionInfo = await LoginAndGetSessionAsync(userId, $"{slug}@test.dev", "TestPass1!", tenant.Slug);
@@ -676,6 +677,7 @@ public sealed class MonitoringLegalEntityScopingIntegrationTests : IClassFixture
             };
             db.Positions.Add(positionB);
             db.Positions.Add(positionA);
+            TestUsers.AddForNewEmployees(db);
             await db.SaveChangesAsync();
 
             db.PositionAssignments.Add(new PositionAssignment

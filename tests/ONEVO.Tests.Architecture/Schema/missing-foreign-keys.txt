@@ -16,7 +16,7 @@ agent_commands.tenant_id | tenant | foreign key to tenants, added in batches: ta
 app_usage_snapshots.agent_device_id | reference | not reviewed yet: task-39e
 app_usage_snapshots.employee_id | reference | not reviewed yet: task-39e
 app_usage_snapshots.tenant_id | tenant | foreign key to tenants, added in batches: task-39d
-attendance_alert_deductions.alert_id | reference | not reviewed yet: task-39b
+attendance_alert_deductions.alert_id | reference | AttendanceAlertMaterializer hard-deletes an alert whose day no longer qualifies and keeps its refunded deduction; the unique (tenant_id, alert_id) index rules out SET NULL. Needs a product decision: soft-delete alerts (task 39b results)
 attendance_alert_deductions.created_by_id | audit | AuditableEntityInterceptor writes Guid.Empty for system writes: task-39c
 attendance_alert_deductions.tenant_id | tenant | foreign key to tenants, added in batches: task-39d
 attendance_alerts.created_by_id | audit | AuditableEntityInterceptor writes Guid.Empty for system writes: task-39c
@@ -38,18 +38,9 @@ biometric_profiles.right_reference_photo_file_id | reference | not reviewed yet:
 biometric_profiles.tenant_id | tenant | foreign key to tenants, added in batches: task-39d
 break_records.tenant_id | tenant | foreign key to tenants, added in batches: task-39d
 bulk_onboarding_batch_rows.created_by_id | audit | AuditableEntityInterceptor writes Guid.Empty for system writes: task-39c
-bulk_onboarding_batch_rows.resolved_department_id | reference | not reviewed yet: task-39b
-bulk_onboarding_batch_rows.resolved_position_id | reference | not reviewed yet: task-39b
-bulk_onboarding_batch_rows.resolved_reports_to_employee_id | reference | not reviewed yet: task-39b
-bulk_onboarding_batch_rows.resolved_template_id | reference | not reviewed yet: task-39b
-bulk_onboarding_batch_rows.resolved_work_mode_id | reference | not reviewed yet: task-39b
 bulk_onboarding_batch_rows.tenant_id | tenant | foreign key to tenants, added in batches: task-39d
 bulk_onboarding_batches.created_by_id | audit | AuditableEntityInterceptor writes Guid.Empty for system writes: task-39c
-bulk_onboarding_batches.created_by_user_id | reference | not reviewed yet: task-39b
-bulk_onboarding_batches.default_checklist_template_id | reference | not reviewed yet: task-39b
-bulk_onboarding_batches.default_work_mode_id | reference | not reviewed yet: task-39b
 bulk_onboarding_batches.tenant_id | tenant | foreign key to tenants, added in batches: task-39d
-calendar_event_activity_logs.performed_by_id | reference | not reviewed yet: task-39b
 calendar_event_activity_logs.tenant_id | tenant | foreign key to tenants, added in batches: task-39d
 calendar_event_guests.event_id | reference | not reviewed yet: task-39e
 calendar_event_guests.tenant_id | tenant | foreign key to tenants, added in batches: task-39d
@@ -72,7 +63,6 @@ calendar_event_reminders_sent.created_by_id | audit | AuditableEntityInterceptor
 calendar_event_reminders_sent.employee_id | reference | not reviewed yet: task-39e
 calendar_event_reminders_sent.event_id | reference | not reviewed yet: task-39e
 calendar_event_reminders_sent.tenant_id | tenant | foreign key to tenants, added in batches: task-39d
-calendar_events.archived_by_id | reference | not reviewed yet: task-39b
 calendar_events.created_by_id | audit | AuditableEntityInterceptor writes Guid.Empty for system writes: task-39c
 calendar_events.tenant_id | tenant | foreign key to tenants, added in batches: task-39d
 calendar_meeting_incidents.created_by_id | audit | AuditableEntityInterceptor writes Guid.Empty for system writes: task-39c
@@ -148,7 +138,6 @@ employee_dependents.created_by_id | audit | AuditableEntityInterceptor writes Gu
 employee_dependents.tenant_id | tenant | foreign key to tenants, added in batches: task-39d
 employee_emergency_contacts.created_by_id | audit | AuditableEntityInterceptor writes Guid.Empty for system writes: task-39c
 employee_emergency_contacts.tenant_id | tenant | foreign key to tenants, added in batches: task-39d
-employee_hierarchy_closure.source_position_assignment_id | reference | derived row rebuilt from position_assignments; fixtures write it with made-up ids: fix them, then add the key (task-39b)
 employee_hierarchy_closure.tenant_id | tenant | foreign key to tenants, added in batches: task-39d
 employee_monitoring_overrides.employee_id | reference | not reviewed yet: task-39e
 employee_monitoring_overrides.set_by_id | reference | not reviewed yet: task-39e
@@ -158,9 +147,8 @@ employee_work_sessions.device_registration_id | reference | not reviewed yet: ta
 employee_work_sessions.tenant_id | tenant | foreign key to tenants, added in batches: task-39d
 employee_work_sessions.user_id | reference | not reviewed yet: task-39e
 employees.created_by_id | audit | AuditableEntityInterceptor writes Guid.Empty for system writes: task-39c
-employees.nationality_id | reference | not reviewed yet: task-39b
+employees.nationality_id | external | no nationalities table exists; the API stores the client-supplied id unchecked (task 39b results)
 employees.tenant_id | tenant | foreign key to tenants, added in batches: task-39d
-employees.user_id | reference | about 26 integration fixtures insert employees with a random user id: fix them, then add the key (task-39b)
 entity_assets.created_by_id | audit | AuditableEntityInterceptor writes Guid.Empty for system writes: task-39c
 entity_assets.owner_id | polymorphic | the type column next to it names the table, so no foreign key is possible
 entity_assets.tenant_id | tenant | foreign key to tenants, added in batches: task-39d
@@ -205,20 +193,16 @@ invitation_tokens.user_id | reference | not reviewed yet: task-39e
 labels.created_by_id | audit | AuditableEntityInterceptor writes Guid.Empty for system writes: task-39c
 labels.tenant_id | tenant | foreign key to tenants, added in batches: task-39d
 leave_approval_delegates.tenant_id | tenant | foreign key to tenants, added in batches: task-39d
-leave_balance_audits.leave_policy_version_id | reference | not reviewed yet: task-39b
 leave_balance_audits.tenant_id | tenant | foreign key to tenants, added in batches: task-39d
-leave_entitlements.leave_policy_version_id | reference | not reviewed yet: task-39b
 leave_entitlements.tenant_id | tenant | foreign key to tenants, added in batches: task-39d
 leave_policies.tenant_id | tenant | foreign key to tenants, added in batches: task-39d
 leave_policy_assignments.target_id | polymorphic | the type column next to it names the table, so no foreign key is possible
 leave_policy_assignments.tenant_id | tenant | foreign key to tenants, added in batches: task-39d
 leave_policy_blackout_periods.tenant_id | tenant | foreign key to tenants, added in batches: task-39d
 leave_policy_versions.tenant_id | tenant | foreign key to tenants, added in batches: task-39d
-leave_request_approvers.delegated_from_approver_id | reference | not reviewed yet: task-39b
 leave_request_approvers.tenant_id | tenant | foreign key to tenants, added in batches: task-39d
 leave_request_day_allocations.tenant_id | tenant | foreign key to tenants, added in batches: task-39d
 leave_request_documents.tenant_id | tenant | foreign key to tenants, added in batches: task-39d
-leave_requests.leave_policy_version_id | reference | not reviewed yet: task-39b
 leave_requests.tenant_id | tenant | foreign key to tenants, added in batches: task-39d
 leave_types.tenant_id | tenant | foreign key to tenants, added in batches: task-39d
 legal_acceptance_records.tenant_id | tenant | foreign key to tenants, added in batches: task-39d
@@ -226,14 +210,11 @@ legal_acceptance_records.user_id | reference | not reviewed yet: task-39e
 legal_entities.tenant_id | tenant | foreign key to tenants, added in batches: task-39d
 location_change_requests.tenant_id | tenant | foreign key to tenants, added in batches: task-39d
 management_coverage_records.tenant_id | tenant | foreign key to tenants, added in batches: task-39d
-meeting_action_items.created_by_employee_id | reference | not reviewed yet: task-39b
 meeting_action_items.tenant_id | tenant | foreign key to tenants, added in batches: task-39d
 meeting_attendance_sessions.tenant_id | tenant | foreign key to tenants, added in batches: task-39d
 meeting_details.tenant_id | tenant | foreign key to tenants, added in batches: task-39d
 meeting_occurrence_attendees.tenant_id | tenant | foreign key to tenants, added in batches: task-39d
-meeting_occurrence_suppressions.created_by_employee_id | reference | not reviewed yet: task-39b
 meeting_occurrence_suppressions.tenant_id | tenant | foreign key to tenants, added in batches: task-39d
-meeting_series.approval_request_id | reference | not reviewed yet: task-39b
 meeting_series.created_by_id | audit | AuditableEntityInterceptor writes Guid.Empty for system writes: task-39c
 meeting_series.tenant_id | tenant | foreign key to tenants, added in batches: task-39d
 meeting_series_links.tenant_id | tenant | foreign key to tenants, added in batches: task-39d
@@ -270,17 +251,10 @@ notifications.recipient_user_id | reference | not reviewed yet: task-39e
 notifications.related_entity_id | polymorphic | the type column next to it names the table, so no foreign key is possible
 notifications.tenant_id | tenant | foreign key to tenants, added in batches: task-39d
 objectives.created_by_id | audit | AuditableEntityInterceptor writes Guid.Empty for system writes: task-39c
-objectives.creator_position_objective_id | reference | not reviewed yet: task-39b
 objectives.tenant_id | tenant | foreign key to tenants, added in batches: task-39d
-offboarding_records.initiated_by_id | reference | not reviewed yet: task-39b
 offboarding_records.tenant_id | tenant | foreign key to tenants, added in batches: task-39d
-offboarding_task_bypass_requests.approver_id | reference | not reviewed yet: task-39b
-offboarding_task_bypass_requests.requested_by_id | reference | not reviewed yet: task-39b
 offboarding_task_bypass_requests.tenant_id | tenant | foreign key to tenants, added in batches: task-39d
-onboarding_drafts.avatar_file_id | reference | not reviewed yet: task-39b
 onboarding_drafts.created_by_id | audit | AuditableEntityInterceptor writes Guid.Empty for system writes: task-39c
-onboarding_drafts.selected_template_id | reference | not reviewed yet: task-39b
-onboarding_drafts.started_by_id | reference | not reviewed yet: task-39b
 onboarding_drafts.tenant_id | tenant | foreign key to tenants, added in batches: task-39d
 outbox_messages.tenant_id | tenant | foreign key to tenants, added in batches: task-39d
 password_reset_tokens.tenant_id | tenant | foreign key to tenants, added in batches: task-39d
@@ -297,17 +271,13 @@ planned_task_blocks.tenant_id | tenant | foreign key to tenants, added in batche
 position_access_templates.tenant_id | tenant | foreign key to tenants, added in batches: task-39d
 position_assignments.created_by_id | audit | AuditableEntityInterceptor writes Guid.Empty for system writes: task-39c
 position_assignments.tenant_id | tenant | foreign key to tenants, added in batches: task-39d
-position_reporting_history.created_by_user_id | reference | not reviewed yet: task-39b
 position_reporting_history.tenant_id | tenant | foreign key to tenants, added in batches: task-39d
 positions.created_by_id | audit | AuditableEntityInterceptor writes Guid.Empty for system writes: task-39c
-positions.default_role_id | reference | not reviewed yet: task-39b
 positions.tenant_id | tenant | foreign key to tenants, added in batches: task-39d
 presence_sessions.tenant_id | tenant | foreign key to tenants, added in batches: task-39d
 project_categories.created_by_id | audit | AuditableEntityInterceptor writes Guid.Empty for system writes: task-39c
 project_categories.tenant_id | tenant | foreign key to tenants, added in batches: task-39d
 project_member_invitations.created_by_id | audit | AuditableEntityInterceptor writes Guid.Empty for system writes: task-39c
-project_member_invitations.invited_by_id | reference | not reviewed yet: task-39b
-project_member_invitations.invited_employee_id | reference | not reviewed yet: task-39b
 project_member_invitations.tenant_id | tenant | foreign key to tenants, added in batches: task-39d
 project_members.created_by_id | audit | AuditableEntityInterceptor writes Guid.Empty for system writes: task-39c
 project_members.tenant_id | tenant | foreign key to tenants, added in batches: task-39d
@@ -316,9 +286,8 @@ projects.tenant_id | tenant | foreign key to tenants, added in batches: task-39d
 refresh_tokens.tenant_id | tenant | foreign key to tenants, added in batches: task-39d
 refresh_tokens.user_id | reference | not reviewed yet: task-39e
 release_calendar.created_by_id | audit | AuditableEntityInterceptor writes Guid.Empty for system writes: task-39c
-release_calendar.recipient_user_id | reference | not reviewed yet: task-39b
 release_calendar.tenant_id | tenant | foreign key to tenants, added in batches: task-39d
-reporting_manager_changes.batch_id | reference | not reviewed yet: task-39b
+reporting_manager_changes.batch_id | external | a group id made by ReportingLineMoveService (Guid.NewGuid) for the changes of one move; no batch table
 reporting_manager_changes.created_by_id | audit | AuditableEntityInterceptor writes Guid.Empty for system writes: task-39c
 reporting_manager_changes.tenant_id | tenant | foreign key to tenants, added in batches: task-39d
 role_permissions.tenant_id | tenant | foreign key to tenants, added in batches: task-39d
@@ -331,12 +300,9 @@ sessions.user_id | reference | not reviewed yet: task-39e
 sprint_activity_logs.created_by_id | audit | AuditableEntityInterceptor writes Guid.Empty for system writes: task-39c
 sprint_activity_logs.tenant_id | tenant | foreign key to tenants, added in batches: task-39d
 sprints.created_by_id | audit | AuditableEntityInterceptor writes Guid.Empty for system writes: task-39c
-sprints.creator_position_objective_id | reference | not reviewed yet: task-39b
 sprints.tenant_id | tenant | foreign key to tenants, added in batches: task-39d
 support_ticket_attachments.tenant_id | tenant | foreign key to tenants, added in batches: task-39d
 support_ticket_comments.tenant_id | tenant | foreign key to tenants, added in batches: task-39d
-task_assignments.assigned_by_id | reference | not reviewed yet: task-39b
-task_assignments.user_id | reference | fixtures copy the random user id of fixture employees, as for employees.user_id: fix them, then add the key (task-39b)
 task_categories.created_by_id | audit | AuditableEntityInterceptor writes Guid.Empty for system writes: task-39c
 task_categories.tenant_id | tenant | foreign key to tenants, added in batches: task-39d
 task_clocking_sessions.created_by_id | audit | AuditableEntityInterceptor writes Guid.Empty for system writes: task-39c
@@ -348,21 +314,17 @@ task_comment_reactions.tenant_id | tenant | foreign key to tenants, added in bat
 task_comments.created_by_id | audit | AuditableEntityInterceptor writes Guid.Empty for system writes: task-39c
 task_comments.tenant_id | tenant | foreign key to tenants, added in batches: task-39d
 task_drafts.created_by_id | audit | AuditableEntityInterceptor writes Guid.Empty for system writes: task-39c
-task_drafts.owner_user_id | reference | not reviewed yet: task-39b
-task_drafts.project_id | reference | integration tests store drafts for projects that do not exist: fix them, then add the key (task-39b)
 task_drafts.tenant_id | tenant | foreign key to tenants, added in batches: task-39d
 task_edit_logs.created_by_id | audit | AuditableEntityInterceptor writes Guid.Empty for system writes: task-39c
-task_edit_logs.edit_request_id | reference | not reviewed yet: task-39b
 task_edit_logs.tenant_id | tenant | foreign key to tenants, added in batches: task-39d
 task_percentage_logs.created_by_id | audit | AuditableEntityInterceptor writes Guid.Empty for system writes: task-39c
 task_percentage_logs.tenant_id | tenant | foreign key to tenants, added in batches: task-39d
 task_status_change_logs.created_by_id | audit | AuditableEntityInterceptor writes Guid.Empty for system writes: task-39c
 task_status_change_logs.tenant_id | tenant | foreign key to tenants, added in batches: task-39d
-task_statuses.approver_id | reference | not reviewed yet: task-39b
+task_statuses.approver_id | unused | dead field (see TaskStatus.RequiresApproval): stored from the client unchecked and read by no logic; neither an employee nor a user id is guaranteed
 task_statuses.created_by_id | audit | AuditableEntityInterceptor writes Guid.Empty for system writes: task-39c
 task_statuses.tenant_id | tenant | foreign key to tenants, added in batches: task-39d
 tasks.created_by_id | audit | AuditableEntityInterceptor writes Guid.Empty for system writes: task-39c
-tasks.creator_position_objective_id | reference | not reviewed yet: task-39b
 tasks.tenant_id | tenant | foreign key to tenants, added in batches: task-39d
 tenant_auth_policies.tenant_id | tenant | foreign key to tenants, added in batches: task-39d
 tenant_notification_rules.tenant_id | tenant | foreign key to tenants, added in batches: task-39d
@@ -407,7 +369,6 @@ users.tenant_id | tenant | foreign key to tenants, added in batches: task-39d
 versions.created_by_id | audit | AuditableEntityInterceptor writes Guid.Empty for system writes: task-39c
 versions.tenant_id | tenant | foreign key to tenants, added in batches: task-39d
 wm_approval_requests.created_by_id | audit | AuditableEntityInterceptor writes Guid.Empty for system writes: task-39c
-wm_approval_requests.position_objective_id | reference | not reviewed yet: task-39b
 wm_approval_requests.target_id | polymorphic | the type column next to it names the table, so no foreign key is possible
 wm_approval_requests.tenant_id | tenant | foreign key to tenants, added in batches: task-39d
 wm_module_hour_summaries.created_by_id | audit | AuditableEntityInterceptor writes Guid.Empty for system writes: task-39c
