@@ -34,6 +34,13 @@ public sealed class AdminLoginCommandHandler
 
     private static readonly TimeSpan MfaChallengeLifetime = TimeSpan.FromMinutes(10);
 
+    /// <summary>
+    /// A real BCrypt hash at the production work factor (12) of a throwaway password. Failure paths
+    /// that have no stored hash to check (unknown email, no credential, locked) verify against it, so
+    /// every failed login costs one full hash and response time does not reveal which emails exist.
+    /// </summary>
+    public const string DummyPasswordHash = "$2a$12$RKJsOj/yeZyK./BX2LxhUOK4WO.vsEk47jV7Gr25VJqjsiQpKWRaW";
+
     public AdminLoginCommandHandler(
         ISecureTokenGenerator tokens,
         IDateTimeProvider clock,
@@ -64,6 +71,7 @@ public sealed class AdminLoginCommandHandler
         var user = await _platformUsers.GetByEmailAsync(email, ct);
         if (user is null)
         {
+            BurnPasswordHash(request.Password);
             await WriteAuthEventAsync(
                 PlatformAuthEvent.LoginFailed,
                 null,
@@ -76,6 +84,7 @@ public sealed class AdminLoginCommandHandler
         var credential = await _credentials.GetActivePasswordCredentialAsync(user.Id, ct);
         if (credential is null || string.IsNullOrWhiteSpace(credential.PasswordHash))
         {
+            BurnPasswordHash(request.Password);
             await WriteAuthEventAsync(
                 PlatformAuthEvent.LoginFailed,
                 user.Id,
@@ -88,6 +97,8 @@ public sealed class AdminLoginCommandHandler
         var now = _clock.UtcNow;
         if (credential.LockedUntil.HasValue && credential.LockedUntil.Value > now)
         {
+            // Not the stored hash: a locked account must not confirm a correct guess.
+            BurnPasswordHash(request.Password);
             await WriteAuthEventAsync(
                 PlatformAuthEvent.LoginFailed,
                 user.Id,
@@ -181,6 +192,8 @@ public sealed class AdminLoginCommandHandler
             // Reaching here means MFA is not enrolled: this is an enrollment-only session (F-02).
             MfaEnrollmentRequired: true));
     }
+
+    private void BurnPasswordHash(string password) => _ = _passwordHasher.Verify(password, DummyPasswordHash);
 
     private static Result<AdminLoginResultDto> InvalidCredentials()
     {
