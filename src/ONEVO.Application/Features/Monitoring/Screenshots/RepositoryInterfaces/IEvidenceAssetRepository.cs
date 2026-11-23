@@ -25,6 +25,19 @@ public interface IEvidenceAssetRepository
         CancellationToken ct);
 
     /// <summary>
+    /// Same page as GetPagedAsync without an employee filter, but only for assets owned by one of
+    /// <paramref name="employeeIds"/> - the caller's viewable employees. An empty set returns nothing.
+    /// </summary>
+    Task<(List<MonitoringEvidenceAsset> Items, int Total)> GetPagedForEmployeesAsync(
+        Guid tenantId,
+        IReadOnlyCollection<Guid> employeeIds,
+        DateOnly? from,
+        DateOnly? to,
+        int page,
+        int pageSize,
+        CancellationToken ct);
+
+    /// <summary>
     /// Screenshots whose <see cref="MonitoringEvidenceAsset.CapturedAt"/> falls in
     /// [<paramref name="from"/>, <paramref name="to"/>). <paramref name="ownerIds"/> is the
     /// CoreHR employee id plus the user id, because older tray uploads stored the user id

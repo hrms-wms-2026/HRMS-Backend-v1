@@ -4,6 +4,7 @@ using ONEVO.Application.Common.Models;
 using ONEVO.Application.Common.RepositoryInterfaces;
 using ONEVO.Application.Common.ServiceInterfaces;
 using ONEVO.Application.Features.Auth.Login.RepositoryInterfaces;
+using ONEVO.Application.Features.CoreHr.Employee.Access;
 using ONEVO.Application.Features.Monitoring.Screenshots.DTOs.Responses;
 using ONEVO.Application.Features.Monitoring.Screenshots.RepositoryInterfaces;
 using ONEVO.Application.Features.Storage.File.ServiceInterfaces;
@@ -24,6 +25,8 @@ public class GetScreenshotUrlQueryHandler
     private readonly IAuditLogRepository _auditLogs;
     private readonly IUnitOfWork _unitOfWork;
     private readonly IDateTimeProvider _clock;
+    private readonly IEmployeeViewAccess _viewAccess;
+    private readonly IEmployeeRepository _employees;
 
     public GetScreenshotUrlQueryHandler(
         IEvidenceAssetRepository assets,
@@ -32,7 +35,9 @@ public class GetScreenshotUrlQueryHandler
         ICurrentUser currentUser,
         IAuditLogRepository auditLogs,
         IUnitOfWork unitOfWork,
-        IDateTimeProvider clock)
+        IDateTimeProvider clock,
+        IEmployeeViewAccess viewAccess,
+        IEmployeeRepository employees)
     {
         _assets = assets;
         _fileStorage = fileStorage;
@@ -41,6 +46,8 @@ public class GetScreenshotUrlQueryHandler
         _auditLogs = auditLogs;
         _unitOfWork = unitOfWork;
         _clock = clock;
+        _viewAccess = viewAccess;
+        _employees = employees;
     }
 
     public async Task<Result<ScreenshotUrlDto>> Handle(
@@ -51,6 +58,10 @@ public class GetScreenshotUrlQueryHandler
 
         var asset = await _assets.GetByIdAsync(tenantId, request.EvidenceAssetId, cancellationToken);
         if (asset is null)
+            return Result<ScreenshotUrlDto>.Failure(MonitoringErrors.EvidenceAssetNotFound, 404);
+
+        // Same answer as a missing asset: a caller who cannot view the employee learns nothing.
+        if (!await CanViewOwnerAsync(tenantId, asset.EmployeeId, cancellationToken))
             return Result<ScreenshotUrlDto>.Failure(MonitoringErrors.EvidenceAssetNotFound, 404);
 
         var urlResult = await _fileStorage.GetSignedUrlAsync(tenantId, asset.FileRecordId, UrlExpiry, cancellationToken);
@@ -71,5 +82,18 @@ public class GetScreenshotUrlQueryHandler
         await _unitOfWork.SaveChangesAsync(cancellationToken);
 
         return Result<ScreenshotUrlDto>.Success(new ScreenshotUrlDto(urlResult.Value!, _clock.UtcNow.Add(UrlExpiry)));
+    }
+
+    /// <summary>
+    /// Older tray uploads stored the user id as EmployeeId when no employee row existed yet (see
+    /// IEvidenceAssetRepository.ListForOwnersInRangeAsync), so fall back to that user's employee.
+    /// </summary>
+    private async Task<bool> CanViewOwnerAsync(Guid tenantId, Guid ownerId, CancellationToken ct)
+    {
+        if (await _viewAccess.CanViewAsync(ownerId, ct))
+            return true;
+
+        var byUser = await _employees.GetByUserIdAsync(tenantId, ownerId, ct);
+        return byUser is not null && byUser.Id != ownerId && await _viewAccess.CanViewAsync(byUser.Id, ct);
     }
 }

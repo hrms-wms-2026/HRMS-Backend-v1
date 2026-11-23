@@ -1,5 +1,6 @@
 using MediatR;
 using Microsoft.Extensions.Options;
+using ONEVO.Application.Common.Authorization;
 using ONEVO.Application.Features.WorkManagement.Planner;
 using ONEVO.Application.Common.Models;
 using ONEVO.Application.Common.ServiceInterfaces;
@@ -29,7 +30,7 @@ public sealed class GetMyTeamCapabilitiesQueryHandler(
     IOptions<PlannerOptions>? plannerOptions = null)
     : IRequestHandler<GetMyTeamCapabilitiesQuery, Result<MyTeamCapabilitiesResponse>>
 {
-    private const string AttendanceReadPermission = "attendance:read";
+    private const string AttendanceReadPermission = PermissionCatalog.Attendance.Read;
 
     private static readonly string[] WorkModuleKeys =
         ["worksync_foundation", "projects", "objectives_milestones", "tasks", "boards", "planning_sprints"];
@@ -39,7 +40,7 @@ public sealed class GetMyTeamCapabilitiesQueryHandler(
         if (!currentUser.IsAuthenticated)
             return Result<MyTeamCapabilitiesResponse>.Forbidden();
 
-        var canReviewPeopleApprovals = currentUser.HasPermission("leave:approve") || currentUser.HasPermission("attendance:approve");
+        var canReviewPeopleApprovals = currentUser.HasPermission(PermissionCatalog.Leave.Approve) || currentUser.HasPermission(PermissionCatalog.Attendance.Approve);
         var canReviewExceptions = currentUser.HasPermission(ExceptionPermissions.HrReview)
             || currentUser.HasPermission(ExceptionPermissions.HrManage)
             || currentUser.HasPermission(ExceptionPermissions.ManagerReview)

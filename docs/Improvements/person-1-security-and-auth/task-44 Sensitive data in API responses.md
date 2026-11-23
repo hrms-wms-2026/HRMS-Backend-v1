@@ -93,3 +93,47 @@ These three guards make the check automatic. Build them in this task if time all
 - The architecture test from guard 1 passes, and fails when a `TenantId` property is added to a tenant response DTO.
 - The staging build does not publish source maps, and `npm run lint` and `npm run check:warnings` are clean.
 - The product owner's answer for row 4 is written in this file, and the code matches it.
+
+## Results (2026-11-19)
+
+Branch `claude/improve-task-44-sensitive-data-c98209`, started from `origin/development` at 846b92028.
+
+### Done
+
+| Step | What changed |
+|---|---|
+| 1. Invitation preview | `InvitationDetailDto` and `InviteMapper.ToDto` no longer carry `InvitationId` or `TenantId`. `GET /api/v1/auth/invitations/{token}` returns no `invitation_id` and no `tenant_id`. The accept endpoints (password, Google, employee) never used this DTO; they work from the token in the URL, and the tenant provisioning E2E test still accepts through it |
+| 2. Attendance approver | `AttendanceCorrectionApproverResponse` and `WorkAreaChangeApproverResponse` no longer carry `UserId`; `EmployeeId` stays. The "correction created" notification now takes the approver's user id from the approval route instead of the response object |
+| Guard 1 | `tests/ONEVO.Tests.Architecture/Security/ResponseDtoSensitiveFieldArchitectureTests.cs`. Scans every `DTOs.Responses` type and every API `*ViewModel`. Internal-id terms match a name ending in `TenantId` or `UserId`; secret terms match only properties that can hold a value (not flags, counts or dates, so `HasAccessToken` and `TokenExpiresAt` pass). A probe record proves an added `TenantId` fails. A second test fails on stale allow-list entries |
+| Guard 2 | The invitation preview field set is pinned twice: in the architecture test (from the DTO) and in `TenantProvisioningE2ETests` (from the live JSON). The work-area integration test now asserts `receiver.employeeId` and the absence of `receiver.userId` |
+| Guard 3 | `docs/security/data-classification.md`, linked from `docs/README.md` |
+| Guard 4 | `.github/pull_request_template.md` (there was no template) with the response-DTO line, plus the RLS and permission lines from `CLAUDE.md` |
+
+### Open decisions (not changed)
+
+1. **Row 4, employee personal data.** Needs the product owner's answer: should a reporting manager see a team member's date of birth, home address and emergency contacts? Code is unchanged until then. If the answer is no, gate the personal section and emergency contacts in `GetEmployeeDetailQueryHandler` the way payroll is gated today, and add the rule to the permission catalogue (task 32).
+2. **Step 3, project members.** Needs the Work Management owner. `ProjectMemberAvatarDto.UserId` holds an employee id, and the frontend reads `member.userId` in six places (project card, project list, milestone tree, task backlog, task board, task form), so the rename must ship together with the frontend. `ProjectMembershipSummaryDto.UserId` (`creatorMembership.userId` on `POST /api/v1/work/projects`) is confirmed to hold the creator's **login user id**, a real internal id. The frontend does not read it, but `CreateProjectEndpointTests` uses it to find the owner. Suggested fix: replace it with `EmployeeId` (`member.EmployeeId`). Both are `FOLLOW-UP` entries in the guard's allow-list.
+3. **Guard 5, Semgrep rule.** Not added. The rule set lives in `../dev-env` (outside this repo), and the architecture test covers the same names more precisely. Add a Semgrep rule only if the scan must also catch it outside CI.
+
+### More leaks found by the guard (follow-up, allow-listed as `FOLLOW-UP`)
+
+| Response | Field | Endpoint |
+|---|---|---|
+| `FileRecordDto` | `TenantId`, `UploadedByUserId` | `GET/POST /api/v1/files…`, leave document upload, tray screenshot upload. The tray client also reads this DTO, so check it before removing anything |
+| `OnboardingAccessGrantRequestListItemResponse` | `RequestedByUserId`, `DecidedByUserId` | Onboarding access request list |
+| `GitHubTenantApprovalDto` | `EnabledByUserId` | Tenant GitHub integration approval |
+
+The guard does not catch audit fields named `…ById`. `AttendanceCorrectionResponse.RequestedById` / `ReviewedById` and `WorkAreaChangeRequestResponse.ReviewedById` are login user ids. The frontend models declare them, but only spec files read them. Changing them is part of the same follow-up.
+
+### Frontend items (for the frontend team; the frontend repo was not edited)
+
+1. `core/auth/models/dto/invitation-preview.dto.ts`: delete `invitation_id` and `tenant_id`. No code reads them.
+2. `modules/attendance/models/attendance-correction.model.ts` line 24 and `work-area-change-request.model.ts` line 13: delete `userId` from the approver / receiver model. No code reads them.
+3. `core/auth/feature/login/login.component.ts` line 89: delete the `console.log` and wire or remove the empty `signInWithGoogle()`.
+4. `angular.json`, `staging`: set `sourceMap` to `false`, or use `{ "scripts": true, "hidden": true }` and keep map files off the public host.
+5. When step 3 is agreed: rename `userId` to `employeeId` in `modules/work/models/dto/project.dto.ts` and `project.model.ts`, and in the six components that read `member.userId`.
+
+### Verification
+
+- `find-unauthorized-endpoints.ps1` on the worktree: 0 actions without an authorization attribute; 32 explicit `[AllowAnonymous]` actions, none added.
+- Full gate (`verify.ps1 <worktree> -Full`, report `dev-env/reports/improve-task-44-sensitive-data-c98209/verify-20261119-151802`): build PASS, unit 8019 passed, architecture 720 passed, integration 1251 passed / 1 skipped, 0 failed. No flaky re-runs needed.

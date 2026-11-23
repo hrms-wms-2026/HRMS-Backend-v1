@@ -32,7 +32,7 @@ public sealed class SupportAttachmentAndAnnouncementTests
         policy.Setup(p => p.ValidateUpload(UploadPurposeCatalog.SupportTicketAttachment, "run.exe", It.IsAny<string>(), 10))
             .Returns(Result.Failure("File type not allowed.", 415));
         var storage = new Mock<IObjectStorageAdapter>();
-        var service = new SupportAttachmentService(policy.Object, storage.Object, Clock().Object);
+        var service = new SupportAttachmentService(policy.Object, storage.Object, Clock().Object, new ONEVO.Tests.Unit.Fakes.FakeImageSanitizer());
         var ticket = new SupportTicket { Id = Guid.NewGuid(), TenantId = Guid.NewGuid() };
 
         var result = await service.StoreAsync(
@@ -52,7 +52,7 @@ public sealed class SupportAttachmentAndAnnouncementTests
         policy.Setup(p => p.ValidateSignature(It.IsAny<string>(), It.IsAny<Stream>())).Returns(Result.Success());
         policy.Setup(p => p.SanitizeFileName("my log.pdf")).Returns("my_log.pdf");
         var storage = new Mock<IObjectStorageAdapter>();
-        var service = new SupportAttachmentService(policy.Object, storage.Object, Clock().Object);
+        var service = new SupportAttachmentService(policy.Object, storage.Object, Clock().Object, new ONEVO.Tests.Unit.Fakes.FakeImageSanitizer());
         var ticket = new SupportTicket { Id = Guid.NewGuid(), TenantId = Guid.NewGuid() };
         var tenantUser = Guid.NewGuid();
 
@@ -63,7 +63,8 @@ public sealed class SupportAttachmentAndAnnouncementTests
         result.IsSuccess.Should().BeTrue();
         var attachment = result.Value!;
         attachment.ObjectKey.Should().StartWith($"support-tickets/{ticket.TenantId:N}/{ticket.Id:N}/{attachment.Id:N}/")
-            .And.EndWith("my_log.pdf");
+            .And.EndWith("/content.pdf"); // Task 23: server-generated object name
+        attachment.FileName.Should().Be("my_log.pdf");
         attachment.TenantId.Should().Be(ticket.TenantId);
         attachment.UploadedByUserId.Should().Be(tenantUser);
         storage.Verify(s => s.PutObjectAsync(attachment.ObjectKey, It.IsAny<Stream>(), "application/pdf", It.IsAny<CancellationToken>()), Times.Once);

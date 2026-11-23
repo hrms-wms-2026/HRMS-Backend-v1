@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using ONEVO.Api.Contracts.CoreHr.ChecklistTemplates;
 using ONEVO.Api.Filters;
+using ONEVO.Application.Common.Authorization;
 using ONEVO.Application.Features.CoreHr.Onboarding.Commands.ArchiveChecklistTemplate;
 using ONEVO.Application.Features.CoreHr.Onboarding.Commands.CreateChecklistTemplate;
 using ONEVO.Application.Features.CoreHr.Onboarding.Commands.UpdateChecklistTemplate;
@@ -30,7 +31,7 @@ public class ChecklistTemplatesController : ControllerBase
     /// template builder (checklists:manage). Templates can carry attachments, so reads are not
     /// open to every signed-in user.</summary>
     [HttpGet]
-    [RequireAnyPermission("employees:write", "employees:offboard", "checklists:manage")]
+    [RequireAnyPermission(PermissionCatalog.Employees.Write, PermissionCatalog.Employees.Offboard, PermissionCatalog.Checklists.Manage)]
     public async Task<IActionResult> List(
         [FromQuery] string? templateType, [FromQuery] Guid legalEntityId, [FromQuery] Guid? departmentId, [FromQuery] Guid? positionId,
         [FromQuery] bool includeInactive = false, [FromQuery] int page = 1, [FromQuery] int pageSize = 25, CancellationToken ct = default)
@@ -41,7 +42,7 @@ public class ChecklistTemplatesController : ControllerBase
     }
 
     [HttpGet("{id:guid}")]
-    [RequireAnyPermission("employees:write", "employees:offboard", "checklists:manage")]
+    [RequireAnyPermission(PermissionCatalog.Employees.Write, PermissionCatalog.Employees.Offboard, PermissionCatalog.Checklists.Manage)]
     public async Task<IActionResult> GetById(Guid id, CancellationToken ct = default)
     {
         var result = await _mediator.Send(new GetChecklistTemplateByIdQuery(id), ct);
@@ -50,7 +51,7 @@ public class ChecklistTemplatesController : ControllerBase
 
     /// <summary>Downloads an attachment saved on one of this template's tasks.</summary>
     [HttpGet("{id:guid}/files/{fileId:guid}")]
-    [RequireAnyPermission("employees:write", "employees:offboard", "checklists:manage")]
+    [RequireAnyPermission(PermissionCatalog.Employees.Write, PermissionCatalog.Employees.Offboard, PermissionCatalog.Checklists.Manage)]
     public async Task<IActionResult> GetFile(Guid id, Guid fileId, CancellationToken ct = default)
     {
         var result = await _mediator.Send(new GetChecklistTemplateFileQuery(id, fileId), ct);
@@ -63,7 +64,7 @@ public class ChecklistTemplatesController : ControllerBase
     /// <summary>TenantId is always server-derived; the request body carries no tenant/company
     /// override beyond the explicit legalEntityId scope field.</summary>
     [HttpPost]
-    [RequirePermission("checklists:manage")]
+    [RequirePermission(PermissionCatalog.Checklists.Manage)]
     [Idempotent]
     public async Task<IActionResult> Create([FromBody] CreateChecklistTemplateRequest request, CancellationToken ct = default)
     {
@@ -80,7 +81,7 @@ public class ChecklistTemplatesController : ControllerBase
     }
 
     [HttpPut("{id:guid}")]
-    [RequirePermission("checklists:manage")]
+    [RequirePermission(PermissionCatalog.Checklists.Manage)]
     public async Task<IActionResult> Update(Guid id, [FromBody] UpdateChecklistTemplateRequest request, CancellationToken ct = default)
     {
         var command = new UpdateChecklistTemplateCommand(
@@ -95,7 +96,7 @@ public class ChecklistTemplatesController : ControllerBase
 
     /// <summary>Soft-deactivate only - there is no delete endpoint for checklist templates.</summary>
     [HttpPost("{id:guid}/archive")]
-    [RequirePermission("checklists:manage")]
+    [RequirePermission(PermissionCatalog.Checklists.Manage)]
     public async Task<IActionResult> Archive(Guid id, CancellationToken ct = default)
     {
         var result = await _mediator.Send(new ArchiveChecklistTemplateCommand(id), ct);

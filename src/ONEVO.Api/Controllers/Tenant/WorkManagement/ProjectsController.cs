@@ -6,6 +6,7 @@ using ONEVO.Api.Contracts.Storage;
 using ONEVO.Api.Contracts.WorkManagement.Objectives;
 using ONEVO.Api.Contracts.WorkManagement.Projects;
 using ONEVO.Api.Filters;
+using ONEVO.Application.Common.Authorization;
 using ONEVO.Application.Common.Models;
 using ONEVO.Application.Features.WorkManagement.Projects.Commands.AchieveProject;
 using ONEVO.Application.Features.WorkManagement.Projects.Commands.AddProjectMember;
@@ -51,8 +52,9 @@ public class ProjectsController : ControllerBase
 
     /// <summary>Creates a Project with its Default Objective, creator membership, Default Version, release reminder, optional labels, and optional logo — all in one atomic transaction.</summary>
     [HttpPost]
-    [RequirePermission("projects:create")]
+    [RequirePermission(PermissionCatalog.Projects.Create)]
     [Idempotent]
+    [RequestSizeLimit(ONEVO.Api.Configuration.RequestBodyLimits.ProjectCreateWithImages)]
     public async Task<IActionResult> Create([FromForm] CreateProjectFormRequest request, CancellationToken ct)
     {
         var labels = string.IsNullOrWhiteSpace(request.LabelsJson)

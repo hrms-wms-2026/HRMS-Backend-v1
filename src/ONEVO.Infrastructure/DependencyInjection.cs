@@ -753,6 +753,9 @@ public static class DependencyInjection
         services.AddScoped<
             ONEVO.Application.Features.Storage.File.ServiceInterfaces.IAvatarImageProcessor,
             ONEVO.Infrastructure.Services.Storage.File.AvatarImageProcessor>();
+        services.AddSingleton<
+            ONEVO.Application.Features.Storage.File.ServiceInterfaces.IImageSanitizer,
+            ONEVO.Infrastructure.Services.Storage.File.SkiaImageSanitizer>();
         services.AddScoped<
             ONEVO.Application.Features.Storage.File.ServiceInterfaces.IObjectStorageAdapter,
             ONEVO.Infrastructure.ExternalServices.Storage.CloudflareR2.CloudflareR2ObjectStorageAdapter>();

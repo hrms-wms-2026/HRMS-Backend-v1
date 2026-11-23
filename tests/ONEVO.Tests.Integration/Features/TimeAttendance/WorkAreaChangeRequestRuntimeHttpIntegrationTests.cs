@@ -103,6 +103,7 @@ public sealed class WorkAreaChangeRequestRuntimeHttpIntegrationTestsFixture : IA
     public TenantSession RequesterA4 => _requesterA4;
     public TenantSession ApproverA => _approverA;
     public Guid ApproverAUserId => _approverAUserId;
+    public Guid ApproverAEmployeeId => _approverAEmployeeId;
     public TenantSession WrongApproverA => _wrongApproverA;
     public TenantSession ApproverB => _approverB;
 
@@ -664,7 +665,10 @@ public sealed class WorkAreaChangeRequestRuntimeHttpIntegrationTests : IClassFix
         preview.status.Should().Be(HttpStatusCode.OK, preview.json.ValueKind == JsonValueKind.Undefined ? "(empty body)" : preview.json.GetRawText());
         preview.json.GetProperty("currentWorkModeName").GetString().Should().Be("Onsite");
         preview.json.GetProperty("requestedWorkModeName").GetString().Should().Be("Remote");
-        preview.json.GetProperty("receiver").GetProperty("userId").GetGuid().Should().Be(_fixture.ApproverAUserId);
+        var previewReceiver = preview.json.GetProperty("receiver");
+        previewReceiver.GetProperty("employeeId").GetGuid().Should().Be(_fixture.ApproverAEmployeeId);
+        previewReceiver.TryGetProperty("userId", out _).Should().BeFalse(
+            "the approver's login user id is internal; the app works on employee ids (task 44)");
 
         // Step 3: submit.
         var create = await _fixture.PostJsonAuthenticatedAsync(_fixture.RequesterA,
