@@ -17,14 +17,17 @@ public sealed class GetLeavePolicyQueryHandler : IRequestHandler<GetLeavePolicyQ
     private readonly ILeaveTypeRepository _leaveTypes;
     private readonly ICurrentUser _currentUser;
     private readonly IDateTimeProvider _clock;
+    private readonly IRowVersionStore? _versions;
 
     public GetLeavePolicyQueryHandler(
-        ILeavePolicyRepository policies, ILeaveTypeRepository leaveTypes, ICurrentUser currentUser, IDateTimeProvider clock)
+        ILeavePolicyRepository policies, ILeaveTypeRepository leaveTypes, ICurrentUser currentUser, IDateTimeProvider clock,
+        IRowVersionStore? versions = null)
     {
         _policies = policies;
         _leaveTypes = leaveTypes;
         _currentUser = currentUser;
         _clock = clock;
+        _versions = versions;
     }
 
     public async Task<Result<LeavePolicyResponse>> Handle(GetLeavePolicyQuery request, CancellationToken ct)
@@ -68,6 +71,8 @@ public sealed class GetLeavePolicyQueryHandler : IRequestHandler<GetLeavePolicyQ
                     targetNames.GetValueOrDefault((a.TargetKind, a.TargetId)) ?? string.Empty, a.EffectiveFrom))
                 .ToList());
 
+        if (_versions is not null)
+            response = response with { Version = await _versions.GetVersionAsync<global::ONEVO.Domain.Features.Leave.Policy.Entities.LeavePolicy>(policy.Id, ct) };
         return Result<LeavePolicyResponse>.Success(response);
     }
 

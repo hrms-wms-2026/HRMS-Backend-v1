@@ -9,4 +9,5 @@ public record RoleSummaryDto(
     int PermissionCount,
     DateTimeOffset CreatedAt,
     DateTimeOffset? UpdatedAt,
-    Guid? SourceTemplateId = null);
+    Guid? SourceTemplateId = null,
+    string? Version = null);

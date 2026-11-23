@@ -29,7 +29,8 @@ public sealed class ReferenceDataParityTests(SqlServerFixture fixture, ITestOutp
         "TrayApp__Jwt__SigningKeys__0__Kid", "TrayApp__Jwt__SigningKeys__0__PrivateKeyPem", "TrayApp__Jwt__ActiveKid",
         "DevAdmin__Email", "DevAdmin__Password", "PlatformBootstrap__SuperAdminEmail",
         "PlatformBootstrap__SuperAdminFullName", "Tenancy__RootDomain", "AwsRekognition__Region",
-        "AwsRekognition__LivenessRoleArn",
+        "AwsRekognition__LivenessRoleArn", "Urls__AppBaseUrl", "Urls__AdminConsoleBaseUrl", "Email__FromAddress",
+        "AllowedOrigins__0", "AllowedOrigins__1", "BackgroundJobs__Enabled",
     ];
 
     // Generated on each run, or set from this test's configuration.
@@ -90,7 +91,17 @@ public sealed class ReferenceDataParityTests(SqlServerFixture fixture, ITestOutp
             ["DevAdmin__Password"] = "test_password_123",
             ["PlatformBootstrap__SuperAdminEmail"] = "test_admin@onevo.dev",
             ["PlatformBootstrap__SuperAdminFullName"] = "Parity Test Admin",
-            ["Tenancy__RootDomain"] = "localhost",
+            // Production refuses local hosts and empty URLs (DeploymentConfigurationValidator). The
+            // host is never contacted: /health answers on any host.
+            ["Tenancy__RootDomain"] = "crownus-parity-test.com",
+            ["Urls__AppBaseUrl"] = "https://crownus-parity-test.com",
+            ["Urls__AdminConsoleBaseUrl"] = "https://admin.crownus-parity-test.com",
+            ["Email__FromAddress"] = "no-reply@crownus-parity-test.com",
+            // A developer's .env may hold local http origins at these indexes; process values win over it.
+            ["AllowedOrigins__0"] = "https://tools.crownus-parity-test.com",
+            ["AllowedOrigins__1"] = "https://tools2.crownus-parity-test.com",
+            // Compare what the boot seeds, not what recurring jobs write while it runs (job_leases rows, task 13).
+            ["BackgroundJobs__Enabled"] = "false",
             ["AwsRekognition__Region"] = "us-east-1",
             ["AwsRekognition__LivenessRoleArn"] = "arn:aws:iam::000000000000:role/test",
         };

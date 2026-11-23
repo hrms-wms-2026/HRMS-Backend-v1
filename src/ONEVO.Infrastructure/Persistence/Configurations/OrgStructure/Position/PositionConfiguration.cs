@@ -1,7 +1,8 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata.Builders;
 using DomainPosition = ONEVO.Domain.Features.OrgStructure.Entities.Position;
-using ONEVO.Domain.Features.OrgStructure.Entities;
+using ONEVO.Domain.Features.OrgStructure.Entities;
+using ONEVO.Infrastructure.Persistence.SqlServer;
 
 namespace ONEVO.Infrastructure.Persistence.Configurations.OrgStructure;
 
@@ -9,6 +10,7 @@ public class PositionConfiguration : IEntityTypeConfiguration<DomainPosition>
 {
     public void Configure(EntityTypeBuilder<DomainPosition> builder)
     {
+        builder.HasRowVersionToken(); // task 42: lost-update protection (409 on a stale save)
         builder.ToTable("positions");
         builder.HasKey(p => p.Id);
 

@@ -37,14 +37,17 @@ public sealed class BaseDomainLoginIntegrationTestsFixture : IAsyncLifetime
     public BaseDomainLoginTestFactory Factory => _factory;
 
     /// <summary>
-    /// Empties the host's in-memory cache, which holds AuthRateLimitingMiddleware's per-IP counters
-    /// (every request here comes from the same test client). Before this class moved to a shared
-    /// fixture, each fact booted its own host and so started with fresh counters. Calling this per
-    /// fact keeps that isolation, so the ~25 legal complete-login calls across all facts don't trip
-    /// the 20-per-5-minutes per-IP limit that a single real login flow never reaches.
+    /// Empties AuthRateLimitingMiddleware's per-IP counters (every request here comes from the same
+    /// test client) and the host's in-memory cache. Before this class moved to a shared fixture,
+    /// each fact booted its own host and so started with fresh counters. Calling this per fact keeps
+    /// that isolation, so the ~25 legal complete-login calls across all facts don't trip the
+    /// 20-per-5-minutes per-IP limit that a single real login flow never reaches. Since task 21 the
+    /// counters live in IAttemptCounter, not IMemoryCache, so compacting the cache alone no longer
+    /// resets them.
     /// </summary>
     public void ResetInMemoryRateLimits()
     {
+        _factory.Services.GetRequiredService<BaseDomainLoginTestFactory.ResettableAttemptCounter>().Reset();
         if (_factory.Services.GetRequiredService<IMemoryCache>() is MemoryCache cache)
             cache.Compact(1.0);
     }

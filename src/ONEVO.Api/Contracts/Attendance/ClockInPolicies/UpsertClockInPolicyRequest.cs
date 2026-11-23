@@ -19,4 +19,5 @@ public record UpsertClockInPolicyRequest(
     bool CorrectionRequiresApproval,
     string NotificationRecipientResolver,
     IReadOnlyList<LateDeductionRuleRequest>? LateDeductionRules,
-    bool IsActive = true);
+    bool IsActive = true,
+    string? Version = null);

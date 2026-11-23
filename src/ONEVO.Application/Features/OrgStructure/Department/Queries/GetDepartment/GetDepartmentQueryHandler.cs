@@ -13,15 +13,18 @@ public class GetDepartmentQueryHandler
     private readonly IDepartmentRepository _departments;
     private readonly ILegalEntityRepository _legalEntities;
     private readonly ICurrentUser _currentUser;
+    private readonly IRowVersionStore? _versions;
 
     public GetDepartmentQueryHandler(
         IDepartmentRepository departments,
         ILegalEntityRepository legalEntities,
-        ICurrentUser currentUser)
+        ICurrentUser currentUser,
+        IRowVersionStore? versions = null)
     {
         _departments = departments;
         _legalEntities = legalEntities;
         _currentUser = currentUser;
+        _versions = versions;
     }
 
     public async Task<Result<DepartmentResponse>> Handle(
@@ -42,6 +45,8 @@ public class GetDepartmentQueryHandler
         if (entity == null)
             return Result<DepartmentResponse>.NotFound("Department not found.");
 
-        return Result<DepartmentResponse>.Success(DepartmentMapper.ToResponse(entity));
+        var version = _versions is null ? null
+            : await _versions.GetVersionAsync<global::ONEVO.Domain.Features.OrgStructure.Entities.Department>(entity.Id, ct);
+        return Result<DepartmentResponse>.Success(DepartmentMapper.ToResponse(entity) with { Version = version });
     }
 }
