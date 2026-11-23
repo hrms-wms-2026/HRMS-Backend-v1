@@ -1,6 +1,6 @@
 namespace ONEVO.Api.Contracts.WorkManagement.Projects;
 
-public sealed record ProjectMemberAvatarViewModel(Guid UserId, string DisplayName, Guid? AvatarFileId);
+public sealed record ProjectMemberAvatarViewModel(Guid EmployeeId, string DisplayName, Guid? AvatarFileId);
 
 public sealed record ProjectListItemViewModel(
     Guid Id, string Name, string Identifier, Guid CategoryId, string? Description, Guid LeadId,

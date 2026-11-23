@@ -16,7 +16,7 @@ public sealed record ReleaseReminderSummaryDto(Guid Id, Guid VersionId, DateOnly
 
 public sealed record LabelSummaryDto(Guid Id, string Name, string Color);
 
-public sealed record ProjectMembershipSummaryDto(Guid Id, Guid ObjectiveId, Guid UserId, string MembershipSource);
+public sealed record ProjectMembershipSummaryDto(Guid Id, Guid ObjectiveId, Guid EmployeeId, string MembershipSource);
 
 public sealed record ProjectLogoSummaryDto(Guid FileRecordId, string OriginalFileName);
 

@@ -240,7 +240,7 @@ public class GetProjectByIdQueryHandlerTests
         var result = await handler.Handle(new GetProjectByIdQuery(ProjectId), CancellationToken.None);
 
         var member = result.Value!.Members.Single();
-        Assert.Equal(memberEmployeeId, member.UserId);
+        Assert.Equal(memberEmployeeId, member.EmployeeId);
         Assert.Equal("Diya Perera", member.DisplayName);
         Assert.Equal(3, result.Value.MemberCount);
     }
