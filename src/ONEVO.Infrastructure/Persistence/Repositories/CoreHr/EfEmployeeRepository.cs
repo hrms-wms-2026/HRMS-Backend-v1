@@ -756,6 +756,41 @@ public class EfEmployeeRepository : IEmployeeRepository
             .ToListAsync(ct);
     }
 
+    /// <summary>
+    /// Same coverage predicate as GetVisibleByIdAsync below (own record, holder of a covered
+    /// position through an active primary assignment, covered department, company-wide legal
+    /// entity, expanded covered employees), projected to ids only.
+    /// </summary>
+    public async Task<IReadOnlyList<Guid>> ListVisibleIdsAsync(
+        Guid tenantId, EmployeeVisibilityScope scope, CancellationToken ct = default)
+    {
+        var employees = _db.Employees.AsNoTracking().Where(e => e.TenantId == tenantId);
+
+        if (!scope.CanViewAllTenantEmployees)
+        {
+            var ownEmployeeId = scope.OwnEmployeeId;
+            var coveredPositionIds = scope.CoveredPositionIds.ToList();
+            var coveredDepartmentIds = scope.CoveredDepartmentIds.ToList();
+            var companyWideLegalEntityIds = scope.CompanyWideLegalEntityIds.ToList();
+            var coveredEmployeeIds = scope.CoveredEmployeeIds.ToList();
+
+            var heldCoveredPositions = _db.PositionAssignments.AsNoTracking()
+                .Where(pa => pa.TenantId == tenantId
+                    && pa.AssignmentKind == PositionAssignmentKind.PrimaryEmployment
+                    && pa.AssignmentStatus == PositionAssignmentStatus.Active
+                    && coveredPositionIds.Contains(pa.PositionId));
+
+            employees = employees.Where(e =>
+                (ownEmployeeId != null && e.Id == ownEmployeeId.Value)
+                || heldCoveredPositions.Any(pa => pa.EmployeeId == e.Id)
+                || (e.DepartmentId != null && coveredDepartmentIds.Contains(e.DepartmentId.Value))
+                || (e.LegalEntityId != null && companyWideLegalEntityIds.Contains(e.LegalEntityId.Value))
+                || coveredEmployeeIds.Contains(e.Id));
+        }
+
+        return await employees.Select(e => e.Id).ToListAsync(ct);
+    }
+
     public async Task<EmployeeListItemResponse?> GetVisibleByIdAsync(
         Guid tenantId, EmployeeVisibilityScope scope, Guid employeeId, CancellationToken ct = default)
     {

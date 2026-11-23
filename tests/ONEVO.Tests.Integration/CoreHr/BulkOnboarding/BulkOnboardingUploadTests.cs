@@ -90,7 +90,8 @@ public sealed class BulkOnboardingUploadTests : IAsyncLifetime
     {
         return new UploadBulkOnboardingBatchCommandHandler(
             new EfBulkOnboardingBatchRepository(db),
-            new StubCurrentUser(_tenantId, _userId, permission));
+            new StubCurrentUser(_tenantId, _userId, permission),
+            new ONEVO.Infrastructure.Services.Storage.File.UploadPurposePolicy());
     }
 
     private ApplicationDbContext CreateContext()

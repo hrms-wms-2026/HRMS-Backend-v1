@@ -6,6 +6,7 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Configuration;
 using ONEVO.Api.Contracts.Auth;
 using ONEVO.Application.Common.ServiceInterfaces;
+using ONEVO.Application.Common.Tenancy;
 using ONEVO.Application.Features.Auth.Login.Queries.GetCurrentSession;
 using ONEVO.Application.Features.Auth.Login.ServiceInterfaces;
 
@@ -41,6 +42,7 @@ public class AuthSessionController : ControllerBase
     /// the request host by HostTenantResolutionMiddleware, never from the request body/headers.
     /// </summary>
         [HttpPost("session-exchange")]
+    // Public by design: single-use exchange code bound to this tenant host; AuthRateLimiting per IP.
     [AllowAnonymous]
     [ONEVO.Api.Middleware.AllowWithoutActiveTray]
 
@@ -86,7 +88,7 @@ public class AuthSessionController : ControllerBase
         this.DeleteTenantCookie("crownus_legal_csrf", httpOnly: false, _env);
         var rootDomain = _configuration["Tenancy:RootDomain"];
         if (!string.IsNullOrEmpty(rootDomain))
-            this.ClearLastTenantHintCookie(rootDomain, _env);
+            this.ClearLastTenantHintCookie(rootDomain, _env, TenancyModeReader.Read(_configuration));
         return NoContent();
     }
 }

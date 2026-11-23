@@ -6,6 +6,7 @@ using ONEVO.Application.Features.DevPlatform.Compliance.DTOs.Responses;
 using ONEVO.Application.Features.DevPlatform.Compliance.Helpers;
 using ONEVO.Application.Features.DevPlatform.Compliance.Mappers;
 using ONEVO.Application.Features.DevPlatform.Compliance.RepositoryInterfaces;
+using ONEVO.Application.Features.DevPlatform.Compliance.Validation;
 
 namespace ONEVO.Application.Features.DevPlatform.Compliance.Commands.UpdateLegalDocumentVersion;
 
@@ -20,7 +21,7 @@ public sealed record UpdateLegalDocumentVersionCommand(
     string ContentHtml,
     string ContentText,
     bool IsRequired,
-    string BlockScope) : IRequest<Result<LegalDocumentVersionDetailDto>>;
+    string BlockScope) : IRequest<Result<LegalDocumentVersionDetailDto>>, ILegalDocumentContentInput;
 
 public sealed class UpdateLegalDocumentVersionCommandHandler
     : IRequestHandler<UpdateLegalDocumentVersionCommand, Result<LegalDocumentVersionDetailDto>>

@@ -119,7 +119,7 @@ public class TransactionalEmailService : IEmailService
             : result.SafeError;
 
         _logger.LogWarning("Email to {To} via {Provider} failed: {SafeError}",
-            to, result.Provider, safeError);
+            ONEVO.Application.Common.Observability.LogRedaction.MaskEmail(to), result.Provider, safeError);
 
         if (safeError is TransactionalEmailFailureCodes.ProviderUnavailable or
             TransactionalEmailFailureCodes.ProviderAmbiguous)

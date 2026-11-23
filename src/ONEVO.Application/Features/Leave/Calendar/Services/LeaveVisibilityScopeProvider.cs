@@ -1,3 +1,4 @@
+using ONEVO.Application.Common.Authorization;
 using ONEVO.Application.Common.RepositoryInterfaces;
 using ONEVO.Application.Common.ServiceInterfaces;
 using ONEVO.Application.Features.CoreHr.Employee.Models;
@@ -12,16 +13,16 @@ public sealed class LeaveVisibilityScopeProvider(
 {
     public async Task<LeaveVisibilityScopeResolution> ResolveForCurrentUserAsync(CancellationToken ct = default)
     {
-        if (currentUser.HasPermission("leave:manage") || currentUser.HasPermission("leave:read"))
+        if (currentUser.HasPermission(PermissionCatalog.Leave.Manage) || currentUser.HasPermission(PermissionCatalog.Leave.Read))
             return new LeaveVisibilityScopeResolution(EmployeeVisibilityScope.Unrestricted(), null);
 
-        if (currentUser.HasPermission("leave:read-team"))
+        if (currentUser.HasPermission(PermissionCatalog.Leave.ReadTeam))
         {
             return new LeaveVisibilityScopeResolution(
                 await visibilityScopes.ResolveAsync(currentUser.TenantId, currentUser.UserId, ct), null);
         }
 
-        if (currentUser.HasPermission("leave:read-own"))
+        if (currentUser.HasPermission(PermissionCatalog.Leave.ReadOwn))
         {
             var employee = await employees.GetByUserIdAsync(currentUser.TenantId, currentUser.UserId, ct);
             if (employee is null)

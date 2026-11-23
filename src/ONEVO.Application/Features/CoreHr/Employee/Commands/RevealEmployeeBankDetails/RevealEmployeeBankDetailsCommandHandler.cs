@@ -1,4 +1,5 @@
 using MediatR;
+using ONEVO.Application.Common.Authorization;
 using ONEVO.Application.Common.Models;
 using ONEVO.Application.Common.RepositoryInterfaces;
 using ONEVO.Application.Common.ServiceInterfaces;
@@ -15,7 +16,7 @@ namespace ONEVO.Application.Features.CoreHr.Employee.Commands.RevealEmployeeBank
 public sealed class RevealEmployeeBankDetailsCommandHandler
     : IRequestHandler<RevealEmployeeBankDetailsCommand, Result<EmployeeBankDetailsRevealResponse>>
 {
-    private const string SensitivePermission = "employees:read:sensitive";
+    private const string SensitivePermission = PermissionCatalog.Employees.ReadSensitive;
 
     private readonly CoreHrEmployeeRepository _employees;
     private readonly IEmployeeVisibilityScopeResolver _visibility;
@@ -60,7 +61,7 @@ public sealed class RevealEmployeeBankDetailsCommandHandler
             return Result<EmployeeBankDetailsRevealResponse>.NotFound(
                 "The employee or selected organization record could not be found.");
 
-        var scope = _currentUser.HasPermission("org:manage")
+        var scope = _currentUser.HasPermission(PermissionCatalog.Org.Manage)
             ? EmployeeVisibilityScope.Unrestricted()
             : await _visibility.ResolveAsync(tenantId, _currentUser.UserId, ct);
 

@@ -1,4 +1,5 @@
 using MediatR;
+using ONEVO.Application.Common.Authorization;
 using ONEVO.Application.Common.Models;
 using ONEVO.Application.Common.ServiceInterfaces;
 using ONEVO.Application.Features.WorkManagement.Common.Services;
@@ -42,7 +43,7 @@ public sealed class TeamPlannerRequestHandler :
     IRequestHandler<GetTeamPlannerRangeQuery, Result<TeamPlannerResponse>>
 {
     /// <summary>The permission that shows a team's leave as leave, as on Team Status (My Team spec 8.1.2).</summary>
-    public const string LeaveReadPermission = "leave:read";
+    public const string LeaveReadPermission = PermissionCatalog.Leave.Read;
 
     private readonly ICurrentUser _currentUser;
     private readonly ICallerIdentityResolver _identity;

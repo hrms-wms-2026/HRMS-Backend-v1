@@ -103,7 +103,7 @@ public class TenantOneTimeChargeActiveRetirementArchitectureTests
         AssertTypeDoesNotExist(InfrastructureAssembly,
             "ONEVO.Infrastructure.Persistence.Repositories.DevPlatform.Billing.EfTenantOneTimeChargeRepository");
 
-        var dependencyInjectionSource = File.ReadAllText(FindFileAboveBaseDirectory(
+        var dependencyInjectionSource = ReadInfrastructureRegistrations(FindFileAboveBaseDirectory(
             Path.Combine("src", "ONEVO.Infrastructure", "DependencyInjection.cs")));
 
         Assert.DoesNotContain("ITenantOneTimeChargeRepository", dependencyInjectionSource, StringComparison.Ordinal);
@@ -130,5 +130,16 @@ public class TenantOneTimeChargeActiveRetirementArchitectureTests
         }
 
         throw new FileNotFoundException($"Could not locate {relativePath} above {AppContext.BaseDirectory}");
+    }
+
+    /// <summary>AddInfrastructure and every per-area registration file it calls (task 25 split them into Registration/).</summary>
+    private static string ReadInfrastructureRegistrations(string dependencyInjectionPath)
+    {
+        var registrationDirectory = Path.Combine(Path.GetDirectoryName(dependencyInjectionPath)!, "Registration");
+        var files = new[] { dependencyInjectionPath }
+            .Concat(Directory.Exists(registrationDirectory)
+                ? Directory.GetFiles(registrationDirectory, "*.cs").OrderBy(f => f, StringComparer.Ordinal)
+                : []);
+        return string.Join(Environment.NewLine, files.Select(File.ReadAllText));
     }
 }

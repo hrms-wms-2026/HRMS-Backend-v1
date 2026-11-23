@@ -1,7 +1,8 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata.Builders;
 using ONEVO.Domain.Features.Leave.Policy.Entities;
-using ONEVO.Domain.Features.Leave.Type.Entities;
+using ONEVO.Domain.Features.Leave.Type.Entities;
+using ONEVO.Infrastructure.Persistence.SqlServer;
 
 namespace ONEVO.Infrastructure.Persistence.Configurations.Leave;
 
@@ -9,6 +10,7 @@ public class LeavePolicyConfiguration : IEntityTypeConfiguration<LeavePolicy>
 {
     public void Configure(EntityTypeBuilder<LeavePolicy> builder)
     {
+        builder.HasRowVersionToken(); // task 42: lost-update protection (409 on a stale save)
         builder.ToTable("leave_policies");
         builder.HasKey(p => p.Id);
         builder.Property(p => p.Name).HasMaxLength(150).IsRequired();

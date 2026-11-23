@@ -12,13 +12,16 @@ public class GetClockInPolicyByIdQueryHandler
 {
     private readonly IClockInPolicyRepository _policies;
     private readonly ICurrentUser _currentUser;
+    private readonly IRowVersionStore? _versions;
 
     public GetClockInPolicyByIdQueryHandler(
         IClockInPolicyRepository policies,
-        ICurrentUser currentUser)
+        ICurrentUser currentUser,
+        IRowVersionStore? versions = null)
     {
         _policies = policies;
         _currentUser = currentUser;
+        _versions = versions;
     }
 
     public async Task<Result<ClockInPolicyResponse>> Handle(
@@ -35,6 +38,9 @@ public class GetClockInPolicyByIdQueryHandler
         if (policy is null)
             return Result<ClockInPolicyResponse>.NotFound("Clock-in policy not found.");
 
-        return Result<ClockInPolicyResponse>.Success(ClockInPolicyMapper.ToResponse(policy));
+        return Result<ClockInPolicyResponse>.Success(ClockInPolicyMapper.ToResponse(policy) with
+        {
+            Version = _versions is null ? null : await _versions.GetVersionAsync<global::ONEVO.Domain.Features.TimeAttendance.Entities.ClockInPolicy>(policy.Id, ct),
+        });
     }
 }

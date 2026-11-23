@@ -3,12 +3,14 @@ using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using ONEVO.Application.Common.ServiceInterfaces;
 using ONEVO.Application.Features.Monitoring.Screenshots.RepositoryInterfaces;
+using ONEVO.Infrastructure.Services.SharedPlatform.Jobs;
 
 namespace ONEVO.Infrastructure.Services.Monitoring.Screenshots;
 
 public sealed class AgentCommandExpiryJob : BackgroundService
 {
     private static readonly TimeSpan CheckInterval = TimeSpan.FromMinutes(2);
+    public static readonly JobSchedule Schedule = JobSchedule.Every("agent-command-expiry", CheckInterval);
 
     private readonly IServiceProvider _services;
     private readonly ILogger<AgentCommandExpiryJob> _logger;
@@ -29,7 +31,7 @@ public sealed class AgentCommandExpiryJob : BackgroundService
             {
                 try
                 {
-                    await RunOnceAsync(stoppingToken);
+                    await _services.RunExclusiveAsync(Schedule, ct => RunOnceAsync(ct), stoppingToken);
                 }
                 catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
                 {

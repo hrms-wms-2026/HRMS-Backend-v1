@@ -5,6 +5,7 @@ using Microsoft.Extensions.Logging;
 using ONEVO.Application.Common.Models;
 using ONEVO.Application.Common.RepositoryInterfaces;
 using ONEVO.Application.Common.ServiceInterfaces;
+using ONEVO.Application.Common.Tenancy;
 using ONEVO.Application.Features.Calendar.RepositoryInterfaces;
 using ONEVO.Application.Features.Calendar.ServiceInterfaces;
 using ONEVO.Application.Features.DevPlatform.SystemConfig.PlatformOAuthApps.ServiceInterfaces;
@@ -47,8 +48,15 @@ public sealed class CompleteCalendarConnectionCommandHandler(
         var scheme = baseUri?.Scheme ?? "https";
         var port = baseUri?.Port ?? 443;
 
+        var singleHost = TenancyModeReader.Read(configuration) == TenancyMode.SingleHost;
+
         string BuildRedirect(string query)
-            => new UriBuilder(scheme, $"{tenant.Slug}.{rootDomain}", port, "/calendar") { Query = query }.Uri.ToString();
+            => singleHost
+                ? new UriBuilder(scheme, rootDomain, port, "/calendar")
+                {
+                    Query = $"{query}&tenant={Uri.EscapeDataString(tenant.Slug)}"
+                }.Uri.ToString()
+                : new UriBuilder(scheme, $"{tenant.Slug}.{rootDomain}", port, "/calendar") { Query = query }.Uri.ToString();
 
         var errorRedirect = BuildRedirect("connectionError=1");
 
