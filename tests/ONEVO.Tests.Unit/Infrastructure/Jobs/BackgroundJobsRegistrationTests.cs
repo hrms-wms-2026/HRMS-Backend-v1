@@ -36,8 +36,8 @@ public class BackgroundJobsRegistrationTests
     {
         var jobs = HostedServices(null).Where(IsRecurringJob).ToList();
 
-        jobs.Should().HaveCount(22);
-        jobs.Select(t => t.Name).Should().Contain(["OutboxProcessor", "LeaveCreditJob", "BulkOnboardingBatchProcessor"]);
+        jobs.Should().HaveCount(23);
+        jobs.Select(t => t.Name).Should().Contain(["OutboxProcessor", "OutboxRetentionPurgeJob", "LeaveCreditJob", "BulkOnboardingBatchProcessor"]);
     }
 
     [Fact]
@@ -47,7 +47,7 @@ public class BackgroundJobsRegistrationTests
 
         hosted.Where(IsRecurringJob).Should().BeEmpty();
         hosted.Select(t => t.Name).Should().Contain(
-            ["ConfigurationStartupValidator", "MeetingsStartupCheck", "PermissionSeeder", "LookupDataSeeder"]);
-        hosted.Should().HaveCount(HostedServices(true).Count - 22);
+            ["ConfigurationStartupValidator", "MeetingsStartupCheck", "OutboxHandlerStartupCheck", "PermissionSeeder", "LookupDataSeeder"]);
+        hosted.Should().HaveCount(HostedServices(true).Count - 23);
     }
 }

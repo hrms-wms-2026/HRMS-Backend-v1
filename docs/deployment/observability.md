@@ -42,7 +42,7 @@ duration, .NET runtime (GC, thread pool, exceptions).
 | `crownus.jobs.runs` | counter | `job`, `outcome` (completed, failed, timed_out, skipped) | every job run (`ExclusiveJobRunner`, task 13) |
 | `crownus.jobs.duration` | histogram, ms | `job`, `outcome` | runs that did work |
 | `crownus.outbox.pending` | gauge | | outbox rows waiting |
-| `crownus.outbox.failed` | gauge | | outbox rows that gave up (task 31 adds the clean-up) |
+| `crownus.outbox.failed` | gauge | | outbox rows that gave up (kept until someone clears them; task 31 purges only published rows) |
 | `crownus.outbox.oldest_pending_age` | gauge, s | | age of the oldest waiting row |
 | `crownus.ratelimit.rejections` | counter | `limiter` (api, auth), `partition` | every 429 |
 | `crownus.auth.signin_failures` | counter | `surface` (tenant, admin), `status` | failed password and Google sign-ins |
@@ -126,6 +126,12 @@ the team:
 | p95 above 500 ms for 10 minutes | `AppRequests \| summarize p95 = percentile(DurationMs, 95), total = count() \| where total > 50 and p95 > 500` | every 5 min over 10 min | 1 row |
 | Readiness failing | Availability test (standard test) on `https://<host>/health/ready` from 3 locations, 5-minute frequency | | 2 locations fail |
 | Degraded readiness (warning) | Same availability test with "content match" on `Healthy` | | 2 locations fail |
+| Outbox has failed messages (task 31) | `AppMetrics \| where Name == "crownus.outbox.failed" \| summarize v = max(Max) \| where v > 0` | every 15 min over 15 min | 1 row |
+| Outbox stuck: oldest pending over 10 minutes (task 31) | `AppMetrics \| where Name == "crownus.outbox.oldest_pending_age" \| summarize v = max(Max) \| where v > 600` | every 5 min over 10 min | 1 row |
+
+Failed outbox rows are kept until someone clears them (task 31), so the failed-messages alert keeps firing every
+15 minutes until they are looked at and deleted or re-queued. That is intended: a failed message is a lost email or
+notification. Set the rule's action to notify once per 24 hours (alert processing rule) to avoid a mail per run.
 
 The thresholds come from the task. Test each alert once by lowering its threshold, then set it back; write the date
 in the release ticket.

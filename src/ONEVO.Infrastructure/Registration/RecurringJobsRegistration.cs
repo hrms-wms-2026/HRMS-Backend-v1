@@ -47,7 +47,10 @@ internal static class RecurringJobsRegistration
         // Task 13: every recurring job runs under its lease, with a time limit and one log line per run.
         services.AddSingleton<Services.SharedPlatform.Jobs.ExclusiveJobRunner>();
 
+        // Task 31: two handlers for one outbox type stop start-up; runs on web-only instances too.
+        services.AddHostedService<Services.SharedPlatform.Outbox.OutboxHandlerStartupCheck>();
         services.AddBackgroundJob<Services.SharedPlatform.Outbox.OutboxProcessor>(configuration);
+        services.AddBackgroundJob<Services.SharedPlatform.Outbox.OutboxRetentionPurgeJob>(configuration);
         services.AddBackgroundJob<Services.CoreHr.BulkOnboarding.BulkOnboardingBatchProcessor>(configuration);
         services.AddBackgroundJob<Services.Auth.Login.LoginWorkspaceSelectionChallengeCleanupService>(configuration);
 
