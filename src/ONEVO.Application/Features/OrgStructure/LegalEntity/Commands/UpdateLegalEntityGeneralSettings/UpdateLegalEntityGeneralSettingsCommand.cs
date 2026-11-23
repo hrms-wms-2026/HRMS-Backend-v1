@@ -32,4 +32,5 @@ public record UpdateLegalEntityGeneralSettingsCommand(
     int? BreakDurationMinutes,
     string? OfficeAddress,
     double? OfficeLatitude,
-    double? OfficeLongitude) : IRequest<Result<LegalEntityGeneralSettingsResponse>>;
+    double? OfficeLongitude,
+    string? Version = null) : IRequest<Result<LegalEntityGeneralSettingsResponse>>;

@@ -10,6 +10,7 @@ using ONEVO.Application.Features.Monitoring.Exceptions.ServiceInterfaces;
 using ONEVO.Application.Features.Monitoring.Exceptions.Services;
 using ONEVO.Application.Features.Monitoring.Reports.RepositoryInterfaces;
 using ONEVO.Domain.Features.Monitoring.Exceptions.Entities;
+using ONEVO.Infrastructure.Services.SharedPlatform.Jobs;
 using DomainException = ONEVO.Domain.Features.Monitoring.Exceptions.Entities.Exception;
 
 namespace ONEVO.Infrastructure.Services.Monitoring.Exceptions;
@@ -20,6 +21,7 @@ public sealed class ExceptionDetectionJob : BackgroundService
 {
     private static readonly TimeSpan CheckInterval = TimeSpan.FromMinutes(15);
     private static readonly TimeOnly TargetUtcTime = new(23, 30);
+    public static readonly JobSchedule Schedule = JobSchedule.Daily("exception-detection", TimeSpan.FromMinutes(30));
 
     private readonly IServiceProvider _services;
     private readonly ILogger<ExceptionDetectionJob> _logger;
@@ -42,8 +44,11 @@ public sealed class ExceptionDetectionJob : BackgroundService
 
                 if (now.TimeOfDay >= TargetUtcTime.ToTimeSpan() && _lastRunDateUtc != today)
                 {
-                    await RunDetectionAsync(today.AddDays(-1), stoppingToken);
-                    _lastRunDateUtc = today;
+                    // Skipped = another instance holds the daily lease and is running or ran today's detection.
+                    var outcome = await _services.RunExclusiveAsync(
+                        Schedule, ct => RunDetectionAsync(today.AddDays(-1), ct), stoppingToken);
+                    if (outcome != JobRunOutcome.TimedOut)
+                        _lastRunDateUtc = today;
                 }
             }
             catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)

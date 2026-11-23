@@ -13,6 +13,7 @@ public class LegalEntityConfiguration : IEntityTypeConfiguration<LegalEntity>
 {
     public void Configure(EntityTypeBuilder<LegalEntity> builder)
     {
+        builder.HasRowVersionToken(); // task 42: lost-update protection (409 on a stale save)
         builder.ToTable("legal_entities", table =>
         {
             table.HasCheckConstraint(

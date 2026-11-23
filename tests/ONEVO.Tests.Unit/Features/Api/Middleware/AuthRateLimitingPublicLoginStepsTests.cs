@@ -1,7 +1,6 @@
 using System.Net;
 using FluentAssertions;
 using Microsoft.AspNetCore.Http;
-using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Extensions.Logging;
 using Moq;
 using ONEVO.Api.Middleware;
@@ -15,10 +14,10 @@ namespace ONEVO.Tests.Unit.Features.Api.Middleware;
 /// </summary>
 public sealed class AuthRateLimitingPublicLoginStepsTests
 {
-    private readonly IMemoryCache _cache = new MemoryCache(new MemoryCacheOptions());
+    private readonly ONEVO.Infrastructure.SharedState.IAttemptCounter _attempts = new ONEVO.Infrastructure.SharedState.MemoryAttemptCounter();
 
     private AuthRateLimitingMiddleware Build() =>
-        new(_ => Task.CompletedTask, _cache, Mock.Of<ILogger<AuthRateLimitingMiddleware>>());
+        new(_ => Task.CompletedTask, _attempts, Mock.Of<ILogger<AuthRateLimitingMiddleware>>());
 
     private static DefaultHttpContext Post(string path, string ip)
     {

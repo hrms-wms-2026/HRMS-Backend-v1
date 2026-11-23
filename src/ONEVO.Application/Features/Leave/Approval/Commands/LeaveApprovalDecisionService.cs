@@ -8,6 +8,7 @@ using ONEVO.Application.Features.Leave.Approval.Mappers;
 using ONEVO.Application.Features.Leave.Approval.Options;
 using ONEVO.Application.Features.Leave.Approval.OutboxHandlers;
 using ONEVO.Application.Features.Leave.Approval.RepositoryInterfaces;
+using ONEVO.Application.Features.Leave.Inbox;
 using ONEVO.Application.Features.Leave.Request.Services;
 using ONEVO.Domain.Features.CoreHr.Entities;
 using ONEVO.Domain.Features.Leave.BalanceAudit.Entities;
@@ -26,6 +27,7 @@ public sealed class LeaveApprovalDecisionService
     private readonly INotificationDispatcher _notifications;
     private readonly ILeaveRequestConflictProvider _conflicts;
     private readonly LeaveApprovalOptions _options;
+    private readonly LeaveInboxEntrySync _inboxEntries;
 
     public LeaveApprovalDecisionService(
         ICurrentUser currentUser,
@@ -35,7 +37,8 @@ public sealed class LeaveApprovalDecisionService
         IOutboxWriter outbox,
         INotificationDispatcher notifications,
         ILeaveRequestConflictProvider conflicts,
-        IOptions<LeaveApprovalOptions> options)
+        IOptions<LeaveApprovalOptions> options,
+        LeaveInboxEntrySync inboxEntries)
     {
         _currentUser = currentUser;
         _clock = clock;
@@ -45,6 +48,7 @@ public sealed class LeaveApprovalDecisionService
         _notifications = notifications;
         _conflicts = conflicts;
         _options = options.Value;
+        _inboxEntries = inboxEntries;
     }
 
     public Task<Result<LeaveApprovalDecisionResponse>> ApproveAsync(Guid requestId, string? comment, CancellationToken ct) =>
@@ -102,6 +106,7 @@ public sealed class LeaveApprovalDecisionService
             ["startDate"] = state.Request.StartAt.ToString("yyyy-MM-dd"),
             ["endDate"] = state.Request.EndAt.ToString("yyyy-MM-dd")
         }, ct);
+        await _inboxEntries.StageAsync(state, ct);
         await _repository.SaveChangesAsync(ct);
         return Result<LeaveApprovalDecisionResponse>.Success(await MapAsync(state, state.Request.PaidHours, ct));
     }
@@ -147,6 +152,7 @@ public sealed class LeaveApprovalDecisionService
             ["reason"] = reason.Trim()
         }, ct);
 
+        await _inboxEntries.StageAsync(state, ct);
         await _repository.SaveChangesAsync(ct);
         return Result<LeaveApprovalDecisionResponse>.Success(await MapAsync(state, 0m, ct));
     }
@@ -238,6 +244,7 @@ public sealed class LeaveApprovalDecisionService
             ["reason"] = reason
         }, ct);
 
+        await _inboxEntries.StageAsync(state, ct);
         await _repository.SaveChangesAsync(ct);
         return Result<LeaveApprovalDecisionResponse>.Success(await MapAsync(state, 0m, ct));
     }
@@ -334,6 +341,7 @@ public sealed class LeaveApprovalDecisionService
                 await NotifyApproverAsync(nextId, state, ct);
         }
 
+        await _inboxEntries.StageAsync(state, ct);
         await _repository.SaveChangesAsync(ct);
         return Result<LeaveApprovalDecisionResponse>.Success(await MapAsync(state, paidMoved, ct));
     }
@@ -356,13 +364,15 @@ public sealed class LeaveApprovalDecisionService
         approverRow!.Status = LeaveRequestApproverStatuses.Skipped;
         approverRow.Comment = string.IsNullOrWhiteSpace(note) ? null : note.Trim();
         approverRow.DecidedAt = now;
-        await _repository.AddApproverAsync(new LeaveRequestApprover
+        var handedTo = new LeaveRequestApprover
         {
             Id = Guid.NewGuid(), TenantId = _currentUser.TenantId, LeaveRequestId = state.Request.Id, ApproverEmployeeId = targetEmployeeId,
             SequenceOrder = approverRow.SequenceOrder, Status = LeaveRequestApproverStatuses.Pending,
-        }, ct);
+        };
+        await _repository.AddApproverAsync(handedTo, ct);
         state.Request.UpdatedAt = now;
         await NotifyApproverAsync(targetEmployeeId, state, ct);
+        await _inboxEntries.StageAsync(state with { Approvers = [.. state.Approvers, handedTo] }, ct);
         await _repository.SaveChangesAsync(ct);
         return Result.Success();
     }
@@ -459,6 +469,7 @@ public sealed class LeaveApprovalDecisionService
                 await NotifyApproverAsync(nextId, state, ct);
         }
 
+        await _inboxEntries.StageAsync(state, ct);
         await _repository.SaveChangesAsync(ct);
         return Result<LeaveApprovalDecisionResponse>.Success(await MapAsync(state, paidMoved, ct));
     }

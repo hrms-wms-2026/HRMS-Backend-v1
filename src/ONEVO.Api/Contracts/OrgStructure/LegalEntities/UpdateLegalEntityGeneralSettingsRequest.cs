@@ -28,4 +28,5 @@ public record UpdateLegalEntityGeneralSettingsRequest(
     int? BreakDurationMinutes,
     string? OfficeAddress,
     double? OfficeLatitude,
-    double? OfficeLongitude);
+    double? OfficeLongitude,
+    string? Version = null);

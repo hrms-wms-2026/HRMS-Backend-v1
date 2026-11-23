@@ -7,6 +7,7 @@ using ONEVO.Application.Common.ServiceInterfaces;
 using ONEVO.Application.Features.Calendar.Services;
 using ONEVO.Application.Features.DevPlatform.Tenancy.RepositoryInterfaces;
 using ONEVO.Domain.Features.InfrastructureModule.Entities;
+using ONEVO.Infrastructure.Services.SharedPlatform.Jobs;
 
 namespace ONEVO.Infrastructure.Services.Calendar;
 
@@ -17,6 +18,7 @@ namespace ONEVO.Infrastructure.Services.Calendar;
 public sealed class CalendarEventReminderJob(IServiceProvider services, ILogger<CalendarEventReminderJob> logger) : BackgroundService
 {
     private static readonly TimeSpan CheckInterval = TimeSpan.FromMinutes(5);
+    public static readonly JobSchedule Schedule = JobSchedule.Every("calendar-event-reminder", CheckInterval);
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
@@ -25,7 +27,7 @@ public sealed class CalendarEventReminderJob(IServiceProvider services, ILogger<
         {
             while (await timer.WaitForNextTickAsync(stoppingToken))
             {
-                try { await RunOnceAsync(stoppingToken); }
+                try { await services.RunExclusiveAsync(Schedule, ct => RunOnceAsync(ct), stoppingToken); }
                 catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested) { break; }
                 catch (Exception ex) { logger.LogError(ex, "CalendarEventReminderJob run failed."); }
             }

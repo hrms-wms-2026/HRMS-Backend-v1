@@ -4,12 +4,13 @@ using Microsoft.Extensions.Logging;
 using ONEVO.Application.Features.CoreHr.Onboarding.Services;
 using ONEVO.Application.Features.DevPlatform.Tenancy.RepositoryInterfaces;
 using ONEVO.Domain.Features.InfrastructureModule.Entities;
+using ONEVO.Infrastructure.Services.SharedPlatform.Jobs;
 
 namespace ONEVO.Infrastructure.Services.CoreHr;
 
 /// <summary>Runs <see cref="IOfficeProjectReconciler"/> once for every live tenant shortly after
 /// startup: the backfill for existing tenants and the recovery path for anything missed. Not a
-/// periodic job (SCL-01: background jobs have no multi-instance locking). Skipped in the Test
+/// periodic job; it runs under a job lease (task 13) so instances started together run it once. Skipped in the Test
 /// environment so integration-test hosts don't create Office projects behind the tests' backs.</summary>
 public sealed class OfficeProjectReconciliationStartupService(
     IServiceProvider services,
@@ -23,6 +24,8 @@ public sealed class OfficeProjectReconciliationStartupService(
     public const int MaxAttempts = 3;
     private static readonly TimeSpan DefaultStartupDelay = TimeSpan.FromSeconds(30);
     private static readonly TimeSpan DefaultRetryDelay = TimeSpan.FromMinutes(2);
+    public static readonly JobSchedule Schedule = new(
+        "office-project-reconciliation", TimeSpan.FromMinutes(30), TimeSpan.FromMinutes(30));
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
@@ -32,7 +35,8 @@ public sealed class OfficeProjectReconciliationStartupService(
         try
         {
             await Task.Delay(startupDelay ?? DefaultStartupDelay, stoppingToken);
-            await RunWithRetriesAsync(stoppingToken);
+            // Instances started together run the backfill once: the lease is kept for 30 minutes after a run.
+            await services.RunExclusiveAsync(Schedule, ct => RunWithRetriesAsync(ct), stoppingToken);
         }
         catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
         {

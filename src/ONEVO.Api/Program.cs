@@ -26,6 +26,10 @@ if (!generatingOpenApiDocuments)
     ConfigurationStartupValidator.ValidateRequiredLocalConfiguration(
         builder.Configuration,
         builder.Environment.EnvironmentName);
+    // Outside Development/Test: refuse to start on a missing, placeholder or local-host setting (task 05).
+    ONEVO.Infrastructure.Configuration.DeploymentConfigurationValidator.Validate(
+        builder.Configuration,
+        builder.Environment.EnvironmentName);
     ConfigurationStartupValidator.ValidateTrayJwtSigningKeys(
         builder.Configuration,
         builder.Environment.EnvironmentName);
@@ -59,10 +63,20 @@ if (!generatingOpenApiDocuments)
     }
 }
 
+// Task 17: OpenTelemetry when an exporter is configured (docs/deployment/observability.md). Serilog then also
+// forwards its events to the OpenTelemetry log provider.
+var telemetryExporter = builder.AddApiObservability();
 builder.Host.UseSerilog((ctx, cfg) =>
+{
     cfg.ReadFrom.Configuration(ctx.Configuration)
        .Enrich.FromLogContext()
-       .Enrich.WithProperty("Application", "ONEVO.Api"));
+       .Enrich.WithProperty("Application", "ONEVO.Api");
+    // Readable lines locally; one JSON object per line elsewhere, so the host's log store can query the fields.
+    if (ctx.HostingEnvironment.IsDevelopment())
+        cfg.WriteTo.Console();
+    else
+        cfg.WriteTo.Console(new Serilog.Formatting.Compact.RenderedCompactJsonFormatter());
+}, writeToProviders: telemetryExporter != ObservabilityExtensions.TelemetryExporter.None);
 
 builder.Services.AddApiForwardedHeaders(builder.Configuration);
 
@@ -98,33 +112,17 @@ builder.Services.AddControllers(options =>
 builder.Services.AddHttpContextAccessor();
 builder.Services.AddApiAuthentication(builder.Environment, builder.Configuration);
 builder.Services.AddApiAuthorization();
-builder.Services.AddSignalR();
-builder.Services.AddSingleton<
-    ONEVO.Application.Features.Monitoring.Settings.ServiceInterfaces.ITrayPolicyRefreshNotifier,
-    ONEVO.Api.Hubs.SignalRTrayPolicyRefreshNotifier>();
-// Inbox realtime: replaces Infrastructure's null publisher with the InboxHub-backed one.
-Microsoft.Extensions.DependencyInjection.Extensions.ServiceCollectionDescriptorExtensions.Replace(
-    builder.Services,
-    ServiceDescriptor.Scoped<
-        ONEVO.Application.Features.Conversations.Contracts.IInboxRealtimePublisher,
-        ONEVO.Api.Hubs.SignalRInboxRealtimePublisher>());
-builder.Services.AddSingleton<
-    ONEVO.Application.Features.Monitoring.TrayActivation.ServiceInterfaces.ITrayPushNotifier,
-    ONEVO.Api.Hubs.SignalRTrayPushNotifier>();
-builder.Services.AddSingleton<ONEVO.Api.Hubs.TrayConnectionTracker>();
-builder.Services.AddSingleton<
-    ONEVO.Application.Features.Monitoring.TrayActivation.ServiceInterfaces.ITrayConnectionPresence>(
-    sp => sp.GetRequiredService<ONEVO.Api.Hubs.TrayConnectionTracker>());
-builder.Services.AddSingleton<ONEVO.Api.Middleware.WebActivityTracker>();
-builder.Services.AddSingleton<
-    ONEVO.Application.Features.Monitoring.TrayActivation.ServiceInterfaces.IWebActivityPresence>(
-    sp => sp.GetRequiredService<ONEVO.Api.Middleware.WebActivityTracker>());
+// SignalR, hub-backed notifiers and presence trackers (Extensions/RealtimeExtensions.cs).
+var signalR = builder.Services.AddApiRealtime();
 // Task 23: no Swagger UI and no runtime /swagger or /openapi endpoint. The API description is generated
 // at build time only (docs/api/openapi); nothing here is ever mapped.
 builder.Services.AddApiOpenApiDocuments();
 builder.Services.AddApiCors(builder.Configuration);
 builder.Services.AddApiRateLimiting(builder.Configuration);
-builder.Services.AddHealthChecks()
+var healthChecks = builder.Services.AddHealthChecks();
+// Task 21: shared state for more than one instance (Redis when Redis:ConnectionString is set).
+builder.Services.AddApiSharedState(signalR, healthChecks, builder.Configuration);
+healthChecks
     .AddCheck("api", () => Microsoft.Extensions.Diagnostics.HealthChecks.HealthCheckResult.Healthy("API is running"))
     .AddAsyncCheck("sqlserver", async () =>
     {
@@ -143,7 +141,13 @@ builder.Services.AddHealthChecks()
         {
             return Microsoft.Extensions.Diagnostics.HealthChecks.HealthCheckResult.Unhealthy("SQL Server unreachable", ex);
         }
-    }, ["ready"]);
+    }, ["ready"])
+    // Task 17: Degraded (still 200) when storage or the outbox is in trouble; see the check classes for why.
+    .AddCheck<ONEVO.Infrastructure.Observability.ObjectStorageHealthCheck>("object-storage", tags: ["ready"])
+    .AddCheck<ONEVO.Infrastructure.Observability.OutboxBacklogHealthCheck>("outbox", tags: ["ready"]);
+builder.Services.AddSingleton<ONEVO.Infrastructure.Observability.OutboxBacklogProbe>();
+builder.Services.AddSingleton<ONEVO.Infrastructure.Observability.IOutboxBacklogSource>(
+    sp => sp.GetRequiredService<ONEVO.Infrastructure.Observability.OutboxBacklogProbe>());
 
 // Task 23: the build-time document generator starts the host, so drop the hosted services
 // (seeders, background jobs) that would otherwise reach for the database.
@@ -151,6 +155,9 @@ if (generatingOpenApiDocuments)
     builder.Services.RemoveAll<Microsoft.Extensions.Hosting.IHostedService>();
 
 var app = builder.Build();
+// Creating the probe registers the crownus.outbox.* gauges, so they report without waiting for a readiness call.
+app.Services.GetRequiredService<ONEVO.Infrastructure.Observability.OutboxBacklogProbe>();
+SharedStateExtensions.WarnIfKeyRingUnencrypted(app);
 
 if (ONEVO.Application.Common.Tenancy.TenancyModeReader.Read(app.Configuration)
     == ONEVO.Application.Common.Tenancy.TenancyMode.SingleHost)

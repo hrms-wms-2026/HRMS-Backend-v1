@@ -1,0 +1,40 @@
+# Keep the build context small and free of secrets. Only src/ is needed (see Dockerfile).
+
+# Build output
+**/bin/
+**/obj/
+artifacts/
+.codex-build/
+TestResults/
+
+# Secrets and local certificates: settings come from environment variables at run time
+.env
+.env.*
+**/.env
+.certs/
+**/*.pfx
+**/*.pem
+**/*.key
+# Development settings never ship in the image (they hold local-only values).
+**/appsettings.Development.json
+
+# Not part of the image
+tests/
+docs/
+ops/
+postman/
+schema-snapshots/
+*.log
+**/node_modules/
+**/package-lock.json
+
+# Tooling and editor folders
+.git/
+.github/
+.vs/
+.vscode/
+.claude/
+.codex/
+.superpowers/
+.worktrees/
+**/*.user

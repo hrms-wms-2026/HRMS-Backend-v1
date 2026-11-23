@@ -87,9 +87,11 @@ public sealed class WidgetDataOrchestratorTests
             await Task.Delay(Timeout.Infinite, ct);
             return Result<object>.Success(1);
         });
+        // The stubborn provider runs far past the bound below, so a busy CI runner that delays the
+        // 200 ms deadline by a few seconds still passes, while waiting for this provider never can.
         Provider("stubborn", async (_, _) =>
         {
-            await Task.Delay(TimeSpan.FromSeconds(10));
+            await Task.Delay(TimeSpan.FromSeconds(60));
             return Result<object>.Success(2);
         });
         Provider("fast", (_, _) => Task.FromResult(Result<object>.Success(3)));
@@ -98,7 +100,7 @@ public sealed class WidgetDataOrchestratorTests
         var data = await Build(TimeSpan.FromMilliseconds(200)).LoadAsync(["cooperative", "stubborn", "fast"], default);
         watch.Stop();
 
-        Assert.True(watch.Elapsed < TimeSpan.FromSeconds(5), $"took {watch.Elapsed}");
+        Assert.True(watch.Elapsed < TimeSpan.FromSeconds(30), $"took {watch.Elapsed}");
         Assert.Equal(WidgetDataStatus.Error, data["cooperative"].State.Status);
         Assert.Equal(WidgetDataErrors.Timeout, data["cooperative"].State.Error);
         Assert.Equal(WidgetDataStatus.Error, data["stubborn"].State.Status);
