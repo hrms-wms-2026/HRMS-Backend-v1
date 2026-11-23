@@ -1,3 +1,4 @@
+using ONEVO.Application.Common.Authorization;
 using ONEVO.Application.Common.ServiceInterfaces;
 using ONEVO.Application.Features.CoreHr.EmployeeAuthority.Models;
 using ONEVO.Application.Features.CoreHr.EmployeeAuthority.ServiceInterfaces;
@@ -22,7 +23,7 @@ public sealed class AttendanceWorkAreaChangeTeamActionSource(
     IAttendanceReadRepository attendance)
     : ITeamActionSource
 {
-    private const string Permission = "attendance:approve";
+    private const string Permission = PermissionCatalog.Attendance.Approve;
 
     public string Key => "attendance.work_area";
     public string Domain => ActionSourceSummary.DomainPeople;

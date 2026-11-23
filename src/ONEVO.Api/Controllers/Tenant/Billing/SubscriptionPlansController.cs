@@ -2,6 +2,7 @@ using MediatR;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using ONEVO.Api.Filters;
+using ONEVO.Application.Common.Authorization;
 using ONEVO.Application.Features.DevPlatform.Subscription.Queries.GetSubscriptionPlan;
 using ONEVO.Application.Features.DevPlatform.Subscription.Queries.ListSubscriptionPlans;
 
@@ -18,7 +19,7 @@ public sealed class SubscriptionPlansController : ControllerBase
 
     /// <summary>List all active subscription plans.</summary>
     [HttpGet]
-    [RequirePermission("billing:read")]
+    [RequirePermission(PermissionCatalog.Billing.Read)]
     public async Task<IActionResult> List(CancellationToken ct)
     {
         var result = await _mediator.Send(new ListSubscriptionPlansQuery(), ct);
@@ -29,7 +30,7 @@ public sealed class SubscriptionPlansController : ControllerBase
 
     /// <summary>Get a single subscription plan by id.</summary>
     [HttpGet("{id:guid}")]
-    [RequirePermission("billing:read")]
+    [RequirePermission(PermissionCatalog.Billing.Read)]
     public async Task<IActionResult> Get(Guid id, CancellationToken ct)
     {
         var result = await _mediator.Send(new GetSubscriptionPlanQuery(id), ct);

@@ -1,4 +1,5 @@
 using MediatR;
+using ONEVO.Application.Common.Authorization;
 using ONEVO.Application.Common.Models;
 using ONEVO.Application.Common.ServiceInterfaces;
 using ONEVO.Application.Features.Leave.Type.DTOs.Responses;
@@ -26,7 +27,7 @@ public class ListLeaveTypesQueryHandler : IRequestHandler<ListLeaveTypesQuery, R
         // Self-service callers (leave:read-own) only need requestable types for the New Request
         // wizard; deactivated types stay visible to leave:read / leave:manage holders (HR configuration screens).
         var includeInactive = request.IncludeInactive
-            && (_currentUser.HasPermission("leave:read") || _currentUser.HasPermission("leave:manage"));
+            && (_currentUser.HasPermission(PermissionCatalog.Leave.Read) || _currentUser.HasPermission(PermissionCatalog.Leave.Manage));
         var types = await _leaveTypes.ListAsync(_currentUser.TenantId, includeInactive, ct);
         var policyCounts = await _leaveTypes.CountActivePoliciesByLeaveTypeAsync(_currentUser.TenantId, ct)
             ?? new Dictionary<Guid, int>();

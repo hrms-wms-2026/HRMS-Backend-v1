@@ -1,5 +1,6 @@
 using FluentValidation;
 using MediatR;
+using ONEVO.Application.Common.Authorization;
 using ONEVO.Application.Common.Models;
 using ONEVO.Application.Common.RepositoryInterfaces;
 using ONEVO.Application.Common.ServiceInterfaces;
@@ -54,7 +55,7 @@ public sealed class ApproveEditedLeaveRequestCommandHandler
     {
         if (!_currentUser.IsAuthenticated)
             return Result<LeaveApprovalDecisionResponse>.Forbidden(LeaveApprovalMessages.AuthRequired);
-        if (!_currentUser.HasPermission("leave:approve"))
+        if (!_currentUser.HasPermission(PermissionCatalog.Leave.Approve))
             return Result<LeaveApprovalDecisionResponse>.Forbidden(LeaveApprovalMessages.NotAssigned);
         var employee = await _employees.GetByUserIdAsync(_currentUser.TenantId, _currentUser.UserId, ct);
         if (employee is null)

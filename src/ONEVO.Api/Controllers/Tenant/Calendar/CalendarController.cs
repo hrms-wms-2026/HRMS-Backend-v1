@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using ONEVO.Api.Contracts.Calendar;
 using ONEVO.Api.Filters;
+using ONEVO.Application.Common.Authorization;
 using ONEVO.Application.Features.Calendar.Commands.AddCalendarEventGuests;
 using ONEVO.Application.Features.Calendar.Commands.AddCalendarEventParticipants;
 using ONEVO.Application.Features.Calendar.Commands.CancelRecurringOccurrence;
@@ -44,7 +45,7 @@ public class CalendarController : ControllerBase
     public CalendarController(IMediator mediator) => _mediator = mediator;
 
     [HttpGet]
-    [RequirePermission("calendar:read")]
+    [RequirePermission(PermissionCatalog.Calendar.Read)]
     public async Task<IActionResult> GetEvents([FromQuery] DateTimeOffset from, [FromQuery] DateTimeOffset to, CancellationToken ct)
     {
         var result = await _mediator.Send(new GetCalendarEventsQuery(from, to), ct);
@@ -54,7 +55,7 @@ public class CalendarController : ControllerBase
     }
 
     [HttpPost]
-    [RequirePermission("calendar:write")]
+    [RequirePermission(PermissionCatalog.Calendar.Write)]
     public async Task<IActionResult> Create([FromBody] CreateCalendarEventRequest request, CancellationToken ct)
     {
         var result = await _mediator.Send(new CreateCalendarEventCommand(
@@ -69,7 +70,7 @@ public class CalendarController : ControllerBase
     }
 
     [HttpPut("{id:guid}")]
-    [RequirePermission("calendar:write")]
+    [RequirePermission(PermissionCatalog.Calendar.Write)]
     public async Task<IActionResult> Update(Guid id, [FromBody] UpdateCalendarEventRequest request, CancellationToken ct)
     {
         var result = await _mediator.Send(new UpdateCalendarEventCommand(
@@ -82,7 +83,7 @@ public class CalendarController : ControllerBase
     }
 
     [HttpDelete("{id:guid}")]
-    [RequirePermission("calendar:write")]
+    [RequirePermission(PermissionCatalog.Calendar.Write)]
     public async Task<IActionResult> Delete(Guid id, CancellationToken ct)
     {
         var result = await _mediator.Send(new DeleteCalendarEventCommand(id), ct);
@@ -92,7 +93,7 @@ public class CalendarController : ControllerBase
     }
 
     [HttpPut("{id:guid}/occurrence")]
-    [RequirePermission("calendar:write")]
+    [RequirePermission(PermissionCatalog.Calendar.Write)]
     public async Task<IActionResult> EditOccurrence(Guid id, [FromBody] EditRecurringOccurrenceRequest request, CancellationToken ct)
     {
         if (!Enum.TryParse<RecurrenceEditScope>(request.Scope, ignoreCase: true, out var scope))
@@ -108,7 +109,7 @@ public class CalendarController : ControllerBase
     }
 
     [HttpDelete("{id:guid}/occurrence")]
-    [RequirePermission("calendar:write")]
+    [RequirePermission(PermissionCatalog.Calendar.Write)]
     public async Task<IActionResult> CancelOccurrence(Guid id, [FromQuery] DateTimeOffset originalStart, CancellationToken ct)
     {
         var result = await _mediator.Send(new CancelRecurringOccurrenceCommand(id, originalStart), ct);
@@ -118,7 +119,7 @@ public class CalendarController : ControllerBase
     }
 
     [HttpPost("{id:guid}/meeting")]
-    [RequirePermission("calendar:write")]
+    [RequirePermission(PermissionCatalog.Calendar.Write)]
     public async Task<IActionResult> CreateMeeting(Guid id, [FromBody] CreateEventMeetingRequestModel request, CancellationToken ct)
     {
         var result = await _mediator.Send(new CreateEventMeetingCommand(id, request.Provider, request.InvitesHeldBack), ct);
@@ -128,7 +129,7 @@ public class CalendarController : ControllerBase
     }
 
     [HttpDelete("{id:guid}/meeting")]
-    [RequirePermission("calendar:write")]
+    [RequirePermission(PermissionCatalog.Calendar.Write)]
     public async Task<IActionResult> RemoveMeeting(Guid id, CancellationToken ct)
     {
         var result = await _mediator.Send(new RemoveEventMeetingCommand(id), ct);
@@ -138,7 +139,7 @@ public class CalendarController : ControllerBase
     }
 
     [HttpGet("{id:guid}/meeting")]
-    [RequirePermission("calendar:read")]
+    [RequirePermission(PermissionCatalog.Calendar.Read)]
     public async Task<IActionResult> GetMeeting(Guid id, CancellationToken ct)
     {
         var result = await _mediator.Send(new GetEventMeetingQuery(id), ct);
@@ -148,7 +149,7 @@ public class CalendarController : ControllerBase
     }
 
     [HttpPost("{id:guid}/meeting/retry")]
-    [RequirePermission("calendar:write")]
+    [RequirePermission(PermissionCatalog.Calendar.Write)]
     public async Task<IActionResult> RetryMeeting(Guid id, CancellationToken ct)
     {
         var result = await _mediator.Send(new RetryEventMeetingCommand(id), ct);
@@ -158,7 +159,7 @@ public class CalendarController : ControllerBase
     }
 
     [HttpPost("{id:guid}/meeting/confirm-cleanup")]
-    [RequirePermission("calendar:write")]
+    [RequirePermission(PermissionCatalog.Calendar.Write)]
     public async Task<IActionResult> ConfirmMeetingCleanup(Guid id, CancellationToken ct)
     {
         var result = await _mediator.Send(new ConfirmEventMeetingCleanupCommand(id), ct);
@@ -166,7 +167,7 @@ public class CalendarController : ControllerBase
     }
 
     [HttpGet("{id:guid}/meeting/attendance")]
-    [RequirePermission("calendar:read")]
+    [RequirePermission(PermissionCatalog.Calendar.Read)]
     public async Task<IActionResult> GetMeetingAttendance(Guid id, CancellationToken ct)
     {
         var result = await _mediator.Send(new GetEventMeetingAttendanceQuery(id), ct);
@@ -176,7 +177,7 @@ public class CalendarController : ControllerBase
     }
 
     [HttpPost("{id:guid}/respond")]
-    [RequirePermission("calendar:read")]
+    [RequirePermission(PermissionCatalog.Calendar.Read)]
     public async Task<IActionResult> Respond(Guid id, [FromBody] RespondToCalendarEventRequest request, CancellationToken ct)
     {
         var result = await _mediator.Send(new RespondToCalendarEventCommand(id, request.ResponseStatus, request.Reason, request.NomineeEmployeeId), ct);
@@ -186,7 +187,7 @@ public class CalendarController : ControllerBase
     }
 
     [HttpPost("{id:guid}/participants")]
-    [RequirePermission("calendar:write")]
+    [RequirePermission(PermissionCatalog.Calendar.Write)]
     public async Task<IActionResult> AddParticipants(Guid id, [FromBody] AddCalendarEventParticipantsRequest request, CancellationToken ct)
     {
         var result = await _mediator.Send(new AddCalendarEventParticipantsCommand(id, request.EmployeeIds), ct);
@@ -196,7 +197,7 @@ public class CalendarController : ControllerBase
     }
 
     [HttpDelete("{id:guid}/participants/{employeeId:guid}")]
-    [RequirePermission("calendar:write")]
+    [RequirePermission(PermissionCatalog.Calendar.Write)]
     public async Task<IActionResult> RemoveParticipant(Guid id, Guid employeeId, CancellationToken ct)
     {
         var result = await _mediator.Send(new RemoveCalendarEventParticipantCommand(id, employeeId), ct);
@@ -206,7 +207,7 @@ public class CalendarController : ControllerBase
     }
 
     [HttpPost("{id:guid}/guests")]
-    [RequirePermission("calendar:write")]
+    [RequirePermission(PermissionCatalog.Calendar.Write)]
     public async Task<IActionResult> AddGuests(Guid id, [FromBody] AddCalendarEventGuestsRequest request, CancellationToken ct)
     {
         var result = await _mediator.Send(new AddCalendarEventGuestsCommand(id, request.Emails), ct);
@@ -216,7 +217,7 @@ public class CalendarController : ControllerBase
     }
 
     [HttpDelete("{id:guid}/guests")]
-    [RequirePermission("calendar:write")]
+    [RequirePermission(PermissionCatalog.Calendar.Write)]
     public async Task<IActionResult> RemoveGuest(Guid id, [FromQuery] string email, CancellationToken ct)
     {
         var result = await _mediator.Send(new RemoveCalendarEventGuestCommand(id, email), ct);
@@ -226,7 +227,7 @@ public class CalendarController : ControllerBase
     }
 
     [HttpGet("{id:guid}/eligible-nominees")]
-    [RequirePermission("calendar:read")]
+    [RequirePermission(PermissionCatalog.Calendar.Read)]
     public async Task<IActionResult> GetEligibleNominees(Guid id, CancellationToken ct)
     {
         var result = await _mediator.Send(new GetEligibleNomineesQuery(id), ct);
@@ -236,7 +237,7 @@ public class CalendarController : ControllerBase
     }
 
     [HttpGet("my-timezone")]
-    [RequirePermission("calendar:read")]
+    [RequirePermission(PermissionCatalog.Calendar.Read)]
     public async Task<IActionResult> GetMyTimezone(CancellationToken ct)
     {
         var result = await _mediator.Send(new GetMyEffectiveTimezoneQuery(), ct);
@@ -246,7 +247,7 @@ public class CalendarController : ControllerBase
     }
 
     [HttpPost("check-conflicts")]
-    [RequirePermission("calendar:read")]
+    [RequirePermission(PermissionCatalog.Calendar.Read)]
     public async Task<IActionResult> CheckConflicts([FromBody] CheckCalendarConflictsRequest request, CancellationToken ct)
     {
         var result = await _mediator.Send(new CheckCalendarConflictsQuery(request.ParticipantEmployeeIds, request.StartDate, request.EndDate,
@@ -257,7 +258,7 @@ public class CalendarController : ControllerBase
     }
 
     [HttpGet("connections")]
-    [RequirePermission("calendar:read")]
+    [RequirePermission(PermissionCatalog.Calendar.Read)]
     public async Task<IActionResult> GetConnections(CancellationToken ct)
     {
         var result = await _mediator.Send(new GetMyCalendarConnectionsQuery(), ct);
@@ -267,7 +268,7 @@ public class CalendarController : ControllerBase
     }
 
     [HttpGet("holiday-settings")]
-    [RequirePermission("calendar:admin")]
+    [RequirePermission(PermissionCatalog.Calendar.Admin)]
     public async Task<IActionResult> GetHolidaySettings(CancellationToken ct)
     {
         var result = await _mediator.Send(new GetHolidayCalendarSettingsQuery(), ct);
@@ -277,7 +278,7 @@ public class CalendarController : ControllerBase
     }
 
     [HttpPost("connections/{provider}/connect")]
-    [RequirePermission("calendar:read")]
+    [RequirePermission(PermissionCatalog.Calendar.Read)]
     public async Task<IActionResult> Connect(string provider, CancellationToken ct)
     {
         var result = await _mediator.Send(new StartCalendarConnectionCommand(provider), ct);
@@ -287,7 +288,7 @@ public class CalendarController : ControllerBase
     }
 
     [HttpPut("connections/{id:guid}")]
-    [RequirePermission("calendar:write")]
+    [RequirePermission(PermissionCatalog.Calendar.Write)]
     public async Task<IActionResult> UpdateConnection(Guid id, [FromBody] UpdateCalendarConnectionRequest request, CancellationToken ct)
     {
         var result = await _mediator.Send(new UpdateCalendarConnectionCommand(id, request.SyncDirection), ct);
@@ -297,7 +298,7 @@ public class CalendarController : ControllerBase
     }
 
     [HttpDelete("connections/{id:guid}")]
-    [RequirePermission("calendar:write")]
+    [RequirePermission(PermissionCatalog.Calendar.Write)]
     public async Task<IActionResult> DisconnectConnection(Guid id, CancellationToken ct)
     {
         var result = await _mediator.Send(new DisconnectCalendarConnectionCommand(id), ct);
@@ -307,7 +308,7 @@ public class CalendarController : ControllerBase
     }
 
     [HttpPut("holiday-settings/{id:guid}")]
-    [RequirePermission("calendar:admin")]
+    [RequirePermission(PermissionCatalog.Calendar.Admin)]
     public async Task<IActionResult> UpdateHolidaySettings(Guid id, [FromBody] UpdateHolidayCalendarSettingsRequest request, CancellationToken ct)
     {
         var result = await _mediator.Send(new UpdateHolidayCalendarSettingsCommand(id, request.OverrideCountryCode, request.HolidaySyncEnabled), ct);
@@ -317,7 +318,7 @@ public class CalendarController : ControllerBase
     }
 
     [HttpPost("connections/{id:guid}/sync")]
-    [RequirePermission("calendar:write")]
+    [RequirePermission(PermissionCatalog.Calendar.Write)]
     public async Task<IActionResult> TriggerSync(Guid id, CancellationToken ct)
     {
         var result = await _mediator.Send(new TriggerCalendarSyncCommand(id), ct);
@@ -327,7 +328,7 @@ public class CalendarController : ControllerBase
     }
 
     [HttpPost("holiday-settings/{id:guid}/sync")]
-    [RequirePermission("calendar:admin")]
+    [RequirePermission(PermissionCatalog.Calendar.Admin)]
     public async Task<IActionResult> SyncHolidaySettings(Guid id, [FromQuery] int year, CancellationToken ct)
     {
         var result = await _mediator.Send(new SyncHolidayCalendarCommand(id, year), ct);

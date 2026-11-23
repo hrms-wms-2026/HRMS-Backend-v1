@@ -109,7 +109,7 @@ public sealed class PositionAssignmentRlsIntegrationTests : IAsyncLifetime
             seedDb.EmployeeHierarchyClosures.Add(new ONEVO.Domain.Features.CoreHr.Entities.EmployeeHierarchyClosure
             {
                 TenantId = _tenantAId,
-                AncestorEmployeeId = Guid.NewGuid(),
+                AncestorEmployeeId = _tenantAEmployeeId, // a real employee: the closure has foreign keys to employees (task 39a)
                 DescendantEmployeeId = _tenantAEmployeeId,
                 Depth = 1,
                 SourcePositionAssignmentId = Guid.NewGuid(),

@@ -307,6 +307,9 @@ internal sealed class EmployeeAuthorityTestGraph
         public Task<EmployeeListItemResponse?> GetVisibleByIdAsync(
             Guid tenantId, EmployeeVisibilityScope scope, Guid employeeId, CancellationToken ct = default)
             => throw new NotImplementedException();
+        public Task<IReadOnlyList<Guid>> ListVisibleIdsAsync(
+            Guid tenantId, EmployeeVisibilityScope scope, CancellationToken ct = default)
+            => throw new NotImplementedException();
         public Task<IReadOnlyList<EmployeeListItemResponse>> ListInvitedPendingByInviterAsync(
             Guid tenantId, Guid inviterUserId, CancellationToken ct = default) => throw new NotImplementedException();
         public Task<DomainEmployee?> GetDefaultForUserAsync(Guid tenantId, Guid userId, CancellationToken ct = default)

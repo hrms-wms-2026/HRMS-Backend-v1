@@ -76,6 +76,16 @@ public sealed class SchemaParityTests(SqlServerFixture fixture)
     [
         // 20261112072239_AddPlatformSupport
         "platform_announcements", "support_tickets", "support_ticket_comments", "support_ticket_attachments",
+        // 20261119155238_AddPermissionLifecycle
+        "permission_changes",
+    ];
+
+    // Columns added to existing tables by migrations after the SQL Server baseline, as "table.column".
+    // Add a column here in the same change as the migration that creates it.
+    private static readonly string[] ColumnsAddedAfterBaseline =
+    [
+        // 20261119155238_AddPermissionLifecycle
+        "permissions.retired_at",
     ];
 
     [Fact]
@@ -97,7 +107,8 @@ public sealed class SchemaParityTests(SqlServerFixture fixture)
         Assert.Empty(expected.Except(actual).Except(DroppedColumns));
         Assert.Empty(actual.Except(expected)
             .Where(c => !AddedColumns.Contains(c.Split('.')[1]))
-            .Where(c => !TablesAddedAfterBaseline.Contains(c.Split('.')[0])));
+            .Where(c => !TablesAddedAfterBaseline.Contains(c.Split('.')[0]))
+            .Where(c => !ColumnsAddedAfterBaseline.Contains(c)));
     }
 
     /// <summary>

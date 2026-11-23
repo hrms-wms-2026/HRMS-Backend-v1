@@ -1,3 +1,4 @@
+using ONEVO.Application.Common.Authorization;
 using ONEVO.Application.Common.ServiceInterfaces;
 using ONEVO.Application.Features.CoreHr.Employee.Models;
 using ONEVO.Application.Features.CoreHr.Employee.ServiceInterfaces;
@@ -43,7 +44,7 @@ public sealed class EmployeeDocumentAccess : IEmployeeDocumentAccess
         if (self is not null && self.Id == employeeId)
             return true;
 
-        var scope = _currentUser.HasPermission("org:manage")
+        var scope = _currentUser.HasPermission(PermissionCatalog.Org.Manage)
             ? EmployeeVisibilityScope.Unrestricted()
             : await _scopeResolver.ResolveAsync(tenantId, _currentUser.UserId, ct);
         return await _visibleEmployees.GetVisibleByIdAsync(tenantId, scope, employeeId, ct) is not null;

@@ -3,6 +3,7 @@ using Microsoft.Extensions.Logging;
 using ONEVO.Application.Common.Models;
 using ONEVO.Application.Common.RepositoryInterfaces;
 using ONEVO.Application.Common.ServiceInterfaces;
+using ONEVO.Application.Features.CoreHr.Employee.Access;
 using ONEVO.Application.Features.Monitoring.ActivityMonitoring.ServiceInterfaces;
 using ONEVO.Application.Features.Monitoring.CheckIn.ServiceInterfaces;
 using ONEVO.Application.Features.Monitoring.PermissionConsent.RepositoryInterfaces;
@@ -30,6 +31,7 @@ public class RequestScreenshotCommandHandler
     private readonly IDateTimeProvider _clock;
     private readonly IUnitOfWork _unitOfWork;
     private readonly ILogger<RequestScreenshotCommandHandler> _logger;
+    private readonly IEmployeeViewAccess _viewAccess;
 
     public RequestScreenshotCommandHandler(
         IAgentCommandRepository commands,
@@ -40,7 +42,8 @@ public class RequestScreenshotCommandHandler
         IMonitoringPermissionConsentRepository consents,
         IDateTimeProvider clock,
         IUnitOfWork unitOfWork,
-        ILogger<RequestScreenshotCommandHandler> logger)
+        ILogger<RequestScreenshotCommandHandler> logger,
+        IEmployeeViewAccess viewAccess)
     {
         _commands = commands;
         _trayRepo = trayRepo;
@@ -51,6 +54,7 @@ public class RequestScreenshotCommandHandler
         _clock = clock;
         _unitOfWork = unitOfWork;
         _logger = logger;
+        _viewAccess = viewAccess;
     }
 
     public async Task<Result<AgentCommandDto>> Handle(
@@ -63,6 +67,14 @@ public class RequestScreenshotCommandHandler
             request.AgentDeviceId, tenantId, cancellationToken);
 
         if (device is null)
+            return Result<AgentCommandDto>.Failure(MonitoringErrors.AgentDeviceNotFound, 404);
+
+        // The device's employee must be someone the caller can view. Checked before the toggle and
+        // consent checks so their 403s never tell an outsider anything about the device, and with
+        // the same 404 as a missing device. Consent rows are keyed by this same resolved Employee.Id.
+        var consentEmployeeId = await _employeeIdentity.ResolveEmployeeIdAsync(
+            tenantId, device.UserId, device.LegalEntityId, cancellationToken);
+        if (!await _viewAccess.CanViewAsync(consentEmployeeId, cancellationToken))
             return Result<AgentCommandDto>.Failure(MonitoringErrors.AgentDeviceNotFound, 404);
 
         // Phase 1: tray JWT binds UserId; use that as employeeId for toggle resolution
@@ -82,8 +94,6 @@ public class RequestScreenshotCommandHandler
         // by the resolved Employee.Id for the device's legal entity, the same key
         // RecordPermissionConsentCommandHandler writes them under. No row, or a row with
         // ScreenMonitoring = false, means no screenshot command is ever created.
-        var consentEmployeeId = await _employeeIdentity.ResolveEmployeeIdAsync(
-            tenantId, device.UserId, device.LegalEntityId, cancellationToken);
         var consent = await _consents.GetLatestAsync(tenantId, consentEmployeeId, cancellationToken);
 
         if (consent is null || !consent.ScreenMonitoring)

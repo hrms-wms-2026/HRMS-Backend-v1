@@ -57,7 +57,7 @@ In task 07, `RateLimitSubjectMiddleware` works out who the caller is (a `RateLim
 | tray device | `TrayDevice` | `tray:{device}:v{n}` | `TrayDevice`, then `TenantCeiling` |
 | `/admin/v1`, not signed in | `AdminAnonymous` | `admin-anon:{ip}:v{n}` | `AdminAnonymous` |
 | platform admin | `Admin` | `admin:{admin}:v{n}` | `AdminSignedIn` |
-| health, Swagger, SignalR hubs, anything else | `Exempt` | none | none |
+| health, SignalR hubs, anything else | `Exempt` | none | none |
 
 Important: **the options are read only when a key's counter is created.** A counter that already exists keeps its old numbers. That is what the `v{n}` at the end of each key is for (section 3).
 

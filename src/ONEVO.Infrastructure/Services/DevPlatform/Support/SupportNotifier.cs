@@ -1,6 +1,7 @@
 using System.Net;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
+using ONEVO.Application.Common.Authorization;
 using ONEVO.Application.Common.ServiceInterfaces;
 using ONEVO.Application.Features.Auth.Permission.RepositoryInterfaces;
 using ONEVO.Application.Features.DevPlatform.Support.RepositoryInterfaces;
@@ -24,7 +25,7 @@ public sealed class SupportNotifier : ISupportNotifier
     public const string ReplyEventKey = "support_ticket_replied";
     public const string StatusEventKey = "support_ticket_status_changed";
     public const string RelatedEntityType = "support_ticket";
-    public const string SupportManagePermission = "support:manage";
+    public const string SupportManagePermission = PermissionCatalog.Support.Manage;
 
     private const int ExcerptLength = 500;
 
