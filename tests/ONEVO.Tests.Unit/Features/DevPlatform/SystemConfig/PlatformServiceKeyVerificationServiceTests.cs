@@ -13,6 +13,7 @@ public class PlatformServiceKeyVerificationServiceTests
 {
     private const string ResendKey = "re_unit_test_verification_key";
     private const string SendGridKey = "SG.unit_test_verification_key_value";
+    private const string BrevoKey = "xkeysib-unit_test_verification_key_value";
 
     private sealed class CapturingHandler : HttpMessageHandler
     {
@@ -107,12 +108,14 @@ public class PlatformServiceKeyVerificationServiceTests
         CapturingHandler sendGridHandler,
         CapturingLogger? logger = null,
         IAwsRekognitionConnectionProbe? rekognitionProbe = null,
-        ICloudflareR2ConnectionProbe? r2Probe = null)
+        ICloudflareR2ConnectionProbe? r2Probe = null,
+        CapturingHandler? brevoHandler = null)
     {
         var factory = new NamedHttpClientFactory(new Dictionary<string, HttpMessageHandler>
         {
             [ResendEmailAdapter.HttpClientName] = resendHandler,
-            [SendGridEmailAdapter.HttpClientName] = sendGridHandler
+            [SendGridEmailAdapter.HttpClientName] = sendGridHandler,
+            [BrevoEmailAdapter.HttpClientName] = brevoHandler ?? new CapturingHandler(_ => new HttpResponseMessage(HttpStatusCode.OK))
         });
 
         return new PlatformServiceKeyVerificationService(
@@ -200,6 +203,53 @@ public class PlatformServiceKeyVerificationServiceTests
         Assert.DoesNotContain("authorization required", result.Message);
         Assert.DoesNotContain(SendGridKey, string.Join(' ', logger.Messages));
         Assert.DoesNotContain("authorization required", string.Join(' ', logger.Messages));
+    }
+
+    [Fact]
+    public async Task Brevo_LiveVerification_Succeeds_On200_WithApiKeyHeader()
+    {
+        var brevoHandler = new CapturingHandler(_ => new HttpResponseMessage(HttpStatusCode.OK)
+        {
+            Content = new StringContent("{\"requests\":0}")
+        });
+        var service = BuildService(
+            new CapturingHandler(_ => new HttpResponseMessage(HttpStatusCode.OK)),
+            new CapturingHandler(_ => new HttpResponseMessage(HttpStatusCode.OK)),
+            brevoHandler: brevoHandler);
+
+        var result = await service.VerifyAsync(PlatformServiceKeyCatalog.Brevo, BrevoKey, CancellationToken.None);
+
+        Assert.True(result.Success);
+        Assert.Contains("verified successfully", result.Message, StringComparison.OrdinalIgnoreCase);
+        Assert.Equal(HttpMethod.Get, brevoHandler.LastRequest!.Method);
+        Assert.Equal("https://api.brevo.com/v3/smtp/statistics/aggregatedReport", brevoHandler.LastRequest.RequestUri!.ToString());
+        Assert.Null(brevoHandler.LastRequest.Headers.Authorization);
+        Assert.Equal(BrevoKey, brevoHandler.LastRequest.Headers.GetValues("api-key").Single());
+        Assert.DoesNotContain(BrevoKey, result.Message);
+    }
+
+    [Fact]
+    public async Task Brevo_LiveVerification_Fails_On401_WithoutLeakingBodyOrKey()
+    {
+        var brevoHandler = new CapturingHandler(_ => new HttpResponseMessage(HttpStatusCode.Unauthorized)
+        {
+            Content = new StringContent("{\"code\":\"unauthorized\",\"message\":\"Key not found\"}")
+        });
+        var logger = new CapturingLogger();
+        var service = BuildService(
+            new CapturingHandler(_ => new HttpResponseMessage(HttpStatusCode.OK)),
+            new CapturingHandler(_ => new HttpResponseMessage(HttpStatusCode.OK)),
+            logger,
+            brevoHandler: brevoHandler);
+
+        var result = await service.VerifyAsync(PlatformServiceKeyCatalog.Brevo, BrevoKey, CancellationToken.None);
+
+        Assert.False(result.Success);
+        Assert.Contains("401", result.Message);
+        Assert.DoesNotContain(BrevoKey, result.Message);
+        Assert.DoesNotContain("Key not found", result.Message);
+        Assert.DoesNotContain(BrevoKey, string.Join(' ', logger.Messages));
+        Assert.DoesNotContain("Key not found", string.Join(' ', logger.Messages));
     }
 
     [Fact]

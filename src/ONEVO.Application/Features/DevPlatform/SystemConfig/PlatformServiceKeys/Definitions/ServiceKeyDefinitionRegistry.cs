@@ -34,6 +34,9 @@ public static class ServiceKeyDefinitionRegistry
         new(PlatformServiceKeyCatalog.Sendgrid, ServiceKeyVerificationMode.Live,
             [ApiKeyField("SG.…")]),
 
+        new(PlatformServiceKeyCatalog.Brevo, ServiceKeyVerificationMode.Live,
+            [ApiKeyField("xkeysib-…")]),
+
         new(PlatformServiceKeyCatalog.Cloudflare, ServiceKeyVerificationMode.FormatOnly,
             [ApiKeyField("Cloudflare API token")]),
 

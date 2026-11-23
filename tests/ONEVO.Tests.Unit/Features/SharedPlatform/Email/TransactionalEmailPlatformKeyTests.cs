@@ -323,6 +323,61 @@ public class TransactionalEmailPlatformKeyTests
         Assert.DoesNotContain(FakeKey, result.SafeError);
     }
 
+    // 3b. Brevo adapter
+
+    [Fact]
+    public async Task BrevoAdapter_Builds_ApiKey_Request_And_Parses_MessageId()
+    {
+        var response = new HttpResponseMessage(HttpStatusCode.Created)
+        {
+            Content = new StringContent("{\"messageId\":\"<brevo-msg-7@smtp-relay.mailin.fr>\"}")
+        };
+        var handler = new CapturingHandler(response);
+        var adapter = new BrevoEmailAdapter(
+            new FakeHttpClientFactory(handler), FixedClock(DateTimeOffset.UtcNow),
+            NullLogger<BrevoEmailAdapter>.Instance);
+
+        var result = await adapter.SendAsync(FakeKey, Options(), Request("dest@example.com"), CancellationToken.None);
+
+        Assert.True(result.Success);
+        Assert.Equal("brevo", result.Provider);
+        Assert.Equal("<brevo-msg-7@smtp-relay.mailin.fr>", result.ProviderMessageId);
+        Assert.Equal("https://api.brevo.com/v3/smtp/email", handler.LastRequest!.RequestUri!.ToString());
+        Assert.Null(handler.LastRequest.Headers.Authorization);
+        Assert.Equal(FakeKey, handler.LastRequest.Headers.GetValues("api-key").Single());
+
+        using var body = JsonDocument.Parse(handler.LastRequestBody!);
+        var root = body.RootElement;
+        Assert.Equal("dest@example.com", root.GetProperty("to")[0].GetProperty("email").GetString());
+        Assert.Equal("no-reply@onevo.io", root.GetProperty("sender").GetProperty("email").GetString());
+        Assert.Equal("ONEVO", root.GetProperty("sender").GetProperty("name").GetString());
+        Assert.Equal("Hello", root.GetProperty("subject").GetString());
+        Assert.Equal("<p>Hi</p>", root.GetProperty("htmlContent").GetString());
+        Assert.Equal("Hi", root.GetProperty("textContent").GetString());
+        Assert.False(root.TryGetProperty("attachment", out _));
+        Assert.DoesNotContain(FakeKey, handler.LastRequestBody);
+    }
+
+    [Fact]
+    public async Task BrevoAdapter_NonSuccess_Status_Returns_Safe_Error_Without_Key()
+    {
+        var response = new HttpResponseMessage(HttpStatusCode.BadRequest)
+        {
+            Content = new StringContent("{\"code\":\"invalid_parameter\",\"message\":\"sender not valid\"}")
+        };
+        var adapter = new BrevoEmailAdapter(
+            new FakeHttpClientFactory(new CapturingHandler(response)),
+            FixedClock(DateTimeOffset.UtcNow), NullLogger<BrevoEmailAdapter>.Instance);
+
+        var result = await adapter.SendAsync(FakeKey, Options(), Request(), CancellationToken.None);
+
+        Assert.False(result.Success);
+        Assert.Equal("brevo", result.Provider);
+        Assert.Contains("400", result.SafeError);
+        Assert.DoesNotContain(FakeKey, result.SafeError);
+        Assert.DoesNotContain("sender not valid", result.SafeError);
+    }
+
     // 4. IEmailService wrapper (outbox-facing behavior)
 
     private sealed class FakeSender : ITransactionalEmailSender

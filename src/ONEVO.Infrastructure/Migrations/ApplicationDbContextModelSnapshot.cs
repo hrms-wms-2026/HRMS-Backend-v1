@@ -6685,6 +6685,16 @@ namespace ONEVO.Infrastructure.Migrations
                             ProviderFamily = "payment_gateway",
                             ProviderKey = "paddle",
                             UpdatedAt = new DateTimeOffset(new DateTime(2026, 7, 24, 0, 0, 0, 0, DateTimeKind.Unspecified), new TimeSpan(0, 0, 0, 0, 0))
+                        },
+                        new
+                        {
+                            Id = new Guid("10000000-0000-0000-0000-000000000013"),
+                            CreatedAt = new DateTimeOffset(new DateTime(2026, 7, 24, 0, 0, 0, 0, DateTimeKind.Unspecified), new TimeSpan(0, 0, 0, 0, 0)),
+                            DisplayName = "Brevo",
+                            IsActive = true,
+                            ProviderFamily = "transactional_email",
+                            ProviderKey = "brevo",
+                            UpdatedAt = new DateTimeOffset(new DateTime(2026, 7, 24, 0, 0, 0, 0, DateTimeKind.Unspecified), new TimeSpan(0, 0, 0, 0, 0))
                         });
                 });
 

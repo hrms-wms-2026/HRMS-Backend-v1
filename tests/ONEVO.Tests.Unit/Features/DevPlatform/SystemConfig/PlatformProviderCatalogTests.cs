@@ -36,11 +36,12 @@ public sealed class PlatformProviderCatalogTests
             ["aws_rekognition"] = PlatformProviderFamilies.AiVerification,
             ["stripe"] = PlatformProviderFamilies.PaymentGateway,
             ["payhere"] = PlatformProviderFamilies.PaymentGateway,
-            ["paddle"] = PlatformProviderFamilies.PaymentGateway
+            ["paddle"] = PlatformProviderFamilies.PaymentGateway,
+            ["brevo"] = PlatformProviderFamilies.TransactionalEmail
         };
 
     [Fact]
-    public void PlatformProviderModel_MatchesCanonicalSevenColumnTableAndSeedsTwelveRows()
+    public void PlatformProviderModel_MatchesCanonicalSevenColumnTableAndSeedsThirteenRows()
     {
         using var db = BuildInMemoryDb();
         var entityType = db.Model.FindEntityType(typeof(PlatformProvider));
@@ -73,7 +74,7 @@ public sealed class PlatformProviderCatalogTests
             .Model
             .FindEntityType(typeof(PlatformProvider))!;
         var seedRows = designTimeEntityType.GetSeedData();
-        Assert.Equal(12, seedRows.Count());
+        Assert.Equal(13, seedRows.Count());
         Assert.Equal(
             ExpectedProviders,
             seedRows.ToDictionary(
