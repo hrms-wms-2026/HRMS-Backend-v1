@@ -250,14 +250,15 @@ public sealed class CreateProjectEndpointTestsFixture : IAsyncLifetime
     }
 
 
-    public async Task SeedSecondMembershipViaExtraObjectiveAsync(Guid tenantId, Guid projectId, Guid userId, Guid defaultObjectiveId)
+    public async Task SeedSecondMembershipViaExtraObjectiveAsync(Guid tenantId, Guid projectId, Guid employeeId, Guid defaultObjectiveId)
     {
         using var scope = _factory.Services.CreateScope();
         var switcher = scope.ServiceProvider.GetRequiredService<ITenantContextSwitcher>();
         await switcher.SwitchToTenantAsync(new TenantRegistryEntry(tenantId, tenantId.ToString(), TenantStatus.Active, null));
 
         var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
-        var employee = await db.Employees.SingleAsync(e => e.TenantId == tenantId && e.UserId == userId);
+        var employee = await db.Employees.SingleAsync(e => e.TenantId == tenantId && e.Id == employeeId);
+        var userId = employee.UserId;
 
         var subObjective = new ONEVO.Domain.Features.WorkManagement.Objectives.Entities.Objective
         {
@@ -277,23 +278,6 @@ public sealed class CreateProjectEndpointTestsFixture : IAsyncLifetime
         });
 
         await db.SaveChangesAsync();
-    }
-
-    // The Work Management identity model is employee-centric: /api/v1/work/projects?employeeId=…
-    // and POST …/objectives/{id}/members both key on the caller's employees row, not their
-    // users row. creatorMembership.userId in the create response is still the raw user id, so
-    // tests translate it to the seeded employee id here (same lookup as
-    // SeedSecondMembershipViaExtraObjectiveAsync).
-
-    public async Task<Guid> ResolveEmployeeIdAsync(Guid tenantId, Guid userId)
-    {
-        using var scope = _factory.Services.CreateScope();
-        var switcher = scope.ServiceProvider.GetRequiredService<ITenantContextSwitcher>();
-        await switcher.SwitchToTenantAsync(new TenantRegistryEntry(tenantId, tenantId.ToString(), TenantStatus.Active, null));
-
-        var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
-        var employee = await db.Employees.SingleAsync(e => e.TenantId == tenantId && e.UserId == userId);
-        return employee.Id;
     }
 
 
@@ -632,6 +616,9 @@ public sealed class CreateProjectEndpointTests : IClassFixture<CreateProjectEndp
         json.GetProperty("defaultObjective").GetProperty("isDefault").GetBoolean().Should().BeTrue();
         json.GetProperty("defaultVersion").GetProperty("statusId").GetInt32().Should().Be(1);
         json.GetProperty("creatorMembership").GetProperty("membershipSource").GetString().Should().Be("system");
+        json.GetProperty("creatorMembership").GetProperty("employeeId").GetGuid().Should().NotBeEmpty();
+        json.GetProperty("creatorMembership").TryGetProperty("userId", out _).Should().BeFalse(
+            "the creator's login user id is internal; work management keys on employee ids (task 44)");
     }
 
     [Fact]
@@ -753,8 +740,7 @@ public sealed class CreateProjectEndpointTests : IClassFixture<CreateProjectEndp
     public async Task ListByUser_RequiresProjectsReadPermission_OwnerHasItAndSucceeds()
     {
         var created = await _fixture.SendCreateProjectAsync(_fixture.TenantA, _fixture.TenantACategoryId, "ByUser List Target", "BYU1");
-        var ownerUserId = (await ReadJsonAsync(created)).GetProperty("creatorMembership").GetProperty("userId").GetGuid();
-        var ownerEmployeeId = await _fixture.ResolveEmployeeIdAsync(_fixture.TenantA.TenantId, ownerUserId);
+        var ownerEmployeeId = (await ReadJsonAsync(created)).GetProperty("creatorMembership").GetProperty("employeeId").GetGuid();
 
         var response = await _fixture.Client.SendAsync(_fixture.BuildGetRequest(_fixture.TenantA, $"/api/v1/work/projects?employeeId={ownerEmployeeId}&pageSize=50"));
 
@@ -769,7 +755,7 @@ public sealed class CreateProjectEndpointTests : IClassFixture<CreateProjectEndp
         var created = await _fixture.SendCreateProjectAsync(_fixture.TenantA, _fixture.TenantACategoryId, "Dedup List Target", "DUP2");
         var createdJson = await ReadJsonAsync(created);
         var projectId = createdJson.GetProperty("project").GetProperty("id").GetGuid();
-        var ownerUserId = createdJson.GetProperty("creatorMembership").GetProperty("userId").GetGuid();
+        var ownerEmployeeId = createdJson.GetProperty("creatorMembership").GetProperty("employeeId").GetGuid();
         var defaultObjectiveId = createdJson.GetProperty("defaultObjective").GetProperty("id").GetGuid();
 
         // No sub-Objective creation endpoint exists yet (Objective CRUD is a later phase - see
@@ -777,7 +763,7 @@ public sealed class CreateProjectEndpointTests : IClassFixture<CreateProjectEndp
         // for the SAME project + SAME user directly, exactly as ListForMemberAsync's DISTINCT
         // must handle: project_members' uniqueness is (tenant_id, project_id, objective_id,
         // user_id), so this is a legitimate second row, not a data error.
-        await _fixture.SeedSecondMembershipViaExtraObjectiveAsync(_fixture.TenantA.TenantId, projectId, ownerUserId, defaultObjectiveId);
+        await _fixture.SeedSecondMembershipViaExtraObjectiveAsync(_fixture.TenantA.TenantId, projectId, ownerEmployeeId, defaultObjectiveId);
 
         var response = await _fixture.Client.SendAsync(_fixture.BuildGetRequest(_fixture.TenantA, "/api/v1/work/projects/mine?pageSize=50"));
         var json = await ReadJsonAsync(response);
@@ -938,8 +924,7 @@ public sealed class CreateProjectEndpointTests : IClassFixture<CreateProjectEndp
         var defaultObjectiveId = (await ReadJsonAsync(created)).GetProperty("defaultObjective").GetProperty("id").GetGuid();
         var sub = await _fixture.SendCreateObjectiveAsync(_fixture.TenantA, defaultObjectiveId, "Member Mgmt Phase", new DateOnly(2026, 1, 1), new DateOnly(2026, 3, 1), 10m);
         var subId = (await ReadJsonAsync(sub)).GetProperty("id").GetGuid();
-        var ownerUserId = (await ReadJsonAsync(created)).GetProperty("creatorMembership").GetProperty("userId").GetGuid();
-        var ownerEmployeeId = await _fixture.ResolveEmployeeIdAsync(_fixture.TenantA.TenantId, ownerUserId);
+        var ownerEmployeeId = (await ReadJsonAsync(created)).GetProperty("creatorMembership").GetProperty("employeeId").GetGuid();
 
         var addResponse = await _fixture.SendAddObjectiveMemberAsync(_fixture.TenantA, subId, ownerEmployeeId);
         addResponse.StatusCode.Should().Be(HttpStatusCode.NoContent, await addResponse.Content.ReadAsStringAsync());

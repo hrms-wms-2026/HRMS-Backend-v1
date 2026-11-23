@@ -1,8 +1,13 @@
+using System.Text.Json.Serialization;
+
 namespace ONEVO.Application.Features.Storage.File.DTOs.Responses;
 
+/// <summary>File metadata. <see cref="TenantId"/> and <see cref="UploadedByUserId"/> stay on the record for
+/// server-side ownership checks but are never serialized: they are internal ids (task 44,
+/// docs/security/data-classification.md).</summary>
 public sealed record FileRecordDto(
     Guid Id,
-    Guid TenantId,
+    [property: JsonIgnore] Guid TenantId,
     string StorageKey,
     string OriginalFileName,
     string SafeFileName,
@@ -11,5 +16,5 @@ public sealed record FileRecordDto(
     string ChecksumSha256,
     string Status,
     DateTimeOffset CreatedAt,
-    Guid UploadedByUserId,
+    [property: JsonIgnore] Guid UploadedByUserId,
     DateTimeOffset? DeletedAt);

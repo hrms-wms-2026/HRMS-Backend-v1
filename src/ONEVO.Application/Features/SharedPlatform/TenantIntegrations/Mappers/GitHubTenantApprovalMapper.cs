@@ -9,14 +9,13 @@ public static class GitHubTenantApprovalMapper
     {
         if (approval is null)
         {
-            return new GitHubTenantApprovalDto(false, "disconnected", null, null, null);
+            return new GitHubTenantApprovalDto(false, "disconnected", null, null);
         }
 
         return new GitHubTenantApprovalDto(
             approval.Status == "connected",
             approval.Status,
             approval.ConnectedAt,
-            approval.ConnectedByUserId,
             approval.DisconnectedAt);
     }
 }
