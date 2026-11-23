@@ -10,31 +10,31 @@ Written 2026-11-15 from a read-only scan of the whole backend on branch `feature
 - If a task turns out bigger than a day, split it and keep the same number with a suffix (for example `task-08b`).
 - When a task is finished, add a `## Status` section to its file and update the status table below.
 
-## Status (2026-11-20)
+## Status (2026-11-23)
 
-Only tasks that have started are listed. Every other task is not started.
+Only tasks that have started or have a decision are listed. Every other task is not started.
 
 | # | Task | Status | Where |
 |---|---|---|---|
 | 03 | Cut the per-request session lookups | Done | `development`, PR #235 |
 | 07 | Fix the global rate limiter | Done | `development`, PR #237 |
-| 11 | Secrets out of the repository and scans in CI | On hold, needs the repository owner's agreement | - |
-| 15 | Deny by default for every endpoint | In review | PR #240, not merged |
-| 19 | Validation coverage and shared rules | In review | PR #240, not merged |
-| 19b | Validation coverage for the remaining commands (the allow-list is now empty) | In review | PR #240, not merged |
-| 23 | Security headers, upload checks and request limits (Swagger removed) | In review | PR #240, not merged |
-| 27 | Cross-tenant and object access tests for UAT | In review. Open product decision: the tenant-wide productivity report | PR #240, not merged |
-| 32 | One permission catalogue in code (`PermissionCatalog`) | In review | PR #240, not merged |
-| 33 | Safe add, rename and retire of permissions (migration `AddPermissionLifecycle`) | In review | PR #240, not merged |
-| 39a | Foreign keys and status check constraints, first part (migration `AddReferenceForeignKeysAndStatusChecks39a`) | In review | PR #240, not merged |
-| 39b to 39g | Rest of task 39, see the files in the person-1 folder | Not started | files arrive with PR #240 |
-| 44 | Sensitive data in API responses (steps 1, 2 and 4) | In review. Row 4 and step 3 need owner decisions | PR #240, not merged |
+| 11 | Secrets out of the repository and scans in CI | On hold, no permission from the repository owner yet | - |
+| 15 | Deny by default for every endpoint | Done. Follow-ups: Stripe webhook rate limit and error text, admin login timing (next, person-1); tray activation limit moves to person-2 (tasks 45 to 49) | `development`, PR #240 |
+| 19 | Validation coverage and shared rules | Done | `development`, PR #240 |
+| 19b | Validation coverage for the remaining commands (the allow-list is now empty) | Done | `development`, PR #240 |
+| 23 | Security headers, upload checks and request limits (Swagger removed) | Done | `development`, PR #240 |
+| 27 | Cross-tenant and object access tests for UAT | Done. Follow-up decided 2026-11-23: productivity report by coverage only (next, person-1) | `development`, PR #240 |
+| 32 | One permission catalogue in code (`PermissionCatalog`) | Done | `development`, PR #240 |
+| 33 | Safe add, rename and retire of permissions (migration `AddPermissionLifecycle`) | Done | `development`, PR #240 |
+| 39a | Foreign keys and status check constraints, first part (migration `AddReferenceForeignKeysAndStatusChecks39a`) | Done | `development`, PR #240 |
+| 39b to 39g | Rest of task 39 | Not started, next | files in the person-1 folder |
+| 44 | Sensitive data in API responses | Steps 1, 2 and 4 done. Row 4 decided (managers may see), no change. Step 3 approved, backend and frontend together, plus the extra `...ById` fields (next, person-1) | `development`, PR #240 |
 
-The two new migrations in PR #240 are created, not applied. Apply them to each shared database after the merge.
+The two migrations from PR #240 (`AddPermissionLifecycle`, `AddReferenceForeignKeysAndStatusChecks39a`) are created, not applied. Each developer applies them to their own or the shared database.
 
-Person-1 tasks still open: 11 (on hold), 39b to 39g, and the owner decisions in 27 and 44.
+Person-1 work still open: 11 (on hold), 39b to 39g, the task 27 productivity report, task 44 step 3 and extra fields, and the task 15 follow-ups.
 
-Since task 15, the "No fallback authorization policy" finding in the table below is fixed (once PR #240 is merged). Since task 23, the API has no Swagger in any environment; the API description is in `docs/api/openapi/`.
+Since task 15 the "No fallback authorization policy" finding in the table below is fixed. Since task 23 the API has no Swagger in any environment; the API description is in `docs/api/openapi/`.
 
 ## Targets the team agreed
 
@@ -225,12 +225,17 @@ Build in this order. Each person works through their own folder from the lowest 
 - 15: [Deny by default for every endpoint](<person-1-security-and-auth/task-15 Deny by default for every endpoint.md>)
 - 19: [Validation coverage and shared rules](<person-1-security-and-auth/task-19 Validation coverage and shared rules.md>)
 - 23: [Security headers, upload checks and request limits](<person-1-security-and-auth/task-23 Security headers, upload checks and request limits.md>)
-- 19b: Validation coverage for the remaining commands (follow-up of 19, file arrives with PR #240)
+- 19b: [Validation coverage for the remaining commands](<person-1-security-and-auth/task-19b Validation coverage for the remaining commands.md>)
 - 27: [Cross-tenant and object access tests for UAT](<person-1-security-and-auth/task-27 Cross-tenant and object access tests for UAT.md>)
 - 32: [One permission catalogue in code](<person-1-security-and-auth/task-32 One permission catalogue in code.md>)
 - 33: [Safe add, rename and retire of permissions](<person-1-security-and-auth/task-33 Safe add, rename and retire of permissions.md>)
 - 39 (39a): [Foreign keys and check constraints](<person-1-security-and-auth/task-39 Foreign keys and check constraints.md>)
-- 39b to 39g: follow-ups of 39 (remaining core keys, audit column keys, tenant keys, other modules, remaining check constraints, cascade delete review), files arrive with PR #240
+- 39b: [Remaining core foreign keys](<person-1-security-and-auth/task-39b Remaining core foreign keys.md>)
+- 39c: [Audit column foreign keys](<person-1-security-and-auth/task-39c Audit column foreign keys.md>)
+- 39d: [Tenant foreign keys](<person-1-security-and-auth/task-39d Tenant foreign keys.md>)
+- 39e: [Other module foreign keys](<person-1-security-and-auth/task-39e Other module foreign keys.md>)
+- 39f: [Remaining status check constraints](<person-1-security-and-auth/task-39f Remaining status check constraints.md>)
+- 39g: [Cascade delete review](<person-1-security-and-auth/task-39g Cascade delete review.md>)
 - 44: [Sensitive data in API responses](<person-1-security-and-auth/task-44 Sensitive data in API responses.md>)
 
 ### person-3-api-and-pagination

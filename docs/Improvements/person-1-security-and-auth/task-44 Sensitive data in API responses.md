@@ -138,6 +138,16 @@ The guard does not catch audit fields named `…ById`. `AttendanceCorrectionResp
 - `find-unauthorized-endpoints.ps1` on the worktree: 0 actions without an authorization attribute; 32 explicit `[AllowAnonymous]` actions, none added.
 - Full gate (`verify.ps1 <worktree> -Full`, report `dev-env/reports/improve-task-44-sensitive-data-c98209/verify-20261119-151802`): build PASS, unit 8019 passed, architecture 720 passed, integration 1251 passed / 1 skipped, 0 failed. No flaky re-runs needed.
 
+## Status (2026-11-23)
+
+Steps 1, 2 and 4 done. Merged to `development` in PR #240 on 2026-11-20.
+
+Decisions 2026-11-23:
+
+- **Row 4, employee personal data: accepted as it is.** A reporting manager may see a team member's date of birth, home address and emergency contacts. No code change.
+- **Step 3, project members: approved.** `ProjectMemberAvatarDto.UserId` becomes `EmployeeId` in the backend and the frontend together (frontend item 5 above). Next person-1 follow-up.
+- **The extra `...ById` audit fields** (`AttendanceCorrectionResponse.RequestedById` and `ReviewedById`, `WorkAreaChangeRequestResponse.ReviewedById`): fixed as part of the same follow-up.
+
 ## Follow-up 44b (2026-11-23)
 
 Backend branch `claude/improve-task-44b-employee-ids` (from `origin/development` b6fabb74f). Frontend branch `claude/improve-task-44b-employee-ids` in the frontend repo.

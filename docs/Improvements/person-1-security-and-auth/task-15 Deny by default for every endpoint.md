@@ -29,9 +29,9 @@ The script currently lists the expected public endpoints: login, password reset,
 - The list of public endpoints is documented in `docs/api/public-endpoints.md` with the protection each one uses.
 - Full unit and architecture suites pass.
 
-## Status (2026-11-19)
+## Status (2026-11-23)
 
-Built and verified, in review: PR #240 (`feature/testing` to `development`, with the other person-1 tasks 15, 19, 19b, 23, 27, 32, 33, 39a and 44), not merged yet. Report: `docs/reports/security/2026-11-17-task-15-deny-by-default.md` (arrives with PR #240).
+Done. Merged to `development` in PR #240 on 2026-11-20, with the other person-1 tasks 15, 19, 19b, 23, 27, 32, 33, 39a and 44. Report: `docs/reports/security/2026-11-17-task-15-deny-by-default.md`.
 
 Swagger (step 3) no longer exists: task 23 removed it in every environment.
 
@@ -41,6 +41,8 @@ Open findings, reported and not fixed (details in `docs/api/public-endpoints.md`
 2. Tray activation-code exchange has only the general per-IP limit. The right limit is a product decision.
 3. Admin login and force-change-password skip password hashing when the email is unknown, so response timing can show whether an account exists.
 4. The Stripe webhook error text tells "not configured" apart from "invalid signature".
+
+Decided 2026-11-23: findings 1, 3 and 4 are fixed next as person-1 follow-up work. Finding 2, the tray activation limit, moves to person-2 with the admin-managed rate limits (tasks 45 to 49).
 
 ## Follow-up results (2026-11-23)
 

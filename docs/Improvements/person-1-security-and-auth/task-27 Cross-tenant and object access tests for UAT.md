@@ -62,3 +62,9 @@ Full table: `docs/reports/security/2026-11-19-task-27-cross-tenant-and-object-ac
 - Leave approve or reject: the policy check runs before the approver check. For a request with no policy, a
   non-approver gets 409 instead of 403.
 - `employees:read` is a retired permission code, so tests must not seed it.
+
+## Status (2026-11-23)
+
+Done. Merged to `development` in PR #240 on 2026-11-20.
+
+Decision 2026-11-23 on the productivity report (`GET /api/v1/monitoring/reports/productivity`): **coverage only**. A manager sees only the employees they cover; HR and admin see the whole tenant. This is the next person-1 follow-up; until it lands, the endpoint still aggregates across the tenant.
