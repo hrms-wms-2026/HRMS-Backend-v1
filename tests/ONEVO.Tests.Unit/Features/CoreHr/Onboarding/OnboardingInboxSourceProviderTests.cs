@@ -78,6 +78,25 @@ public class OnboardingInboxSourceProviderTests
     }
 
     [Fact]
+    public async Task Count_uses_grouped_repository_counts_and_excludes_requests_sent_by_the_caller()
+    {
+        _permissions.Add(OnboardingApprovers.PositionApprovalPermission);
+        _permissions.Add(OnboardingApprovers.SeatIncreasePermission);
+        _rows.Setup(r => r.CountPendingReceivedAsync(TenantId, Me, true, true, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new OnboardingPendingCounts(PositionApprovals: 2, SeatIncreases: 3));
+
+        var counts = await Provider().CountAsync(TenantId, Guid.NewGuid(), default);
+
+        counts.Should().BeEquivalentTo(new InboxSourceCounts(5, 0, new Dictionary<string, int>
+        {
+            [OnboardingInboxKinds.PositionApproval] = 2,
+            [OnboardingInboxKinds.SeatIncrease] = 3,
+        }));
+        _rows.Verify(r => r.ListAsync(It.IsAny<Guid>(), It.IsAny<Guid>(), It.IsAny<bool>(), It.IsAny<bool>(),
+            It.IsAny<DateTimeOffset>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
     public async Task The_requester_of_a_position_approval_sees_it_as_sent_without_actions()
     {
         _permissions.Add(OnboardingApprovers.PositionApprovalPermission);

@@ -33,6 +33,8 @@ public interface IAttendanceAlertRepository : IAttendanceAlertResolutionLookup
     /// (the Inbox received list; scoped before the cap so other teams' backlog never crowds a reviewer's team out).</summary>
     Task<IReadOnlyList<AttendanceAlert>> ListOpenAsync(
         Guid tenantId, Guid legalEntityId, IReadOnlyCollection<Guid> employeeIds, int take, CancellationToken ct);
+    Task<int> CountOpenAsync(
+        Guid tenantId, Guid legalEntityId, IReadOnlyCollection<Guid> employeeIds, CancellationToken ct);
 
     void Add(AttendanceAlert alert);
     void Remove(AttendanceAlert alert);

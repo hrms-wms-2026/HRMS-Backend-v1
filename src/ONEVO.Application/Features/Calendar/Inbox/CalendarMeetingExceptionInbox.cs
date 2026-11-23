@@ -67,11 +67,60 @@ public sealed class CalendarInboxSourceProvider(
     public string Source => CalendarInboxKinds.Source;
     public string Label => "Calendar";
 
+    public async Task<InboxSourceCounts> CountAsync(Guid tenantId, Guid callerEmployeeId, CancellationToken ct)
+    {
+        // Production always injects the routing service; the list fallback only keeps routing-less wiring (the broad
+        // scope branch of VisibleActiveCasesAsync) consistent with its own list.
+        var count = routing is null
+            ? (await VisibleActiveCasesAsync(tenantId, callerEmployeeId, ct)).Count
+            : await RoutedCountAsync(tenantId, callerEmployeeId, routing, ct);
+        return new InboxSourceCounts(0, count, count == 0
+            ? new Dictionary<string, int>()
+            : new Dictionary<string, int> { [CalendarInboxKinds.MeetingException] = count });
+    }
+
+    /// <summary>The same visibility as <see cref="VisibleActiveCasesAsync"/> with routing (own, approver-routed, held by
+    /// escalation, chat-added; never HR) as one aggregate COUNT - no case, employee or incident is loaded.</summary>
+    private async Task<int> RoutedCountAsync(Guid tenantId, Guid callerEmployeeId, ExceptionCaseRouting caseRouting, CancellationToken ct)
+    {
+        var candidateEmployeeIds = await exceptions.ListActiveInboxEmployeeIdsAsync(tenantId, calendar: true, ct);
+        var reviewScope = candidateEmployeeIds.Count == 0
+            ? null
+            : await scope.ResolveRoutingAsync(forAction: true, ct);
+        var route = reviewScope is null
+            ? ExceptionInboxCountRoute.Empty
+            : await caseRouting.CountRouteAsync(tenantId, candidateEmployeeIds, reviewScope, hrFallback: false, ct);
+        var addedCaseIds = (await conversations.ListAddedSubjectsAsync(tenantId, callerEmployeeId, Source, ct))
+            .Select(subject => subject.Id)
+            .Distinct()
+            .ToList();
+        return await exceptions.CountActiveInboxAsync(tenantId, new ExceptionInboxCountCriteria(
+            callerEmployeeId,
+            route.RoutedEmployeeIds,
+            route.HrFallbackEmployeeIds,
+            route.HeldCaseIds,
+            addedCaseIds,
+            route.IncludeLegacyHrEscalations,
+            route.JournaledEscalatedCaseIds,
+            Calendar: true), ct);
+    }
+
     public async Task<IReadOnlyList<InboxItem>> ListAsync(Guid tenantId, InboxQuery query, Guid callerEmployeeId, CancellationToken ct)
     {
         if (query.Category is { Count: > 0 } categories && !categories.Contains(InboxCategories.Alert))
             return [];
-        var active = await exceptions.GetListAsync(tenantId, new ExceptionListFilter(null, null, null, null, ActiveOnly: true, Calendar: true), 1, ListLimit, ct);
+        var items = await VisibleActiveCasesAsync(tenantId, callerEmployeeId, ct);
+
+        var people = await PeopleAsync(tenantId, items.Select(i => i.Case.EmployeeId), ct);
+        return items.Select(i => Item(i.Case, people, i.Direction, i.Actionable ? ExceptionInboxSourceProvider.Actions(i.Case) : [])).ToList();
+    }
+
+    private async Task<List<(MonitoringException Case, string Direction, bool Actionable)>> VisibleActiveCasesAsync(
+        Guid tenantId, Guid callerEmployeeId, CancellationToken ct)
+    {
+        var active = (await exceptions.GetListAsync(tenantId,
+                new ExceptionListFilter(null, null, null, null, ActiveOnly: true, Calendar: true), 1, ListLimit, ct))
+            .Where(e => e.Status != ExceptionStatus.Resolved && CalendarExceptionTypes.IsCalendar(e.Type)).ToList();
         var reviewScope = active.Count == 0 ? null : await scope.ResolveAsync(forAction: true, active.Select(e => e.EmployeeId).Distinct().ToList(), ct);
         var routed = reviewScope is null || routing is null ? null : await routing.RoutedCasesAsync(tenantId, active, reviewScope, hrFallback: false, ct);
 
@@ -91,13 +140,12 @@ public sealed class CalendarInboxSourceProvider(
         }
         foreach (var subject in await conversations.ListAddedSubjectsAsync(tenantId, callerEmployeeId, Source, ct))
         {
-            if (items.All(i => i.Case.Id != subject.Id) && await exceptions.GetByIdAsync(tenantId, subject.Id, ct) is { } added
+            if (items.All(i => i.Case.Id != subject.Id)
+                && await exceptions.GetByIdAsync(tenantId, subject.Id, ct) is { Status: not ExceptionStatus.Resolved } added
                 && CalendarExceptionTypes.IsCalendar(added.Type))
                 items.Add((added, InboxDirections.Info, false));
         }
-
-        var people = await PeopleAsync(tenantId, items.Select(i => i.Case.EmployeeId), ct);
-        return items.Select(i => Item(i.Case, people, i.Direction, i.Actionable ? ExceptionInboxSourceProvider.Actions(i.Case) : [])).ToList();
+        return items;
     }
 
     /// <summary>The subject's meeting-exception cases of any status, as info. CanOpen follows GetDetailAsync.</summary>

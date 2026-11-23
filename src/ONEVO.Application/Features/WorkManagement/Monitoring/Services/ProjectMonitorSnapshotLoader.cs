@@ -12,6 +12,9 @@ public interface IProjectMonitorSnapshotLoader
     /// <summary>Loads the active Modules, sprints, tasks, members, clocked hours and the working
     /// calendar of one project - a fixed handful of queries, independent of the tree size.</summary>
     Task<ProjectMonitorSnapshot> LoadAsync(Guid tenantId, Guid projectId, CancellationToken ct = default);
+
+    /// <summary>The creator fields LoadAsync would give for the same project, in three reads.</summary>
+    Task<MonitorTargets> LoadTargetsAsync(Guid tenantId, Guid projectId, CancellationToken ct = default);
 }
 
 public sealed class ProjectMonitorSnapshotLoader : IProjectMonitorSnapshotLoader
@@ -110,5 +113,24 @@ public sealed class ProjectMonitorSnapshotLoader : IProjectMonitorSnapshotLoader
             .ToList();
 
         return new ProjectMonitorSnapshot(projectId, calendar, modules, sprints, tasks, rates, maxTaskRate);
+    }
+
+    public async Task<MonitorTargets> LoadTargetsAsync(Guid tenantId, Guid projectId, CancellationToken ct = default)
+    {
+        // The same filters as LoadAsync: active, undeleted Modules; undeleted sprints; undeleted tasks in those Modules.
+        var objectives = (await _objectives.GetAllByProjectIdAsync(tenantId, projectId, ct))
+            .Where(o => o.IsActive && !o.IsDeleted)
+            .ToList();
+        var activeModuleIds = objectives.Select(o => o.Id).ToHashSet();
+        var sprints = (await _sprints.GetByProjectAsync(tenantId, projectId, ct))
+            .Where(s => !s.IsDeleted)
+            .Select(s => new MonitorTargetSprint(s.Id, s.CreatorPositionObjectiveId))
+            .ToList();
+        var tasks = (await _tasks.GetByProjectAsync(tenantId, projectId, ct))
+            .Where(t => !t.IsDeleted && activeModuleIds.Contains(t.ObjectiveId))
+            .Select(t => new MonitorTargetTask(t.Id, t.ObjectiveId, t.CreatorPositionObjectiveId))
+            .ToList();
+        return new MonitorTargets(
+            objectives.Select(o => new MonitorTargetModule(o.Id, o.ParentObjectiveId, o.CreatorPositionObjectiveId)).ToList(), sprints, tasks);
     }
 }

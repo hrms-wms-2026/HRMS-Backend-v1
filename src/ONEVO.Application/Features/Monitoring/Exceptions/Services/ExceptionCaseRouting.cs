@@ -8,6 +8,16 @@ using MonitoringException = ONEVO.Domain.Features.Monitoring.Exceptions.Entities
 
 namespace ONEVO.Application.Features.Monitoring.Exceptions.Services;
 
+public sealed record ExceptionInboxCountRoute(
+    IReadOnlyCollection<Guid> RoutedEmployeeIds,
+    IReadOnlyCollection<Guid> HrFallbackEmployeeIds,
+    IReadOnlyCollection<Guid> HeldCaseIds,
+    bool IncludeLegacyHrEscalations,
+    IReadOnlyCollection<Guid> JournaledEscalatedCaseIds)
+{
+    public static ExceptionInboxCountRoute Empty { get; } = new([], [], [], false, []);
+}
+
 /// <summary>
 /// Which exception cases are the caller's to work - the people the escalation policies actually route a case to, so
 /// nobody above sees a case just because their coverage or HR permission is wide: the subject's attendance approver
@@ -77,6 +87,33 @@ public sealed class ExceptionCaseRouting
                 routed.Add(c.Id);
         }
         return routed;
+    }
+
+    /// <summary>Builds identifier-only routing inputs for an aggregate inbox count.</summary>
+    public async Task<ExceptionInboxCountRoute> CountRouteAsync(
+        Guid tenantId, IReadOnlyCollection<Guid> candidateEmployeeIds, ExceptionScope scope, bool hrFallback, CancellationToken ct)
+    {
+        var candidates = candidateEmployeeIds.Where(id => id != scope.ActorEmployeeId).Distinct().ToList();
+        if (candidates.Count == 0)
+            return new ExceptionInboxCountRoute([], [], scope.HeldCaseIds ?? [], false, []);
+
+        var people = await _employees.ListByIdsAsync(tenantId, candidates, ct);
+        var routedEmployees = await ApproverOfAsync(candidates, people, ct);
+        var hrFallbackEmployees = new HashSet<Guid>();
+
+        if (hrFallback && scope.IsHr)
+        {
+            foreach (var employeeId in candidates.Where(id => !routedEmployees.Contains(id) && people.ContainsKey(id)))
+                if (!await HasApproverAsync(people[employeeId], ct))
+                    hrFallbackEmployees.Add(employeeId);
+        }
+
+        var journaledEscalations = hrFallback && scope.IsHr
+            ? (await _journal.ListLatestEscalationsAsync(tenantId, MonitoringSource, MonitoringCaseKind, ct))
+                .Select(e => e.ItemId).ToList()
+            : [];
+        return new ExceptionInboxCountRoute(
+            routedEmployees, hrFallbackEmployees, scope.HeldCaseIds ?? [], hrFallback && scope.IsHr, journaledEscalations);
     }
 
     /// <summary>Whether the caller reviews this employee's cases: their attendance approver, or (with
