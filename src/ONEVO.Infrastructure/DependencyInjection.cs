@@ -249,7 +249,7 @@ public static class DependencyInjection
         services.AddScoped<
             ONEVO.Application.Features.Leave.Entitlement.Services.ILeaveCreditService,
             ONEVO.Application.Features.Leave.Entitlement.Services.LeaveCreditService>();
-        services.AddHostedService<ONEVO.Infrastructure.Services.Leave.LeaveCreditJob>();
+        services.AddBackgroundJob<ONEVO.Infrastructure.Services.Leave.LeaveCreditJob>(configuration);
         services.AddOptions<ONEVO.Application.Features.Leave.Entitlement.Options.LeaveEntitlementYearOptions>()
             .Bind(configuration.GetSection(ONEVO.Application.Features.Leave.Entitlement.Options.LeaveEntitlementYearOptions.SectionName))
             .Validate(options => options.MinimumYear > 0, "Leave entitlement minimum year must be configured.")
@@ -376,7 +376,7 @@ public static class DependencyInjection
         services.AddScoped<IEmployeeChecklistTaskRepository, EfEmployeeChecklistTaskRepository>();
         services.AddScoped<IOfficeProjectProvisioner, ONEVO.Infrastructure.Services.CoreHr.OfficeProjectProvisioner>();
         services.AddScoped<IOfficeProjectReconciler, ONEVO.Infrastructure.Services.CoreHr.OfficeProjectReconciler>();
-        services.AddHostedService<ONEVO.Infrastructure.Services.CoreHr.OfficeProjectReconciliationStartupService>();
+        services.AddBackgroundJob<ONEVO.Infrastructure.Services.CoreHr.OfficeProjectReconciliationStartupService>(configuration);
         services.AddScoped<IEmployeeChecklistWorkTaskProvisioner, EmployeeChecklistWorkTaskProvisioner>();
         services.AddScoped<IOffboardingRecordRepository, EfOffboardingRecordRepository>();
         services.AddScoped<IOffboardingTaskBypassRequestRepository, EfOffboardingTaskBypassRequestRepository>();
@@ -470,14 +470,14 @@ public static class DependencyInjection
             ONEVO.Infrastructure.Persistence.Repositories.TimeAttendance.EfTeamCompletedTaskReader>();
         services.AddScoped<ONEVO.Application.Features.TimeAttendance.Team.Services.IForecastTaskReader,
             ONEVO.Infrastructure.Persistence.Repositories.TimeAttendance.EfForecastTaskReader>();
-        services.AddHostedService<Services.WorkManagement.Meetings.MeetingOccurrenceGeneratorJob>();
+        services.AddBackgroundJob<Services.WorkManagement.Meetings.MeetingOccurrenceGeneratorJob>(configuration);
         services.AddScoped<ONEVO.Application.Features.WorkManagement.Meetings.Services.MeetingAttendanceSyncService>();
         services.AddScoped<ONEVO.Application.Features.WorkManagement.Meetings.Services.MeetingAttendanceReadService>();
         services.AddScoped<ONEVO.Application.Features.WorkManagement.Meetings.Services.MeetingCalendarProjection>();
         services.AddScoped<ONEVO.Application.Features.Calendar.Queries.CheckCalendarConflicts.IParticipantAvailabilityChecker, ONEVO.Application.Features.Calendar.Queries.CheckCalendarConflicts.ParticipantAvailabilityChecker>();
         services.AddScoped<ONEVO.Application.Features.WorkManagement.Meetings.RepositoryInterfaces.IMeetingAttendanceRepository,
             ONEVO.Infrastructure.Persistence.Repositories.WorkManagement.Meetings.EfMeetingAttendanceRepository>();
-        services.AddHostedService<Services.WorkManagement.Meetings.MeetingAttendanceJob>();
+        services.AddBackgroundJob<Services.WorkManagement.Meetings.MeetingAttendanceJob>(configuration);
         services.AddScoped<ONEVO.Application.Features.WorkManagement.Meetings.Services.IMeetingSeriesFactory,
             ONEVO.Application.Features.WorkManagement.Meetings.Services.MeetingSeriesFactory>();
         services.AddScoped<ONEVO.Application.Features.WorkManagement.Meetings.Services.IMeetingTaskDefaults,
@@ -828,7 +828,7 @@ public static class DependencyInjection
         services.AddScoped<ICalendarConnectionTokenProvider, CalendarConnectionTokenProvider>();
         services.AddScoped<ICalendarSyncService, CalendarSyncService>();
         services.AddScoped<ONEVO.Application.Features.Calendar.Services.CalendarEventReminderService>();
-        services.AddHostedService<ONEVO.Infrastructure.Services.Calendar.CalendarEventReminderJob>();
+        services.AddBackgroundJob<ONEVO.Infrastructure.Services.Calendar.CalendarEventReminderJob>(configuration);
         // Calendar meeting exceptions (plan C2).
         services.AddScoped<ONEVO.Application.Features.Calendar.Exceptions.ICalendarIncidentRepository, ONEVO.Infrastructure.Persistence.Repositories.Calendar.EfCalendarIncidentRepository>();
         foreach (var rule in new[] { typeof(ONEVO.Application.Features.Calendar.Exceptions.NoShowRule), typeof(ONEVO.Application.Features.Calendar.Exceptions.LateJoinRule),
@@ -845,7 +845,7 @@ public static class DependencyInjection
             ONEVO.Application.Features.WorkManagement.Meetings.Services.TaskMeetingOccurrenceSource>();
         services.AddScoped<ONEVO.Application.Common.ServiceInterfaces.IOutboxMessageHandler, ONEVO.Application.Features.Calendar.OutboxHandlers.CalendarIncidentEvaluateOutboxHandler>();
         services.AddScoped<ONEVO.Application.Features.Inbox.Escalation.IInboxEscalationSweepSource, ONEVO.Application.Features.Calendar.Exceptions.CalendarExceptionEscalationSweepSource>();
-        services.AddHostedService<ONEVO.Infrastructure.Services.Calendar.CalendarIncidentJob>();
+        services.AddBackgroundJob<ONEVO.Infrastructure.Services.Calendar.CalendarIncidentJob>(configuration);
         services.AddScoped<ONEVO.Application.Features.Dashboard.Team.Abstractions.ITeamActionSource, ONEVO.Application.Features.Dashboard.Team.Sources.CalendarMeetingExceptionTeamActionSource>();
 
         // Tenant cache invalidation
@@ -855,6 +855,8 @@ public static class DependencyInjection
         services.AddScoped<IOutboxWriter, Services.SharedPlatform.Outbox.OutboxWriter>();
         // One instance at a time for singleton background jobs (SCL-01); the instance id is fixed per process.
         services.AddSingleton<ONEVO.Application.Common.ServiceInterfaces.IJobLeaseService, Services.SharedPlatform.Jobs.JobLeaseService>();
+        // Task 13: every recurring job runs under its lease, with a time limit and one log line per run.
+        services.AddSingleton<Services.SharedPlatform.Jobs.ExclusiveJobRunner>();
         // Per-scope "which outbox message is being dispatched" - feeds provider idempotency keys.
         services.AddScoped<Services.SharedPlatform.Outbox.OutboxDispatchContext>();
         services.AddScoped<IOutboxDispatchContext>(sp => sp.GetRequiredService<Services.SharedPlatform.Outbox.OutboxDispatchContext>());
@@ -869,9 +871,9 @@ public static class DependencyInjection
         services.AddScoped<ONEVO.Application.Common.ServiceInterfaces.IOutboxMessageHandler, ONEVO.Application.Features.SharedPlatform.Notifications.Delivery.NotificationDeliveryOutboxHandler>();
         services.AddScoped<ONEVO.Application.Common.ServiceInterfaces.IOutboxMessageHandler, ONEVO.Application.Features.SharedPlatform.Notifications.Tray.NotificationTrayPushOutboxHandler>();
         services.AddScoped<IIdempotencyStore, Persistence.Repositories.SharedPlatform.Idempotency.EfIdempotencyStore>();
-        services.AddHostedService<Services.SharedPlatform.Outbox.OutboxProcessor>();
-        services.AddHostedService<Services.CoreHr.BulkOnboarding.BulkOnboardingBatchProcessor>();
-        services.AddHostedService<Services.Auth.Login.LoginWorkspaceSelectionChallengeCleanupService>();
+        services.AddBackgroundJob<Services.SharedPlatform.Outbox.OutboxProcessor>(configuration);
+        services.AddBackgroundJob<Services.CoreHr.BulkOnboarding.BulkOnboardingBatchProcessor>(configuration);
+        services.AddBackgroundJob<Services.Auth.Login.LoginWorkspaceSelectionChallengeCleanupService>(configuration);
 
         // Provisioning services
         services.AddScoped<ITenantOwnerInvitationService, TenantOwnerInvitationService>();
@@ -970,20 +972,20 @@ public static class DependencyInjection
         services.AddScoped<
             ONEVO.Application.Features.CoreHr.OnboardingDraft.Services.IOnboardingWizardLookupService,
             ONEVO.Infrastructure.Services.CoreHr.OnboardingWizardLookupService>();
-        services.AddHostedService<ActivityDailySummaryJob>();
-        services.AddHostedService<ONEVO.Infrastructure.Services.Monitoring.Exceptions.ExceptionDetectionJob>();
-        services.AddHostedService<ONEVO.Infrastructure.Services.Inbox.InboxEscalationSweepJob>();
-        services.AddHostedService<ONEVO.Infrastructure.Services.TimeAttendance.AttendanceAlertMaterializerJob>();
+        services.AddBackgroundJob<ActivityDailySummaryJob>(configuration);
+        services.AddBackgroundJob<ONEVO.Infrastructure.Services.Monitoring.Exceptions.ExceptionDetectionJob>(configuration);
+        services.AddBackgroundJob<ONEVO.Infrastructure.Services.Inbox.InboxEscalationSweepJob>(configuration);
+        services.AddBackgroundJob<ONEVO.Infrastructure.Services.TimeAttendance.AttendanceAlertMaterializerJob>(configuration);
         services.AddScoped<ONEVO.Application.Features.Monitoring.Exceptions.Services.CameraVerificationSkippedDetector>();
 
         // Monitoring - Settings (tenant-level feature toggles admin CRUD)
         services.AddScoped<
             ONEVO.Application.Features.Monitoring.Settings.RepositoryInterfaces.IMonitoringFeatureTogglesRepository,
             ONEVO.Infrastructure.Persistence.Repositories.Monitoring.Settings.EfMonitoringFeatureTogglesRepository>();
-        services.AddHostedService<
-            ONEVO.Infrastructure.Services.Monitoring.Notifications.WellnessRuleEvaluatorJob>();
-        services.AddHostedService<
-            ONEVO.Infrastructure.Services.Monitoring.Notifications.LocationRuleEvaluatorJob>();
+        services.AddBackgroundJob<
+            ONEVO.Infrastructure.Services.Monitoring.Notifications.WellnessRuleEvaluatorJob>(configuration);
+        services.AddBackgroundJob<
+            ONEVO.Infrastructure.Services.Monitoring.Notifications.LocationRuleEvaluatorJob>(configuration);
 
         // Monitoring - Screenshots
         services.AddScoped<
@@ -995,18 +997,18 @@ public static class DependencyInjection
         services.AddScoped<
             ONEVO.Application.Features.Monitoring.Screenshots.RepositoryInterfaces.IInactivityCaptureAttemptRepository,
             ONEVO.Infrastructure.Persistence.Repositories.Monitoring.Screenshots.EfInactivityCaptureAttemptRepository>();
-        services.AddHostedService<ONEVO.Infrastructure.Services.Monitoring.Screenshots.AgentCommandExpiryJob>();
+        services.AddBackgroundJob<ONEVO.Infrastructure.Services.Monitoring.Screenshots.AgentCommandExpiryJob>(configuration);
 
         // Monitoring - Retention (MON-02: purges activity_raw_buffer and expired screenshot evidence)
         services.AddScoped<
             ONEVO.Application.Features.Monitoring.ActivityMonitoring.ServiceInterfaces.IMonitoringRetentionPurgeRunner,
             ONEVO.Infrastructure.Services.Monitoring.Retention.MonitoringRetentionPurgeRunner>();
-        services.AddHostedService<ONEVO.Infrastructure.Services.Monitoring.Retention.MonitoringRetentionPurgeJob>();
+        services.AddBackgroundJob<ONEVO.Infrastructure.Services.Monitoring.Retention.MonitoringRetentionPurgeJob>(configuration);
 
-        services.AddHostedService<Services.WorkManagement.ProjectMonitorJob>();
-        services.AddHostedService<Services.Calendar.CalendarSyncJob>();
-        services.AddHostedService<Services.Calendar.TeamsAttendanceSyncJob>();
-        services.AddHostedService<Services.Calendar.ZoomAttendanceSyncJob>();
+        services.AddBackgroundJob<Services.WorkManagement.ProjectMonitorJob>(configuration);
+        services.AddBackgroundJob<Services.Calendar.CalendarSyncJob>(configuration);
+        services.AddBackgroundJob<Services.Calendar.TeamsAttendanceSyncJob>(configuration);
+        services.AddBackgroundJob<Services.Calendar.ZoomAttendanceSyncJob>(configuration);
 
         // Auth services
         services.AddSingleton<ISecureTokenGenerator, SecureTokenGenerator>();
@@ -1152,12 +1154,15 @@ public static class DependencyInjection
             ONEVO.Application.Features.Dashboard.Team.Abstractions.ITeamActionSource,
             ONEVO.Application.Features.Dashboard.Team.Sources.WorkStatusTemplateChangeTeamActionSource>();
 
-        // Background seeder
+        // Background seeder. Hosted services start one at a time in this order: the seeding lock (task 13) makes a
+        // second instance that starts at the same time wait until the first has seeded, instead of inserting twice.
+        services.AddSingleton<ReferenceSeedingLock>();
+        services.AddHostedService<ReferenceSeedingLock.Acquire>();
         services.AddHostedService<PermissionSeeder>();
         services.AddHostedService<RoleTemplateSeeder>();
         services.AddHostedService<LookupDataSeeder>();
         services.AddHostedService<NotificationTemplateSeeder>();
-        services.AddHostedService<Services.SharedPlatform.Notifications.NotificationTrayExpiryJob>();
+        services.AddBackgroundJob<Services.SharedPlatform.Notifications.NotificationTrayExpiryJob>(configuration);
         services.AddHostedService<PlatformAccessSeeder>();
         services.AddHostedService<PositionTemplatePackSeeder>();
         services.AddHostedService<ModuleCatalogSeeder>();
@@ -1169,6 +1174,7 @@ public static class DependencyInjection
         services.AddHostedService<DapiHistorySeeder>();
         services.AddHostedService<PlatformOAuthProviderMetadataSeeder>();
         services.AddHostedService<WorkManagementSampleDataSeeder>();
+        services.AddHostedService<ReferenceSeedingLock.Release>();
 
         // Boot-time configuration audit (warns about missing keys; never fatal).
         services.AddHostedService<ConfigurationStartupValidator>();

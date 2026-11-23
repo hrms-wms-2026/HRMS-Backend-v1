@@ -8,6 +8,7 @@ using ONEVO.Application.Features.CoreHr.OnboardingDraft.Services;
 using ONEVO.Application.Features.CoreHr.OnboardingDrafts.Commands.SaveOnboardingDraft;
 using ONEVO.Application.Features.DevPlatform.Tenancy.RepositoryInterfaces;
 using ONEVO.Domain.Features.CoreHr.Entities;
+using ONEVO.Infrastructure.Services.SharedPlatform.Jobs;
 
 namespace ONEVO.Infrastructure.Services.CoreHr.BulkOnboarding;
 
@@ -19,6 +20,12 @@ namespace ONEVO.Infrastructure.Services.CoreHr.BulkOnboarding;
 public sealed class BulkOnboardingBatchProcessor : BackgroundService
 {
     private static readonly TimeSpan PollInterval = TimeSpan.FromSeconds(10);
+
+    /// <summary>Released after each pass (no gap): any instance may take the next batch, never two at once. The limit is
+    /// generous on purpose: row statuses are saved only at the end of a pass while each draft is saved as it is
+    /// created, so a pass stopped half way (time limit or shutdown) creates those drafts again on the next pass.</summary>
+    public static readonly JobSchedule Schedule = new(
+        "bulk-onboarding", TimeSpan.FromHours(2), TimeSpan.Zero, Microsoft.Extensions.Logging.LogLevel.Debug);
 
     private readonly IServiceProvider _services;
     private readonly ILogger<BulkOnboardingBatchProcessor> _logger;
@@ -38,7 +45,8 @@ public sealed class BulkOnboardingBatchProcessor : BackgroundService
             {
                 try
                 {
-                    await ProcessOnceAsync(stoppingToken);
+                    // Two instances would otherwise both pick the oldest pending batch and create its drafts twice.
+                    await _services.RunExclusiveAsync(Schedule, ct => ProcessOnceAsync(ct), stoppingToken);
                 }
                 catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
                 {
