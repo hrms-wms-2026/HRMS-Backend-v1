@@ -109,7 +109,7 @@ public sealed class ResendEmailAdapter : IEmailProviderAdapter
                     ? await ReadIdempotencyErrorNameAsync(response, ct)
                     : null;
                 _logger.LogWarning("Resend email send returned {StatusCode}{IdempotencyError} for recipient {Recipient}.",
-                    (int)response.StatusCode, idempotencyError is null ? "" : $" ({idempotencyError})", request.RecipientEmail);
+                    (int)response.StatusCode, idempotencyError is null ? "" : $" ({idempotencyError})", ONEVO.Application.Common.Observability.LogRedaction.MaskEmail(request.RecipientEmail));
                 // A 409 concurrent_idempotent_requests is retryable (the outbox backs off and retries);
                 // invalid_idempotent_request means the payload changed under the same key.
                 return TransactionalEmailResult.Failed(

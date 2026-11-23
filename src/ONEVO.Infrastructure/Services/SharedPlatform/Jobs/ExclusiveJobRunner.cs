@@ -1,5 +1,7 @@
+using System.Diagnostics;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
+using ONEVO.Application.Common.Observability;
 using ONEVO.Application.Common.ServiceInterfaces;
 
 namespace ONEVO.Infrastructure.Services.SharedPlatform.Jobs;
@@ -63,6 +65,7 @@ public sealed class ExclusiveJobRunner
         if (!await _leases.TryAcquireAsync(schedule.Name, schedule.TimeLimit + LeaseMargin, stoppingToken))
         {
             _logger.LogDebug("Job {Job} skipped: another instance holds its lease.", schedule.Name);
+            Record(schedule, "skipped", null);
             return JobRunOutcome.SkippedHeldElsewhere;
         }
 
@@ -74,6 +77,7 @@ public sealed class ExclusiveJobRunner
         {
             var rows = await work(limit.Token);
             var elapsed = _time.GetElapsedTime(started);
+            Record(schedule, "completed", elapsed);
             var level = rows == 0 ? LogLevel.Debug : schedule.CompletionLogLevel;
             if (rows is { } count)
                 _logger.Log(level, "Job {Job} completed in {ElapsedMs} ms, {Rows} rows processed.",
@@ -88,14 +92,17 @@ public sealed class ExclusiveJobRunner
         }
         catch (OperationCanceledException) when (limit.IsCancellationRequested && !stoppingToken.IsCancellationRequested)
         {
+            var elapsed = _time.GetElapsedTime(started);
+            Record(schedule, "timed_out", elapsed);
             _logger.LogWarning("Job {Job} stopped at its time limit of {Limit} after {ElapsedMs} ms.",
-                schedule.Name, schedule.TimeLimit, (long)_time.GetElapsedTime(started).TotalMilliseconds);
+                schedule.Name, schedule.TimeLimit, (long)elapsed.TotalMilliseconds);
             return JobRunOutcome.TimedOut;
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
-            _logger.LogWarning("Job {Job} failed after {ElapsedMs} ms.",
-                schedule.Name, (long)_time.GetElapsedTime(started).TotalMilliseconds);
+            var elapsed = _time.GetElapsedTime(started);
+            Record(schedule, "failed", elapsed);
+            _logger.LogWarning("Job {Job} failed after {ElapsedMs} ms.", schedule.Name, (long)elapsed.TotalMilliseconds);
             throw;
         }
         finally
@@ -103,6 +110,15 @@ public sealed class ExclusiveJobRunner
             if (!keepLease)
                 await _leases.ReleaseAsync(schedule.Name, CancellationToken.None);
         }
+    }
+
+    /// <summary>Task 17 metrics: crownus.jobs.runs for every outcome, crownus.jobs.duration for runs that did work.</summary>
+    private static void Record(JobSchedule schedule, string outcome, TimeSpan? elapsed)
+    {
+        var tags = new TagList { { "job", schedule.Name }, { "outcome", outcome } };
+        CrownusMetrics.JobRuns.Add(1, tags);
+        if (elapsed is { } duration)
+            CrownusMetrics.JobDuration.Record(duration.TotalMilliseconds, tags);
     }
 
     /// <summary>For work that does not count rows.</summary>

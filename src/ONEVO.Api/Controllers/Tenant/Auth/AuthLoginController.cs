@@ -44,7 +44,10 @@ public class AuthLoginController : ControllerBase
         var baseResult = await _mediator.Send(new BaseLoginCommand(request.Email, request.Password, ip, ua), ct);
 
         if (!baseResult.IsSuccess)
+        {
+            ONEVO.Application.Common.Observability.CrownusMetrics.RecordSignInFailure("tenant", baseResult.StatusCode ?? 400);
             return Problem(baseResult.Error, statusCode: baseResult.StatusCode ?? 400);
+        }
 
         var baseDto = baseResult.Value!;
         if (baseDto.WorkspaceSelection is not null)
@@ -91,7 +94,10 @@ public class AuthLoginController : ControllerBase
         var baseResult = await _mediator.Send(new BaseGoogleLoginCommand(request.GoogleIdToken, ip, ua), ct);
 
         if (!baseResult.IsSuccess)
+        {
+            ONEVO.Application.Common.Observability.CrownusMetrics.RecordSignInFailure("tenant", baseResult.StatusCode ?? 400);
             return Problem(baseResult.Error, statusCode: baseResult.StatusCode ?? 400);
+        }
 
         var baseDto = baseResult.Value!;
         if (baseDto.WorkspaceSelection is not null)
