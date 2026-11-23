@@ -2,6 +2,7 @@ using MediatR;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using ONEVO.Api.Filters;
+using ONEVO.Application.Common.Authorization;
 using ONEVO.Application.Features.CoreHr.Offboarding.Queries.ListOffboardingOverview;
 
 namespace ONEVO.Api.Controllers.Tenant.CoreHr;
@@ -12,7 +13,7 @@ namespace ONEVO.Api.Controllers.Tenant.CoreHr;
 public class OffboardingOverviewController(IMediator mediator) : ControllerBase
 {
     [HttpGet]
-    [RequireAnyPermission("employees:offboard", "employees:write")]
+    [RequireAnyPermission(PermissionCatalog.Employees.Offboard, PermissionCatalog.Employees.Write)]
     public async Task<IActionResult> List([FromQuery] int page = 1, [FromQuery] int pageSize = 25, CancellationToken ct = default)
     {
         var result = await mediator.Send(new ListOffboardingOverviewQuery(page, pageSize), ct);

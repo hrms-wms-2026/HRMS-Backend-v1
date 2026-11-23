@@ -1,3 +1,4 @@
+using ONEVO.Application.Common.Authorization;
 using ONEVO.Application.Common.Exceptions;
 using ONEVO.Application.Common.Models;
 using ONEVO.Application.Common.Security;
@@ -219,7 +220,7 @@ public class OnboardingDraftWriteService : IOnboardingDraftWriteService
                 return Result<OnboardingDraftResponse>.NotFound("The draft could not be found.");
             }
 
-            if (existing.StartedById != actingUserId && !_currentUser.HasPermission("employees:write"))
+            if (existing.StartedById != actingUserId && !_currentUser.HasPermission(PermissionCatalog.Employees.Write))
             {
                 return Result<OnboardingDraftResponse>.Forbidden();
             }
@@ -458,7 +459,7 @@ public class OnboardingDraftWriteService : IOnboardingDraftWriteService
         }
         var requiresApproval = accessTemplate is { IsActive: true, RequiresApproval: true };
         var bypassApproval = requiresApproval
-            && await _permissionRepository.UserHasPermissionCodeAsync(actingUserId, "roles:manage", _clock.UtcNow, ct);
+            && await _permissionRepository.UserHasPermissionCodeAsync(actingUserId, PermissionCatalog.Roles.Manage, _clock.UtcNow, ct);
 
         if (requiresApproval && !bypassApproval)
         {
@@ -501,7 +502,7 @@ public class OnboardingDraftWriteService : IOnboardingDraftWriteService
             await _accessGrantRequestRepository.AddAsync(grantRequest, ct);
 
             var approverUserIds = await _permissionRepository.ListUserIdsWithPermissionCodeAsync(
-                draft.TenantId, "roles:manage", _clock.UtcNow, ct);
+                draft.TenantId, PermissionCatalog.Roles.Manage, _clock.UtcNow, ct);
             var tenantSlug = (await _tenantRepository.GetByIdAsync(draft.TenantId, ct))?.Slug;
             foreach (var approverUserId in approverUserIds)
             {

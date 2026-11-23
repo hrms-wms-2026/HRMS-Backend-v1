@@ -1,4 +1,5 @@
 using MediatR;
+using ONEVO.Application.Common.Authorization;
 using ONEVO.Application.Common.Models;
 using ONEVO.Application.Common.ServiceInterfaces;
 using ONEVO.Application.Features.CoreHr.OnboardingDrafts.DTOs.Responses;
@@ -26,7 +27,7 @@ public class GetOnboardingDraftQueryHandler : IRequestHandler<GetOnboardingDraft
                 "The employee or selected organization record could not be found.");
         }
 
-        if (draft.StartedById != _currentUser.UserId && !_currentUser.HasPermission("employees:write"))
+        if (draft.StartedById != _currentUser.UserId && !_currentUser.HasPermission(PermissionCatalog.Employees.Write))
         {
             return Result<OnboardingDraftResponse>.Forbidden();
         }

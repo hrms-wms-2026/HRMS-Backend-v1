@@ -2,6 +2,7 @@ using MediatR;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using ONEVO.Api.Filters;
+using ONEVO.Application.Common.Authorization;
 using ONEVO.Application.Features.Leave.Balance.Queries.GetMyBalances;
 using ONEVO.Application.Features.Leave.Balance.Queries.GetMyLeaveWorkWindow;
 using ONEVO.Application.Features.Leave.Balance.Queries.ListAllBalances;
@@ -19,7 +20,7 @@ public class LeaveBalancesController : ControllerBase
     public LeaveBalancesController(IMediator mediator) => _mediator = mediator;
 
     [HttpGet("my")]
-    [RequirePermission("leave:read-own")]
+    [RequirePermission(PermissionCatalog.Leave.ReadOwn)]
     public async Task<IActionResult> My([FromQuery] int year, CancellationToken ct = default)
     {
         var result = await _mediator.Send(new GetMyBalancesQuery(year), ct);
@@ -27,7 +28,7 @@ public class LeaveBalancesController : ControllerBase
     }
 
     [HttpGet("work-window")]
-    [RequireAnyPermission("leave:read-own", "leave:manage")]
+    [RequireAnyPermission(PermissionCatalog.Leave.ReadOwn, PermissionCatalog.Leave.Manage)]
     public async Task<IActionResult> WorkWindow(CancellationToken ct = default)
     {
         var result = await _mediator.Send(new GetMyLeaveWorkWindowQuery(), ct);
@@ -35,7 +36,7 @@ public class LeaveBalancesController : ControllerBase
     }
 
     [HttpGet("team")]
-    [RequirePermission("leave:read-team")]
+    [RequirePermission(PermissionCatalog.Leave.ReadTeam)]
     public async Task<IActionResult> Team(
         [FromQuery] int year,
         [FromQuery] Guid? departmentId,
@@ -48,7 +49,7 @@ public class LeaveBalancesController : ControllerBase
     }
 
     [HttpGet("all")]
-    [RequirePermission("leave:read")]
+    [RequirePermission(PermissionCatalog.Leave.Read)]
     public async Task<IActionResult> All(
         [FromQuery] int year,
         [FromQuery] Guid? legalEntityId,

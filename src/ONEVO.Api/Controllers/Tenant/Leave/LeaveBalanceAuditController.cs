@@ -2,6 +2,7 @@ using MediatR;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using ONEVO.Api.Filters;
+using ONEVO.Application.Common.Authorization;
 using ONEVO.Application.Features.Leave.BalanceAudit.Queries.ListBalanceAudit;
 
 namespace ONEVO.Api.Controllers.Tenant.Leave;
@@ -21,7 +22,7 @@ public class LeaveBalanceAuditController : ControllerBase
     /// <summary>Append-only balance audit trail. Filterable by employee, leave type, change
     /// type, and date range.</summary>
     [HttpGet]
-    [RequirePermission("leave:read")]
+    [RequirePermission(PermissionCatalog.Leave.Read)]
     public async Task<IActionResult> List(
         [FromQuery] Guid? employeeId,
         [FromQuery] Guid? leaveTypeId,
@@ -40,7 +41,7 @@ public class LeaveBalanceAuditController : ControllerBase
     /// <summary>CSV export of the audit trail, same filters as List. No pagination - capped
     /// at 5000 rows to keep the export bounded.</summary>
     [HttpGet("export")]
-    [RequirePermission("leave:read")]
+    [RequirePermission(PermissionCatalog.Leave.Read)]
     public async Task<IActionResult> Export(
         [FromQuery] Guid? employeeId,
         [FromQuery] Guid? leaveTypeId,

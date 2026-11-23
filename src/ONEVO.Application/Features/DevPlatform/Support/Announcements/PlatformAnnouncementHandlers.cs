@@ -7,6 +7,7 @@ using ONEVO.Application.Features.DevPlatform.Support.Helpers;
 using ONEVO.Application.Features.DevPlatform.Support.Mappers;
 using ONEVO.Application.Features.DevPlatform.Support.RepositoryInterfaces;
 using ONEVO.Domain.Features.DevPlatform.Support.Entities;
+using ONEVO.Application.Features.DevPlatform.Support.Validation;
 
 namespace ONEVO.Application.Features.DevPlatform.Support.Announcements;
 
@@ -64,7 +65,7 @@ public sealed record CreatePlatformAnnouncementCommand(
     string? Audience,
     DateTimeOffset? StartsAt,
     DateTimeOffset? EndsAt,
-    Guid ActorPlatformUserId) : IRequest<Result<PlatformAnnouncementDto>>;
+    Guid ActorPlatformUserId) : IRequest<Result<PlatformAnnouncementDto>>, IPlatformAnnouncementInput;
 
 public sealed class CreatePlatformAnnouncementCommandHandler
     : IRequestHandler<CreatePlatformAnnouncementCommand, Result<PlatformAnnouncementDto>>
@@ -119,7 +120,7 @@ public sealed record UpdatePlatformAnnouncementCommand(
     string? Severity,
     string? Audience,
     DateTimeOffset? StartsAt,
-    DateTimeOffset? EndsAt) : IRequest<Result<PlatformAnnouncementDto>>;
+    DateTimeOffset? EndsAt) : IRequest<Result<PlatformAnnouncementDto>>, IPlatformAnnouncementInput;
 
 public sealed class UpdatePlatformAnnouncementCommandHandler
     : IRequestHandler<UpdatePlatformAnnouncementCommand, Result<PlatformAnnouncementDto>>

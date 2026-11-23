@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using ONEVO.Api.Contracts.CoreHr.Offboarding;
 using ONEVO.Api.Filters;
+using ONEVO.Application.Common.Authorization;
 using ONEVO.Application.Features.CoreHr.Offboarding.Commands.ApproveBypassRequest;
 using ONEVO.Application.Features.CoreHr.Offboarding.Commands.RejectBypassRequest;
 using ONEVO.Application.Features.CoreHr.Offboarding.Queries.ListMyPendingBypassRequests;
@@ -17,7 +18,7 @@ public class OffboardingBypassRequestsController(IMediator mediator) : Controlle
     /// <summary>Always scoped to the caller as approver - there is no arbitrary approverId
     /// override, per design spec §6.</summary>
     [HttpGet]
-    [RequirePermission("employees:write")]
+    [RequirePermission(PermissionCatalog.Employees.Write)]
     public async Task<IActionResult> ListMine(CancellationToken ct = default)
     {
         var result = await mediator.Send(new ListMyPendingBypassRequestsQuery(), ct);
@@ -25,7 +26,7 @@ public class OffboardingBypassRequestsController(IMediator mediator) : Controlle
     }
 
     [HttpPost("{id:guid}/approve")]
-    [RequirePermission("employees:write")]
+    [RequirePermission(PermissionCatalog.Employees.Write)]
     [Idempotent]
     public async Task<IActionResult> Approve(Guid id, CancellationToken ct = default)
     {
@@ -34,7 +35,7 @@ public class OffboardingBypassRequestsController(IMediator mediator) : Controlle
     }
 
     [HttpPost("{id:guid}/reject")]
-    [RequirePermission("employees:write")]
+    [RequirePermission(PermissionCatalog.Employees.Write)]
     [Idempotent]
     public async Task<IActionResult> Reject(Guid id, [FromBody] RejectBypassRequestRequest request, CancellationToken ct = default)
     {

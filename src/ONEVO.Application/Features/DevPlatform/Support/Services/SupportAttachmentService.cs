@@ -35,12 +35,15 @@ public sealed class SupportAttachmentService : ISupportAttachmentService
     private readonly IUploadPurposePolicy _policy;
     private readonly IObjectStorageAdapter _storage;
     private readonly IDateTimeProvider _clock;
+    private readonly IImageSanitizer _imageSanitizer;
 
-    public SupportAttachmentService(IUploadPurposePolicy policy, IObjectStorageAdapter storage, IDateTimeProvider clock)
+    public SupportAttachmentService(
+        IUploadPurposePolicy policy, IObjectStorageAdapter storage, IDateTimeProvider clock, IImageSanitizer imageSanitizer)
     {
         _policy = policy;
         _storage = storage;
         _clock = clock;
+        _imageSanitizer = imageSanitizer;
     }
 
     public async Task<Result<SupportTicketAttachment>> StoreAsync(
@@ -61,28 +64,60 @@ public sealed class SupportAttachmentService : ISupportAttachmentService
             return Result<SupportTicketAttachment>.Failure(signature.Error!, signature.StatusCode ?? 400, signature.ErrorCode);
         }
 
-        var safeName = _policy.SanitizeFileName(upload.FileName);
-        var id = Guid.NewGuid();
-        var key = $"support-tickets/{ticket.TenantId:N}/{ticket.Id:N}/{id:N}/{safeName}";
-
-        await _storage.PutObjectAsync(key, upload.Content, contentType, ct);
-
-        return Result<SupportTicketAttachment>.Success(new SupportTicketAttachment
+        // Task 23: screenshots attached to tickets are re-encoded like every other image upload,
+        // so EXIF/GPS and hidden trailing bytes never reach storage.
+        var content = upload.Content;
+        var sizeBytes = upload.SizeBytes;
+        SanitizedImage? sanitized = null;
+        if (_imageSanitizer.CanSanitize(upload.FileName))
         {
-            Id = id,
-            TenantId = ticket.TenantId,
-            TicketId = ticket.Id,
-            FileName = safeName,
-            ContentType = contentType,
-            SizeBytes = upload.SizeBytes,
-            ObjectKey = key,
-            IsInternal = isInternal,
-            UploadedByPlatformUserId = uploader.PlatformUserId,
-            UploadedByUserId = uploader.TenantUserId,
-            UploadedByName = uploader.Name,
-            CreatedAt = _clock.UtcNow,
-        });
+            var result = await _imageSanitizer.SanitizeAsync(upload.FileName, upload.Content, ct);
+            if (!result.IsSuccess)
+            {
+                return Result<SupportTicketAttachment>.Failure(result.Error!, result.StatusCode ?? 400, result.ErrorCode);
+            }
+
+            sanitized = result.Value!;
+            content = sanitized.Content;
+            contentType = sanitized.ContentType;
+            sizeBytes = sanitized.Content.Length;
+        }
+
+        try
+        {
+            var safeName = _policy.SanitizeFileName(upload.FileName);
+            var id = Guid.NewGuid();
+            // Task 23: the object name is server-generated; the client's (sanitized) name is display-only.
+            var key = $"support-tickets/{ticket.TenantId:N}/{ticket.Id:N}/{id:N}/{ServerObjectName(safeName)}";
+
+            await _storage.PutObjectAsync(key, content, contentType, ct);
+
+            return Result<SupportTicketAttachment>.Success(new SupportTicketAttachment
+            {
+                Id = id,
+                TenantId = ticket.TenantId,
+                TicketId = ticket.Id,
+                FileName = safeName,
+                ContentType = contentType,
+                SizeBytes = sizeBytes,
+                ObjectKey = key,
+                IsInternal = isInternal,
+                UploadedByPlatformUserId = uploader.PlatformUserId,
+                UploadedByUserId = uploader.TenantUserId,
+                UploadedByName = uploader.Name,
+                CreatedAt = _clock.UtcNow,
+            });
+        }
+        finally
+        {
+            if (sanitized is not null)
+                await sanitized.Content.DisposeAsync();
+        }
     }
+
+    /// <summary>"content" plus the extension of an already sanitized name (safe charset only).</summary>
+    private static string ServerObjectName(string safeFileName) =>
+        "content" + Path.GetExtension(safeFileName).ToLowerInvariant();
 
     public async Task DeleteQuietlyAsync(string objectKey, CancellationToken ct)
     {

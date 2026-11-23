@@ -1,4 +1,5 @@
 using System.Text.Json;
+using ONEVO.Application.Common.Authorization;
 using ONEVO.Application.Common.Exceptions;
 using ONEVO.Application.Common.Models;
 using ONEVO.Application.Common.RepositoryInterfaces;
@@ -36,7 +37,7 @@ public sealed class AttendanceCorrectionWorkflow(
     IInboxChangeNotifier? inbox = null,
     IAttendanceAlertRepository? alerts = null)
 {
-    private const string ApprovalPermission = "attendance:approve";
+    private const string ApprovalPermission = PermissionCatalog.Attendance.Approve;
     // The bell opens the Inbox item (inbox plan S4.2).
     private static readonly string RelatedType = ONEVO.Application.Features.Inbox.Contracts.InboxNotificationNavigation.RelatedEntityType("attendance", "correction");
     private const string CreatedTemplate = "attendance_correction_request_created";
@@ -81,7 +82,7 @@ public sealed class AttendanceCorrectionWorkflow(
                 {
                     await notifications.SendTemplatedAsync(
                         currentUser.TenantId,
-                        value.Approver!.UserId,
+                        value.Route!.ApproverUserId,
                         CreatedTemplate,
                         new Dictionary<string, string>
                         {
@@ -92,7 +93,7 @@ public sealed class AttendanceCorrectionWorkflow(
                         transactionCt);
                     // Approver and requester inboxes refresh after commit (outbox row in this transaction).
                     if (inbox is not null)
-                        await inbox.EnqueueAsync(currentUser.TenantId, [value.Approver.EmployeeId, value.Employee.Id],
+                        await inbox.EnqueueAsync(currentUser.TenantId, [value.Route.ApproverEmployeeId, value.Employee.Id],
                             InboxRefs.AttendanceCorrection(correction.Id), transactionCt);
                 }
                 else
@@ -378,7 +379,7 @@ public sealed class AttendanceCorrectionWorkflow(
                 route.ApproverEmployeeId, ct);
             var position = await positions.GetByIdAsync(currentUser.TenantId, route.ApproverPositionId, ct);
             approver = new AttendanceCorrectionApproverResponse(
-                route.ApproverEmployeeId, route.ApproverUserId,
+                route.ApproverEmployeeId,
                 approverEmployee is null ? "Approver" : DisplayName(approverEmployee),
                 position?.Name);
         }

@@ -60,6 +60,10 @@ public sealed class AuthRateLimitingMiddleware
         new("/admin/v1/auth/accept-invite", "ip", null, 10, TimeSpan.FromMinutes(15)),
         new("/admin/v1/auth/accept-invite", "token", "token", 5, TimeSpan.FromMinutes(15)),
 
+        // Task 15: the remaining anonymous login steps get the same per-IP ceiling as login itself.
+        new("/api/v1/auth/session-exchange", "ip", null, 20, TimeSpan.FromSeconds(300)),
+        new("/api/v1/legal/acceptances/complete-login", "ip", null, 20, TimeSpan.FromSeconds(300)),
+
         new("/api/v1/auth/invitations", "ip", null, 20, TimeSpan.FromMinutes(15), PrefixMatch: true),
         new("/api/v1/auth/invitations", "path", null, 5, TimeSpan.FromMinutes(15), PrefixMatch: true),
 

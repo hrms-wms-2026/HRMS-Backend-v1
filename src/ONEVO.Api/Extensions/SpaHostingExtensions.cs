@@ -66,7 +66,10 @@ public static class SpaHostingExtensions
         var webIndex = Path.Combine(settings.WebRoot, "index.html");
         var adminIndex = Path.Combine(settings.AdminRoot, "index.html");
 
-        app.MapFallback((HttpContext ctx) =>
+        // "{*path}" rather than the default "{*path:nonfile}": a missing asset (a path with a file
+        // extension) must still reach this anonymous endpoint and get its 404. With no endpoint at all,
+        // the deny-by-default fallback authorization policy (task 15) would answer 401 instead.
+        app.MapFallback("{*path}", (HttpContext ctx) =>
         {
             if (!IsSpaFallbackRequest(ctx.Request))
                 return Results.NotFound();

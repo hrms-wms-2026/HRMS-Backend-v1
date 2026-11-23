@@ -1,4 +1,5 @@
 using MediatR;
+using ONEVO.Application.Features.TimeAttendance.Validation;
 using ONEVO.Application.Common.Models;
 using ONEVO.Application.Features.TimeAttendance.DTOs.Responses;
 using ONEVO.Application.Features.TimeAttendance.Models;
@@ -15,4 +16,4 @@ public record UpdateClockInPolicyCommand(
     bool CorrectionRequiresApproval,
     string NotificationRecipientResolver,
     IReadOnlyList<LateDeductionRuleInput> LateDeductionRules,
-    bool IsActive) : IRequest<Result<ClockInPolicyResponse>>;
+    bool IsActive) : IRequest<Result<ClockInPolicyResponse>>, IClockInPolicyInput;

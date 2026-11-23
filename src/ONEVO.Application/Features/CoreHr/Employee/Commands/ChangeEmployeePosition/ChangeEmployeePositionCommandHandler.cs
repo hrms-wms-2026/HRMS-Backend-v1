@@ -1,4 +1,5 @@
 using MediatR;
+using ONEVO.Application.Common.Authorization;
 using ONEVO.Application.Common.Exceptions;
 using ONEVO.Application.Common.Models;
 using ONEVO.Application.Common.RepositoryInterfaces;
@@ -131,14 +132,14 @@ public class ChangeEmployeePositionCommandHandler : IRequestHandler<ChangeEmploy
                     "A position change for this employee is already awaiting approval.");
 
             var bypassApproval = await _permissionRepository.UserHasPermissionCodeAsync(
-                _currentUser.UserId, "roles:manage", _clock.UtcNow, ct);
+                _currentUser.UserId, PermissionCatalog.Roles.Manage, _clock.UtcNow, ct);
 
             if (bypassApproval)
                 return await CompleteSensitiveChangeBypassingApprovalAsync(
                     tenantId, employee, position, accessTemplate, request, ct);
 
             var approverUserIds = await _permissionRepository.ListUserIdsWithPermissionCodeAsync(
-                tenantId, "roles:manage", _clock.UtcNow, ct);
+                tenantId, PermissionCatalog.Roles.Manage, _clock.UtcNow, ct);
             if (approverUserIds.Count == 0)
                 return Result<ChangeEmployeePositionResponse>.UnprocessableEntity(
                     "No one currently holds the permission required to approve this request.");
