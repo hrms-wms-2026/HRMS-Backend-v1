@@ -30,7 +30,7 @@ public static class MeetingSeed
             OrganizerEmployeeId = at.OrganizerEmployeeId, Title = $"Meeting {Guid.NewGuid():N}"[..16],
             DtStart = dtStart ?? new DateTimeOffset(2026, 11, 2, 9, 0, 0, TimeSpan.Zero), DurationMinutes = 30,
             Timezone = "UTC", RecurrenceRule = recurrenceRule, CreationPath = MeetingCreationPaths.Direct,
-            CreatedById = at.OrganizerEmployeeId,
+            CreatedById = MyTeamDb.UserIdOf(db, at.OrganizerEmployeeId), // the organizer's user, as MeetingSeriesFactory writes it
         };
         db.MeetingSeries.Add(series);
         return series;

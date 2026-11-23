@@ -145,6 +145,7 @@ public sealed class EmployeeDetailAndChangePositionIntegrationTests : IAsyncLife
         });
 
         TestUsers.AddForNewEmployees(db);
+        TestUsers.Add(db, _tenantId, _adminUserId); // position_assignments.created_by_id has a key to users (task 39c)
         await db.SaveChangesAsync();
 
         var assignmentRepo = PositionAssignmentRepositoryTestSupport.CreateRepository(db);

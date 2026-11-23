@@ -45,12 +45,13 @@ public sealed class GetCalendarEventByIdQueryHandler : IRequestHandler<GetCalend
 
         var memberships = await _calendarEvents.ListMembershipsForEventAsync(calendarEvent.Id, ct);
         var taskLinks = await _calendarEvents.ListTaskMembershipsForEventAsync(calendarEvent.Id, ct);
-        var names = await _identity.ResolveDisplayNamesByEmployeeIdAsync(tenantId, new[] { calendarEvent.CreatedById }, ct);
+        var creatorId = calendarEvent.CreatedById ?? Guid.Empty;
+        var names = await _identity.ResolveDisplayNamesByEmployeeIdAsync(tenantId, new[] { creatorId }, ct);
 
         return Result<CalendarEventDetailResponse>.Success(new CalendarEventDetailResponse(
             calendarEvent.Id, calendarEvent.ProjectId, calendarEvent.Name, calendarEvent.Color, calendarEvent.Status,
             calendarEvent.StartDate, calendarEvent.EndDate, calendarEvent.Description,
-            calendarEvent.CreatedById, names.GetValueOrDefault(calendarEvent.CreatedById),
+            creatorId, names.GetValueOrDefault(creatorId),
             memberships.Select(m => m.ObjectiveId).ToList(), taskLinks.Select(l => l.TaskId).ToList(),
             calendarEvent.CreatedAt, calendarEvent.ArchivedById, calendarEvent.ArchivedAt));
     }

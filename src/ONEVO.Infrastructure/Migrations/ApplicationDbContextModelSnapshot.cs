@@ -13688,7 +13688,7 @@ namespace ONEVO.Infrastructure.Migrations
                         .HasColumnType("datetimeoffset")
                         .HasColumnName("created_at");
 
-                    b.Property<Guid>("CreatedById")
+                    b.Property<Guid?>("CreatedById")
                         .HasColumnType("uniqueidentifier")
                         .HasColumnName("created_by_id");
 
@@ -14420,7 +14420,7 @@ namespace ONEVO.Infrastructure.Migrations
                         .HasColumnType("datetimeoffset")
                         .HasColumnName("created_at");
 
-                    b.Property<Guid>("CreatedById")
+                    b.Property<Guid?>("CreatedById")
                         .HasColumnType("uniqueidentifier")
                         .HasColumnName("created_by_id");
 
@@ -14993,7 +14993,7 @@ namespace ONEVO.Infrastructure.Migrations
                         .HasColumnType("datetimeoffset")
                         .HasColumnName("created_at");
 
-                    b.Property<Guid>("CreatedById")
+                    b.Property<Guid?>("CreatedById")
                         .HasColumnType("uniqueidentifier")
                         .HasColumnName("created_by_id");
 
@@ -19933,7 +19933,6 @@ namespace ONEVO.Infrastructure.Migrations
                         .WithMany()
                         .HasForeignKey("CreatedById")
                         .OnDelete(DeleteBehavior.NoAction)
-                        .IsRequired()
                         .HasConstraintName("fk_clock_in_policies_users_created_by_id");
 
                     b.HasOne("ONEVO.Domain.Features.OrgStructure.Entities.LegalEntity", null)
@@ -20102,7 +20101,6 @@ namespace ONEVO.Infrastructure.Migrations
                         .WithMany()
                         .HasForeignKey("CreatedById")
                         .OnDelete(DeleteBehavior.NoAction)
-                        .IsRequired()
                         .HasConstraintName("fk_calendar_events_employees_created_by_id");
 
                     b.HasOne("ONEVO.Domain.Features.WorkManagement.Projects.Entities.Project", null)
@@ -20295,7 +20293,6 @@ namespace ONEVO.Infrastructure.Migrations
                         .WithMany()
                         .HasForeignKey("CreatedById")
                         .OnDelete(DeleteBehavior.NoAction)
-                        .IsRequired()
                         .HasConstraintName("fk_meeting_series_users_created_by_id");
 
                     b.HasOne("ONEVO.Domain.Features.WorkManagement.Objectives.Entities.Objective", null)
