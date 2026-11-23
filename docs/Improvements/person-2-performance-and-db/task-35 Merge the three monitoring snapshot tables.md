@@ -33,3 +33,7 @@ Review: `docs/reports/database/2026-11-15-database-design-review.md`, section A1
 - Row counts match before and after the copy.
 - The architecture suite (RLS coverage) passes.
 - The migration is created and reported, not applied to a shared database.
+
+## Status
+
+Built 2026-11-23 as option C (DEC-089) on `perf/task-35-snapshot-keys`. Step 1 showed the tray sends activity, app usage and device state from three collectors with their own timers and timestamps, to three endpoints (`ActivitySyncService`); the 1:1 rows were seed data. So the tables stay apart. Migration `20261123111349_ClusterSnapshotsByCaptureTime` clusters each on `(tenant_id, captured_at, id)`, makes `(tenant_id, agent_device_id, captured_at)` unique on all three (retry duplicates removed first) and keeps the evidence-asset foreign key. The three ingest handlers share `TraySnapshotIngest`. A one-capture tray endpoint (option A) waits for real volume data (task 06 Part B).

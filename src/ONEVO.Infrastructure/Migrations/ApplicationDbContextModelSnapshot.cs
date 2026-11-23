@@ -8430,9 +8430,16 @@ namespace ONEVO.Infrastructure.Migrations
                     b.HasKey("Id")
                         .HasName("pk_activity_snapshots");
 
+                    SqlServerKeyBuilderExtensions.IsClustered(b.HasKey("Id"), false);
+
                     b.HasIndex("TenantId", "AgentDeviceId", "CapturedAt")
                         .IsUnique()
                         .HasDatabaseName("ix_activity_snapshots_tenant_device_captured");
+
+                    b.HasIndex("TenantId", "CapturedAt", "Id")
+                        .HasDatabaseName("cx_activity_snapshots_tenant_captured");
+
+                    SqlServerIndexBuilderExtensions.IsClustered(b.HasIndex("TenantId", "CapturedAt", "Id"));
 
                     b.HasIndex("TenantId", "EmployeeId", "CapturedAt")
                         .IsDescending(false, false, true)
@@ -8481,8 +8488,16 @@ namespace ONEVO.Infrastructure.Migrations
                     b.HasKey("Id")
                         .HasName("pk_app_usage_snapshots");
 
+                    SqlServerKeyBuilderExtensions.IsClustered(b.HasKey("Id"), false);
+
                     b.HasIndex("TenantId", "AgentDeviceId", "CapturedAt")
+                        .IsUnique()
                         .HasDatabaseName("ix_app_usage_snapshots_tenant_device_captured");
+
+                    b.HasIndex("TenantId", "CapturedAt", "Id")
+                        .HasDatabaseName("cx_app_usage_snapshots_tenant_captured");
+
+                    SqlServerIndexBuilderExtensions.IsClustered(b.HasIndex("TenantId", "CapturedAt", "Id"));
 
                     b.HasIndex("TenantId", "EmployeeId", "CapturedAt")
                         .IsDescending(false, false, true)
@@ -8856,8 +8871,16 @@ namespace ONEVO.Infrastructure.Migrations
                     b.HasKey("Id")
                         .HasName("pk_device_state_snapshots");
 
+                    SqlServerKeyBuilderExtensions.IsClustered(b.HasKey("Id"), false);
+
                     b.HasIndex("TenantId", "AgentDeviceId", "CapturedAt")
+                        .IsUnique()
                         .HasDatabaseName("ix_device_state_snapshots_tenant_device_captured");
+
+                    b.HasIndex("TenantId", "CapturedAt", "Id")
+                        .HasDatabaseName("cx_device_state_snapshots_tenant_captured");
+
+                    SqlServerIndexBuilderExtensions.IsClustered(b.HasIndex("TenantId", "CapturedAt", "Id"));
 
                     b.HasIndex("TenantId", "EmployeeId", "CapturedAt")
                         .IsDescending(false, false, true)

@@ -65,14 +65,15 @@ public class IngestDeviceStateSnapshotsCommandHandlerTests
 
     private IngestDeviceStateSnapshotsCommandHandler CreateSut() => new(
         _snapshots.Object,
-        _toggles.Object,
-        _device.Object,
-        _tenants.Object,
-        _switcher.Object,
-        _employeeIdentity.Object,
-        _clock,
-        _uow,
-        NullLogger<IngestDeviceStateSnapshotsCommandHandler>.Instance);
+        new TraySnapshotIngest(
+            _device.Object,
+            _tenants.Object,
+            _switcher.Object,
+            _toggles.Object,
+            _employeeIdentity.Object,
+            _clock,
+            NullLogger<TraySnapshotIngest>.Instance),
+        _uow);
 
     private static DeviceStateSnapshotItem Item(DateTimeOffset capturedAt, bool isIdle = false) => new()
     {
