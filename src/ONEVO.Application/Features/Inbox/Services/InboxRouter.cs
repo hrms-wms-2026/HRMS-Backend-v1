@@ -115,28 +115,33 @@ public sealed class InboxRouter : IInboxRouter
 
     public async Task<InboxCounts> GetCountsAsync(Guid tenantId, Guid callerEmployeeId, CancellationToken ct)
     {
-        // Task 37: sources converted to inbox_items count there; the rest still build their rows.
+        // Task 37: sources converted to inbox_items count there; every other source counts itself (task 00a).
         var headerSources = _headerCounts.Select(h => h.Source).ToHashSet(StringComparer.Ordinal);
-        var items = new List<InboxItem>();
-        foreach (var provider in _providers.Where(p => !headerSources.Contains(p.Source)))
-            items.AddRange(await provider.ListAsync(tenantId, new InboxQuery(), callerEmployeeId, ct));
-        var needsMe = items.Where(i => i.IsPending
-            && (i.Category == InboxCategories.Alert || (i.Category == InboxCategories.Request && i.Direction == InboxDirections.Received))).ToList();
-
-        var pendingReceived = items.Count(i => i.IsPending && i.Category == InboxCategories.Request && i.Direction == InboxDirections.Received);
-        var openAlerts = items.Count(i => i.IsPending && i.Category == InboxCategories.Alert);
-        var bySource = needsMe.GroupBy(i => i.Source).ToDictionary(g => g.Key, g => g.Count());
-        var byKind = needsMe.GroupBy(i => $"{i.Source}:{i.Kind}").ToDictionary(g => g.Key, g => g.Count());
-        foreach (var source in _headerCounts)
+        var pendingReceived = 0;
+        var openAlerts = 0;
+        var bySource = new Dictionary<string, int>();
+        var byKind = new Dictionary<string, int>();
+        void Add(string source, InboxSourceCounts counts)
         {
-            var counts = await source.CountAsync(tenantId, callerEmployeeId, ct);
             pendingReceived += counts.PendingReceived;
             openAlerts += counts.OpenAlerts;
-            if (counts.PendingReceived + counts.OpenAlerts > 0)
-                bySource[source.Source] = bySource.GetValueOrDefault(source.Source) + counts.PendingReceived + counts.OpenAlerts;
-            foreach (var (kind, count) in counts.ByKind.Where(k => k.Value > 0))
-                byKind[$"{source.Source}:{kind}"] = byKind.GetValueOrDefault($"{source.Source}:{kind}") + count;
+            var sourceTotal = counts.PendingReceived + counts.OpenAlerts;
+            if (sourceTotal > 0)
+                bySource[source] = bySource.GetValueOrDefault(source) + sourceTotal;
+            foreach (var (kind, count) in counts.ByKind)
+            {
+                if (count > 0)
+                {
+                    var key = $"{source}:{kind}";
+                    byKind[key] = byKind.GetValueOrDefault(key) + count;
+                }
+            }
         }
+
+        foreach (var provider in _providers.Where(p => !headerSources.Contains(p.Source)))
+            Add(provider.Source, await provider.CountAsync(tenantId, callerEmployeeId, ct));
+        foreach (var source in _headerCounts)
+            Add(source.Source, await source.CountAsync(tenantId, callerEmployeeId, ct));
 
         return new InboxCounts(
             PendingReceived: pendingReceived,

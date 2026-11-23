@@ -10,6 +10,9 @@ public interface IMonitorAlertRepository
     /// <summary>Open alerts of the project, newest first, read-only.</summary>
     Task<IReadOnlyList<MonitorAlert>> ListOpenForProjectAsync(Guid tenantId, Guid projectId, CancellationToken ct = default);
 
+    /// <summary>Open alerts of several projects in one read, read-only and unordered (inbox badge counts).</summary>
+    Task<IReadOnlyList<MonitorAlert>> ListOpenForProjectsAsync(Guid tenantId, IReadOnlyCollection<Guid> projectIds, CancellationToken ct = default);
+
     /// <summary>Open alerts of the project plus those resolved at or after <paramref name="resolvedSince"/>, read-only.</summary>
     Task<IReadOnlyList<MonitorAlert>> ListOpenOrResolvedSinceAsync(
         Guid tenantId, Guid projectId, DateTimeOffset resolvedSince, CancellationToken ct = default);

@@ -100,6 +100,11 @@ public sealed record InboxCounts(
     int PendingReceived, int UnreadMessages, int OpenAlerts,
     IReadOnlyDictionary<string, int>? BySource = null, IReadOnlyDictionary<string, int>? ByKind = null);
 
+/// <summary>Count-only result from one source. <see cref="ByKind"/> keys are the source-local kind names;
+/// the router prefixes them with the source for the public response.</summary>
+public sealed record InboxSourceCounts(
+    int PendingReceived, int OpenAlerts, IReadOnlyDictionary<string, int> ByKind);
+
 /// <summary>One per module. The inbox router fans out to these; a new module (Leave, HR, …) plugs in by
 /// registering a provider, with no change to Inbox or Conversations code.</summary>
 public interface IInboxSourceProvider
@@ -111,6 +116,9 @@ public interface IInboxSourceProvider
 
     /// <summary>Every item that involves the caller. The router applies the common filters, sorting and paging.</summary>
     Task<IReadOnlyList<InboxItem>> ListAsync(Guid tenantId, InboxQuery query, Guid callerEmployeeId, CancellationToken ct);
+
+    /// <summary>Badge totals without building inbox rows.</summary>
+    Task<InboxSourceCounts> CountAsync(Guid tenantId, Guid callerEmployeeId, CancellationToken ct);
 
     /// <summary>Null when the item does not exist or the caller may not see it.</summary>
     Task<InboxItemDetail?> GetDetailAsync(Guid tenantId, string kind, Guid id, Guid callerEmployeeId, CancellationToken ct);

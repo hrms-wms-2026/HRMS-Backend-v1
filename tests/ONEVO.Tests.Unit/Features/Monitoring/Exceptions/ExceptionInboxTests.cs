@@ -68,6 +68,9 @@ public class ExceptionInboxTests
             .ReturnsAsync(Result<EmployeeApprovalRoute>.Success(new EmployeeApprovalRoute(Stranger, Guid.NewGuid(), Guid.NewGuid(),
                 "attendance:approve", EmployeeAuthorityPurpose.ExceptionAlertReview, EmployeeApprovalRouteSource.ReportingLine, null)));
         _conversations.Setup(x => x.ListAddedSubjectsAsync(TenantId, It.IsAny<Guid>(), "monitoring", It.IsAny<CancellationToken>())).ReturnsAsync([]);
+        // The badge count reads the routing-only scope; tests describe one scope through ResolveAsync.
+        _scope.Setup(s => s.ResolveRoutingAsync(It.IsAny<bool>(), It.IsAny<CancellationToken>()))
+            .Returns((bool forAction, CancellationToken token) => _scope.Object.ResolveAsync(forAction, Array.Empty<Guid>(), token));
         _policy.Setup(p => p.AppliesTo("monitoring", It.IsAny<string>())).Returns(true);
     }
 
@@ -113,6 +116,115 @@ public class ExceptionInboxTests
         asManager.Select(i => (i.Id, i.Direction)).Should().Equal((mine.Id, InboxDirections.Received));
         asManager[0].AvailableActions.Select(a => a.Key).Should().Equal("resolve", "escalate");
         asStranger.Should().BeEmpty();
+    }
+
+    [Fact]
+    public async Task Count_matches_the_open_cases_visible_to_the_caller_without_mapping_inbox_items()
+    {
+        Case();
+        ScopeIs(isHr: false, Subject);
+        ApproverOf(Subject);
+
+        _exceptions.Setup(x => x.ListActiveInboxEmployeeIdsAsync(TenantId, false, It.IsAny<CancellationToken>()))
+            .ReturnsAsync([Subject]);
+        _exceptions.Setup(x => x.CountActiveInboxAsync(
+                TenantId,
+                It.Is<ExceptionInboxCountCriteria>(c =>
+                    c.CallerEmployeeId == Reviewer
+                    && c.RoutedEmployeeIds.Contains(Subject)
+                    && !c.Calendar),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(1);
+
+        var counts = await Provider().CountAsync(TenantId, Reviewer, default);
+
+        counts.Should().BeEquivalentTo(new InboxSourceCounts(0, 1, new Dictionary<string, int>
+        {
+            [ExceptionInboxKinds.Case] = 1,
+        }));
+        _exceptions.Verify(x => x.GetListAsync(
+            It.IsAny<Guid>(), It.IsAny<ExceptionListFilter>(), It.IsAny<int>(), It.IsAny<int>(), It.IsAny<CancellationToken>()), Times.Never);
+        _exceptions.Verify(x => x.GetByIdAsync(It.IsAny<Guid>(), It.IsAny<Guid>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task Count_keeps_own_held_and_chat_added_visibility_as_identifier_only_criteria()
+    {
+        var heldCaseId = Guid.NewGuid();
+        var addedCaseId = Guid.NewGuid();
+        _exceptions.Setup(x => x.ListActiveInboxEmployeeIdsAsync(TenantId, false, It.IsAny<CancellationToken>()))
+            .ReturnsAsync([Subject]);
+        _scope.Setup(s => s.ResolveAsync(true, It.IsAny<IReadOnlyCollection<Guid>>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new ExceptionScope(false, Reviewer, [], [heldCaseId]));
+        _conversations.Setup(x => x.ListAddedSubjectsAsync(TenantId, Reviewer, "monitoring", It.IsAny<CancellationToken>()))
+            .ReturnsAsync([new ItemRef("monitoring", ExceptionInboxKinds.Case, addedCaseId)]);
+        _exceptions.Setup(x => x.CountActiveInboxAsync(
+                TenantId,
+                It.Is<ExceptionInboxCountCriteria>(c =>
+                    c.CallerEmployeeId == Reviewer
+                    && c.RoutedEmployeeIds.Count == 0
+                    && c.HrFallbackEmployeeIds.Count == 0
+                    && c.HeldCaseIds.SequenceEqual(new[] { heldCaseId })
+                    && c.AddedCaseIds.SequenceEqual(new[] { addedCaseId })
+                    && !c.IncludeLegacyHrEscalations
+                    && !c.Calendar),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(3);
+
+        var counts = await Provider().CountAsync(TenantId, Reviewer, default);
+
+        counts.OpenAlerts.Should().Be(3);
+        _exceptions.Verify(x => x.GetListAsync(
+            It.IsAny<Guid>(), It.IsAny<ExceptionListFilter>(), It.IsAny<int>(), It.IsAny<int>(), It.IsAny<CancellationToken>()), Times.Never);
+        _exceptions.Verify(x => x.GetByIdAsync(It.IsAny<Guid>(), It.IsAny<Guid>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task Count_gives_HR_the_no_approver_fallback_and_legacy_escalations_minus_journaled_ones()
+    {
+        var journaled = Guid.NewGuid();
+        _journal.Add(TenantId, new ItemRef("monitoring", "exception_case", journaled), InboxJournalActions.Escalate, Stranger, Now.AddHours(-1));
+        _exceptions.Setup(x => x.ListActiveInboxEmployeeIdsAsync(TenantId, false, It.IsAny<CancellationToken>()))
+            .ReturnsAsync([Subject]);
+        ScopeIs(isHr: true, Subject);
+        ApproverOf();
+        _authority.Setup(a => a.ResolveApproverAsync(It.IsAny<EmployeeApprovalRouteRequest>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(Result<EmployeeApprovalRoute>.UnprocessableEntity("No eligible approver was found for this employee and action."));
+        _exceptions.Setup(x => x.CountActiveInboxAsync(
+                TenantId,
+                It.Is<ExceptionInboxCountCriteria>(c =>
+                    c.RoutedEmployeeIds.Count == 0
+                    && c.HrFallbackEmployeeIds.SequenceEqual(new[] { Subject })
+                    && c.IncludeLegacyHrEscalations
+                    && c.JournaledEscalatedCaseIds.SequenceEqual(new[] { journaled })
+                    && !c.Calendar),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(2);
+
+        var counts = await Provider().CountAsync(TenantId, Reviewer, default);
+
+        counts.OpenAlerts.Should().Be(2);
+    }
+
+    [Fact]
+    public async Task Count_does_not_treat_broad_scope_as_exact_routing()
+    {
+        _exceptions.Setup(x => x.ListActiveInboxEmployeeIdsAsync(TenantId, false, It.IsAny<CancellationToken>()))
+            .ReturnsAsync([Subject]);
+        ScopeIs(isHr: false, Subject);
+        ApproverOf();
+        _exceptions.Setup(x => x.CountActiveInboxAsync(
+                TenantId,
+                It.Is<ExceptionInboxCountCriteria>(c =>
+                    c.RoutedEmployeeIds.Count == 0
+                    && c.HrFallbackEmployeeIds.Count == 0
+                    && c.HeldCaseIds.Count == 0),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(0);
+
+        var counts = await Provider().CountAsync(TenantId, Reviewer, default);
+
+        counts.Should().BeEquivalentTo(new InboxSourceCounts(0, 0, new Dictionary<string, int>()));
     }
 
     [Fact]

@@ -241,6 +241,39 @@ public class LeavePolicyResolverTests
         resolved.Blackouts.Should().ContainSingle().Which.Id.Should().Be(blackout.Id);
     }
 
+    [Fact]
+    public async Task ResolveMany_answers_each_lookup_like_ResolveAsync_across_employees_and_dates()
+    {
+        var other = Guid.NewGuid();
+        var sick = Policy("Company sick", _sick);
+        AddVersion(sick, 2, new DateOnly(2026, 11, 1), 80m);
+        var annual = Policy("Company annual", _annual);
+        Assign(sick, LeavePolicyTargetKinds.LegalEntity, _legalEntityId);
+        Assign(annual, LeavePolicyTargetKinds.LegalEntity, _legalEntityId);
+        var sut = Sut(extraEmployees: [new LeaveResolutionEmployee(other, "Sam Perera", _legalEntityId, null)]);
+        var lookups = new[]
+        {
+            new LeavePolicyLookup(_employeeId, _sick, Today),
+            new LeavePolicyLookup(_employeeId, _sick, new DateOnly(2026, 11, 5)),
+            new LeavePolicyLookup(other, _annual, Today),
+            new LeavePolicyLookup(other, _casual, Today),
+            new LeavePolicyLookup(Guid.NewGuid(), _sick, Today),
+        };
+
+        var many = await sut.ResolveManyAsync(TenantId, lookups, CancellationToken.None);
+
+        many.Keys.Should().BeEquivalentTo(lookups);
+        foreach (var lookup in lookups)
+        {
+            var single = await sut.ResolveAsync(TenantId, lookup.EmployeeId, lookup.LeaveTypeId, lookup.AsOf, CancellationToken.None);
+            (many[lookup]?.PolicyId, many[lookup]?.Version.Id).Should().Be((single?.PolicyId, single?.Version.Id));
+        }
+        many[lookups[0]]!.Version.VersionNumber.Should().Be(1);
+        many[lookups[1]]!.Version.VersionNumber.Should().Be(2);
+        many[lookups[3]].Should().BeNull();
+        many[lookups[4]].Should().BeNull();
+    }
+
     private LeavePolicyResolver Sut(
         IReadOnlyList<LeaveResolutionEmployee>? extraEmployees = null,
         IReadOnlyList<LeavePolicyBlackoutPeriod>? blackouts = null)

@@ -54,6 +54,19 @@ public sealed class EfAttendanceCorrectionRepository(ApplicationDbContext db) : 
         return await query.OrderByDescending(x => x.CreatedAt).ToListAsync(ct);
     }
 
+    public async Task<IReadOnlyList<Guid>> ListPendingEmployeeIdsAsync(
+        Guid tenantId, Guid legalEntityId, CancellationToken ct = default)
+        => await db.AttendanceCorrections.AsNoTracking()
+            .Where(x => x.TenantId == tenantId && x.LegalEntityId == legalEntityId
+                && x.Status == AttendanceCorrection.StatusPending)
+            .Select(x => x.EmployeeId).Distinct().ToListAsync(ct);
+
+    public Task<int> CountPendingAsync(
+        Guid tenantId, Guid legalEntityId, IReadOnlyCollection<Guid> employeeIds, CancellationToken ct = default)
+        => employeeIds.Count == 0 ? Task.FromResult(0) : db.AttendanceCorrections.AsNoTracking().CountAsync(x =>
+            x.TenantId == tenantId && x.LegalEntityId == legalEntityId
+            && employeeIds.Contains(x.EmployeeId) && x.Status == AttendanceCorrection.StatusPending, ct);
+
     public Task<bool> HasPendingForRecordAsync(
         Guid tenantId, Guid employeeId, Guid? attendanceRecordId, string correctionType,
         CancellationToken ct = default)

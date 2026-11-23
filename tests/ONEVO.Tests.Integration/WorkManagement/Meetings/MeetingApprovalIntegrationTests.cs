@@ -165,6 +165,7 @@ public sealed class MeetingApprovalIntegrationTests
             => Task.FromResult(objectiveId == moduleId && employee == employeeId && isMember);
 
         public Task<ONEVO.Domain.Features.CoreHr.Entities.Employee?> GetActiveAssigneeAsync(Guid tenantId, Guid employee, CancellationToken ct = default) => throw new NotSupportedException();
+        public Task<IReadOnlySet<Guid>> GetActiveAssigneeIdsAsync(Guid tenantId, IReadOnlyCollection<Guid> employees, CancellationToken ct = default) => throw new NotSupportedException();
         public Task UpsertMembershipAsync(Guid tenantId, Guid projectId, Guid objectiveId, Guid employee, CancellationToken ct = default) => throw new NotSupportedException();
         public Task DeactivateMembershipAsync(Guid tenantId, Guid projectId, Guid objectiveId, Guid employee, CancellationToken ct = default) => throw new NotSupportedException();
         public Task<bool> HasOtherActiveAccessAsync(Guid tenantId, Guid projectId, Guid employee, Guid excludingObjectiveId, CancellationToken ct = default) => throw new NotSupportedException();

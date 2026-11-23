@@ -81,22 +81,37 @@ public class WorkInboxSourceProviderTests
             _snapshots.Setup(s => s.LoadAsync(TenantId, p.Id, It.IsAny<CancellationToken>())).ReturnsAsync(new ProjectMonitorSnapshot(
                 p.Id, WorkCalendar.Default,
                 [new MonitorModule(module, root, null, "Payments", new DateOnly(2026, 10, 1), new DateOnly(2026, 10, 30), 10m, 0m, false, 1)], [], []));
+            _snapshots.Setup(s => s.LoadTargetsAsync(TenantId, p.Id, It.IsAny<CancellationToken>()))
+                .ReturnsAsync(new MonitorTargets([new MonitorTargetModule(module, root, null)], [], []));
             _projects.Setup(r => r.GetByIdForTenantAsync(TenantId, p.Id, It.IsAny<CancellationToken>())).ReturnsAsync(p);
             _requests.Setup(r => r.ListByProjectAsync(TenantId, p.Id, null, null, It.IsAny<CancellationToken>()))
                 .ReturnsAsync(() => _rows.Where(r => r.ProjectId == p.Id).ToList());
+            _requests.Setup(r => r.ListByProjectAsync(TenantId, p.Id, null, WorkApprovalRequestStatuses.Pending, It.IsAny<CancellationToken>()))
+                .ReturnsAsync(() => _rows.Where(r => r.ProjectId == p.Id && r.Status == WorkApprovalRequestStatuses.Pending).ToList());
             _invitations.Setup(r => r.ListForProjectAndEmployeeAsync(TenantId, p.Id, Me, It.IsAny<CancellationToken>()))
                 .ReturnsAsync(() => _invites.Where(i => i.ProjectId == p.Id).ToList());
             _alerts.Setup(r => r.ListOpenOrResolvedSinceAsync(TenantId, p.Id, Now.AddDays(-30), It.IsAny<CancellationToken>()))
                 .ReturnsAsync(() => _alertRows.Where(a => a.ProjectId == p.Id).ToList());
+            _alerts.Setup(r => r.ListOpenForProjectAsync(TenantId, p.Id, It.IsAny<CancellationToken>()))
+                .ReturnsAsync(() => _alertRows.Where(a => a.ProjectId == p.Id && a.ResolvedAt == null).ToList());
         }
         _hierarchy.Setup(h => h.FindActiveHolderAsync(TenantId, It.IsAny<ProjectModuleTree>(), It.IsAny<Guid>(), It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync((Guid _, ProjectModuleTree tree, Guid position, Guid _, CancellationToken _) => tree.Get(position)?.OwnerId);
+        _hierarchy.Setup(h => h.FindActiveHoldersAsync(TenantId, It.IsAny<ProjectModuleTree>(), It.IsAny<IReadOnlyCollection<Guid>>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((Guid _, ProjectModuleTree tree, IReadOnlyCollection<Guid> positions, CancellationToken _)
+                => positions.Distinct().ToDictionary(p => p, p => tree.Get(p)?.OwnerId));
         _projects.Setup(r => r.ListForMemberAsync(TenantId, Me, 0, int.MaxValue, null, "asc", It.IsAny<CancellationToken>()))
             .ReturnsAsync(() => (_memberOf.ToList(), _memberOf.Count));
         _projects.Setup(r => r.ListByIdsAsync(TenantId, It.IsAny<IReadOnlyCollection<Guid>>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync((Guid _, IReadOnlyCollection<Guid> ids, CancellationToken _) => new[] { _a, _b, _c }.Where(p => ids.Contains(p.Id)).ToList());
         _invitations.Setup(r => r.ListPendingForEmployeeAsync(TenantId, Me, It.IsAny<CancellationToken>()))
             .ReturnsAsync(() => _invites.Where(i => i.InvitedEmployeeId == Me && i.Status == ProjectInvitationStatuses.Pending).ToList());
+        _requests.Setup(r => r.ListPendingForProjectsAsync(TenantId, It.IsAny<IReadOnlyCollection<Guid>>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((Guid _, IReadOnlyCollection<Guid> ids, CancellationToken _)
+                => _rows.Where(r => ids.Contains(r.ProjectId) && r.Status == WorkApprovalRequestStatuses.Pending).ToList());
+        _alerts.Setup(r => r.ListOpenForProjectsAsync(TenantId, It.IsAny<IReadOnlyCollection<Guid>>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((Guid _, IReadOnlyCollection<Guid> ids, CancellationToken _)
+                => _alertRows.Where(a => ids.Contains(a.ProjectId) && a.ResolvedAt == null).ToList());
         _identity.Setup(i => i.ResolveDisplayNamesByEmployeeIdAsync(TenantId, It.IsAny<IReadOnlyList<Guid>>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync((Guid _, IReadOnlyList<Guid> ids, CancellationToken _) => ids.Distinct().ToDictionary(id => id, _ => "Someone"));
         _tasks.Setup(t => t.GetObjectiveIdsByTaskIdsAsync(TenantId, It.IsAny<IReadOnlyList<Guid>>(), It.IsAny<CancellationToken>()))
@@ -142,6 +157,24 @@ public class WorkInboxSourceProviderTests
         return a;
     }
 
+    [Fact]
+    public async Task A_project_s_alerts_look_up_their_holders_in_one_batch()
+    {
+        // A holder lookup per alert read an employee per ancestor module: ~600 queries per inbox call.
+        var alerts = new[] { Alert(_a), Alert(_a, subject: Me), Alert(_a) };
+
+        var audience = await Audience().ResolveAsync(TenantId, _a.Id, alerts, default);
+
+        audience.Values.Should().AllSatisfy(recipients => recipients.Should().Contain(_trees[_a.Id].RootOwner));
+        audience[alerts[1].Id].Should().Contain(Me);
+        _hierarchy.Verify(h => h.FindActiveHoldersAsync(TenantId, It.IsAny<ProjectModuleTree>(), It.IsAny<IReadOnlyCollection<Guid>>(),
+            It.IsAny<CancellationToken>()), Times.Once);
+        _hierarchy.Verify(h => h.FindActiveHolderAsync(TenantId, It.IsAny<ProjectModuleTree>(), It.IsAny<Guid>(), It.IsAny<Guid>(),
+            It.IsAny<CancellationToken>()), Times.Never);
+        // Only the creator fields are read, not the full monitor snapshot (rates, clocking, assignments).
+        _snapshots.Verify(s => s.LoadAsync(It.IsAny<Guid>(), It.IsAny<Guid>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
     private Task<IReadOnlyList<InboxItem>> List() => Provider().ListAsync(TenantId, new InboxQuery(), Me, default);
 
     private void AddedToChat(string kind, Guid subjectId, Guid employee)
@@ -156,6 +189,101 @@ public class WorkInboxSourceProviderTests
     }
 
     // ---- list ---------------------------------------------------------------------------------
+
+    [Fact]
+    public async Task Count_reads_pending_received_rows_and_open_audience_alerts_without_building_the_feed()
+    {
+        _memberOf.Add(_a);
+        var request = Request(_a, Requester);
+        request.ApproverEmployeeId = Me;
+        _invites.Add(new ProjectMemberInvitation
+        {
+            Id = Guid.NewGuid(), TenantId = TenantId, ProjectId = _c.Id, ObjectiveId = _trees[_c.Id].Module,
+            InvitedEmployeeId = Me, InvitedById = Approver, Status = ProjectInvitationStatuses.Pending, InviteType = "member", CreatedAt = Now,
+        });
+        Alert(_a, subject: Me);
+
+        var counts = await Provider().CountAsync(TenantId, Me, default);
+
+        counts.Should().BeEquivalentTo(new InboxSourceCounts(2, 1, new Dictionary<string, int>
+        {
+            [WorkInboxKinds.Approval] = 1,
+            [WorkInboxKinds.Invitation] = 1,
+            [WorkInboxKinds.MonitorAlert] = 1,
+        }));
+        _identity.Verify(x => x.ResolveDisplayNamesByEmployeeIdAsync(It.IsAny<Guid>(), It.IsAny<IReadOnlyList<Guid>>(),
+            It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task Count_reads_each_kind_once_across_projects_and_loads_a_tree_only_where_something_is_pending()
+    {
+        // Task 00a: four to seven reads per visible project made the Work badge grow with the caller's project count.
+        _memberOf.AddRange([_a, _b, _c]);
+        Request(_a, Requester).ApproverEmployeeId = Me;
+        Alert(_b, subject: Me);
+
+        var counts = await Provider().CountAsync(TenantId, Me, default);
+
+        counts.Should().BeEquivalentTo(new InboxSourceCounts(1, 1, new Dictionary<string, int>
+        {
+            [WorkInboxKinds.Approval] = 1,
+            [WorkInboxKinds.MonitorAlert] = 1,
+        }));
+        _requests.Verify(r => r.ListPendingForProjectsAsync(TenantId, It.IsAny<IReadOnlyCollection<Guid>>(), It.IsAny<CancellationToken>()), Times.Once);
+        _alerts.Verify(r => r.ListOpenForProjectsAsync(TenantId, It.IsAny<IReadOnlyCollection<Guid>>(), It.IsAny<CancellationToken>()), Times.Once);
+        _requests.Verify(r => r.ListByProjectAsync(It.IsAny<Guid>(), It.IsAny<Guid>(), It.IsAny<Guid?>(), It.IsAny<string?>(), It.IsAny<CancellationToken>()), Times.Never);
+        _invitations.Verify(r => r.ListForProjectAndEmployeeAsync(It.IsAny<Guid>(), It.IsAny<Guid>(), It.IsAny<Guid>(), It.IsAny<CancellationToken>()), Times.Never);
+        _alerts.Verify(r => r.ListOpenForProjectAsync(It.IsAny<Guid>(), It.IsAny<Guid>(), It.IsAny<CancellationToken>()), Times.Never);
+        _hierarchy.Verify(h => h.LoadTreeAsync(TenantId, _a.Id, It.IsAny<CancellationToken>()), Times.Once);
+        _hierarchy.Verify(h => h.LoadTreeAsync(TenantId, _c.Id, It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task Count_leaves_out_own_requests_self_sent_invitations_and_alerts_not_for_the_caller_or_on_achieved_modules()
+    {
+        _memberOf.Add(_a);
+        Request(_a, Me);
+        _invites.Add(new ProjectMemberInvitation
+        {
+            Id = Guid.NewGuid(), TenantId = TenantId, ProjectId = _a.Id, ObjectiveId = _trees[_a.Id].Module,
+            InvitedEmployeeId = Me, InvitedById = Me, Status = ProjectInvitationStatuses.Pending, InviteType = "member", CreatedAt = Now,
+        });
+        Alert(_a);
+        _achieved.Add(_trees[_a.Id].Module);
+        Alert(_a, subject: Me);
+
+        var counts = await Provider().CountAsync(TenantId, Me, default);
+
+        counts.Should().BeEquivalentTo(new InboxSourceCounts(0, 0, new Dictionary<string, int>()));
+    }
+
+    [Fact]
+    public async Task Count_matches_the_pending_items_the_list_shows()
+    {
+        _memberOf.AddRange([_a, _b]);
+        Request(_a, Requester).ApproverEmployeeId = Me;
+        Request(_b, Me);
+        Request(_b, Requester);
+        Request(_a, Requester, WorkApprovalRequestStatuses.Approved).ApproverEmployeeId = Me;
+        _invites.Add(new ProjectMemberInvitation
+        {
+            Id = Guid.NewGuid(), TenantId = TenantId, ProjectId = _c.Id, ObjectiveId = _trees[_c.Id].Module,
+            InvitedEmployeeId = Me, InvitedById = Approver, Status = ProjectInvitationStatuses.Pending, InviteType = "member", CreatedAt = Now,
+        });
+        Alert(_a, subject: Me);
+        Alert(_b, subject: Me);
+        Alert(_b);
+        Alert(_a, subject: Me, resolvedAt: Now.AddDays(-1));
+
+        var items = await List();
+        var counts = await Provider().CountAsync(TenantId, Me, default);
+
+        counts.PendingReceived.Should().Be(items.Count(i => i.IsPending && i.Category == InboxCategories.Request && i.Direction == InboxDirections.Received));
+        counts.OpenAlerts.Should().Be(items.Count(i => i.IsPending && i.Category == InboxCategories.Alert));
+        counts.PendingReceived.Should().Be(2);
+        counts.OpenAlerts.Should().Be(2);
+    }
 
     [Fact]
     public async Task Lists_requests_from_every_project_the_caller_is_a_member_of()

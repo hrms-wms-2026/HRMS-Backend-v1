@@ -79,6 +79,18 @@ public sealed class OnboardingInboxSourceProvider : IInboxSourceProvider
 
     private bool Approves(string kind) => kind == OnboardingInboxKinds.SeatIncrease ? SeatApprover : PositionApprover;
 
+    public async Task<InboxSourceCounts> CountAsync(Guid tenantId, Guid callerEmployeeId, CancellationToken ct)
+    {
+        var counts = await _rows.CountPendingReceivedAsync(
+            tenantId, _currentUser.UserId, PositionApprover, SeatApprover, ct);
+        var byKind = new Dictionary<string, int>();
+        if (counts.PositionApprovals > 0)
+            byKind[OnboardingInboxKinds.PositionApproval] = counts.PositionApprovals;
+        if (counts.SeatIncreases > 0)
+            byKind[OnboardingInboxKinds.SeatIncrease] = counts.SeatIncreases;
+        return new InboxSourceCounts(counts.PositionApprovals + counts.SeatIncreases, 0, byKind);
+    }
+
     public async Task<IReadOnlyList<InboxItem>> ListAsync(Guid tenantId, InboxQuery query, Guid callerEmployeeId, CancellationToken ct)
     {
         if (query.Category is { Count: > 0 } categories && !categories.Contains(InboxCategories.Request))
