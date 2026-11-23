@@ -66,6 +66,8 @@ The organisation's included Actions minutes ran out in November 2026. Runs fail 
 
 ## Using it
 
+Step-by-step release, rollback and failed-migration recovery: [`docs/runbooks/uat-deploy.md`](../../docs/runbooks/uat-deploy.md).
+
 - **Normal deploys:** merge to `main` in any of the three repos. Watch Actions → *Deploy to App Service*. The run summary lists the three commits deployed and the package SHA-256.
 - **Manual deploy:** Run workflow. You can pick branches, tags or SHAs for each repo.
 - **Database migrations:** they are **not** applied automatically. When a release contains a new migration:

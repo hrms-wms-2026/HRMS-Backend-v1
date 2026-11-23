@@ -45,7 +45,7 @@ public sealed class AgentCommandsHub(
 
         await Groups.AddToGroupAsync(Context.ConnectionId, TenantGroup(tenantId));
         await Groups.AddToGroupAsync(Context.ConnectionId, UserGroup(tenantId, userId));
-        connections.Connected(tenantId, userId);
+        connections.Connected(tenantId, userId, Context.ConnectionId);
         Context.Items[TrackedKey] = true;
 
         // Tells the tray this backend pushes changes, so it may switch to slow fallback polls.
@@ -58,7 +58,7 @@ public sealed class AgentCommandsHub(
     public override async Task OnDisconnectedAsync(Exception? exception)
     {
         if (Context.Items.ContainsKey(TrackedKey) && TryGetIdentity(out var tenantId, out var userId, out _))
-            connections.Disconnected(tenantId, userId);
+            connections.Disconnected(tenantId, userId, Context.ConnectionId);
 
         await base.OnDisconnectedAsync(exception);
     }

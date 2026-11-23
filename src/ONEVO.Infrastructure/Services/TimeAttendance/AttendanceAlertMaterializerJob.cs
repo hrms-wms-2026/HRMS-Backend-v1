@@ -6,6 +6,7 @@ using ONEVO.Application.Common.ServiceInterfaces;
 using ONEVO.Application.Features.DevPlatform.Tenancy.RepositoryInterfaces;
 using ONEVO.Application.Features.TimeAttendance.Alerts;
 using ONEVO.Domain.Features.InfrastructureModule.Entities;
+using ONEVO.Infrastructure.Services.SharedPlatform.Jobs;
 
 namespace ONEVO.Infrastructure.Services.TimeAttendance;
 
@@ -16,6 +17,7 @@ namespace ONEVO.Infrastructure.Services.TimeAttendance;
 public sealed class AttendanceAlertMaterializerJob : BackgroundService
 {
     private static readonly TimeSpan CheckInterval = TimeSpan.FromHours(1);
+    public static readonly JobSchedule Schedule = JobSchedule.Every("attendance-alert-materializer", CheckInterval, TimeSpan.FromMinutes(30));
     private static readonly TimeSpan StartupDelay = TimeSpan.FromMinutes(3);
 
     private readonly IServiceProvider _services;
@@ -45,7 +47,7 @@ public sealed class AttendanceAlertMaterializerJob : BackgroundService
             {
                 try
                 {
-                    await RunOnceAsync(stoppingToken);
+                    await _services.RunExclusiveAsync(Schedule, ct => RunOnceAsync(ct), stoppingToken);
                 }
                 catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
                 {

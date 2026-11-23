@@ -11,4 +11,5 @@ public record UpdateDepartmentCommand(
     string Name,
     string? Code,
     Guid? ParentDepartmentId,
-    Guid? HeadPositionId) : IRequest<Result<DepartmentResponse>>, IDepartmentInput;
+    Guid? HeadPositionId,
+    string? Version = null) : IRequest<Result<DepartmentResponse>>, IDepartmentInput;

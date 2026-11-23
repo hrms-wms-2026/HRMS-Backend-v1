@@ -6,6 +6,7 @@ using ONEVO.Application.Common.ServiceInterfaces;
 using ONEVO.Application.Features.DevPlatform.Tenancy.RepositoryInterfaces;
 using ONEVO.Application.Features.Leave.Entitlement.Services;
 using ONEVO.Domain.Features.InfrastructureModule.Entities;
+using ONEVO.Infrastructure.Services.SharedPlatform.Jobs;
 
 namespace ONEVO.Infrastructure.Services.Leave;
 
@@ -15,6 +16,7 @@ public sealed class LeaveCreditJob : BackgroundService
 {
     private static readonly TimeSpan CheckInterval = TimeSpan.FromHours(1);
     private static readonly TimeOnly TargetUtcTime = new(1, 0);
+    public static readonly JobSchedule Schedule = JobSchedule.Daily("leave-credit", TimeSpan.FromMinutes(30));
     private readonly IServiceProvider _services;
     private readonly ILogger<LeaveCreditJob> _logger;
     private DateOnly? _lastProcessedDate;
@@ -35,8 +37,12 @@ public sealed class LeaveCreditJob : BackgroundService
                 var today = DateOnly.FromDateTime(now.UtcDateTime);
                 if (TimeOnly.FromDateTime(now.UtcDateTime) >= TargetUtcTime && _lastProcessedDate != today)
                 {
-                    await RunAsync(today, stoppingToken);
-                    _lastProcessedDate = today;
+                    // Skipped = another instance holds the daily lease, so today is being (or was) credited there.
+                    // Crediting is idempotent per month (LeaveCreditService compares with the audit rows), so a
+                    // second run would add nothing; the lease only keeps two instances from racing.
+                    var outcome = await _services.RunExclusiveAsync(Schedule, ct => RunAsync(today, ct), stoppingToken);
+                    if (outcome != JobRunOutcome.TimedOut)
+                        _lastProcessedDate = today;
                 }
             }
             catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)

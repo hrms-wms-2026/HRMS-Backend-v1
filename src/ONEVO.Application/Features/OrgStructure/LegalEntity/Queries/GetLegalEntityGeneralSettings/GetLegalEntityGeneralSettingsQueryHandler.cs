@@ -17,12 +17,15 @@ public class GetLegalEntityGeneralSettingsQueryHandler
     private readonly ILegalEntityRepository _legalEntities;
     private readonly IEntityAssetRepository _entityAssets;
     private readonly ICurrentUser _currentUser;
+    private readonly IRowVersionStore? _versions;
 
-    public GetLegalEntityGeneralSettingsQueryHandler(ILegalEntityRepository legalEntities, IEntityAssetRepository entityAssets, ICurrentUser currentUser)
+    public GetLegalEntityGeneralSettingsQueryHandler(ILegalEntityRepository legalEntities, IEntityAssetRepository entityAssets, ICurrentUser currentUser,
+        IRowVersionStore? versions = null)
     {
         _legalEntities = legalEntities;
         _entityAssets = entityAssets;
         _currentUser = currentUser;
+        _versions = versions;
     }
 
     public async Task<Result<LegalEntityGeneralSettingsResponse>> Handle(
@@ -45,6 +48,9 @@ public class GetLegalEntityGeneralSettingsQueryHandler
             tenantId, EntityAssetOwnerTypes.LegalEntity, new[] { entity.Id }, UploadPurposeCatalog.CompanyLogo, ct);
         var logoFileId = logoFileIds.TryGetValue(entity.Id, out var fid) ? (Guid?)fid : null;
 
-        return Result<LegalEntityGeneralSettingsResponse>.Success(LegalEntityMapper.ToGeneralSettingsResponse(entity, logoFileId));
+        return Result<LegalEntityGeneralSettingsResponse>.Success(LegalEntityMapper.ToGeneralSettingsResponse(entity, logoFileId) with
+        {
+            Version = _versions is null ? null : await _versions.GetVersionAsync<global::ONEVO.Domain.Features.OrgStructure.Entities.LegalEntity>(entity.Id, ct),
+        });
     }
 }

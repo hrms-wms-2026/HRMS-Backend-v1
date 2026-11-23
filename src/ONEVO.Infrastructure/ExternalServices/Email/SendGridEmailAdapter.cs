@@ -105,7 +105,7 @@ public sealed class SendGridEmailAdapter : IEmailProviderAdapter
             {
                 // Never store the response body - surface only the status code.
                 _logger.LogWarning("SendGrid mail send returned {StatusCode} for recipient {Recipient}.",
-                    (int)response.StatusCode, request.RecipientEmail);
+                    (int)response.StatusCode, ONEVO.Application.Common.Observability.LogRedaction.MaskEmail(request.RecipientEmail));
                 return TransactionalEmailResult.Failed(
                     Provider, $"SendGrid API returned {(int)response.StatusCode} {response.StatusCode}.");
             }
