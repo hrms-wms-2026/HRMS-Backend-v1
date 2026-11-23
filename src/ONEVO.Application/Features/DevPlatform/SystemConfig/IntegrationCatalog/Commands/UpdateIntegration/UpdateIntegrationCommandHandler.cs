@@ -5,10 +5,11 @@ using ONEVO.Application.Features.DevPlatform.SystemConfig.IntegrationCatalog.Hel
 using ONEVO.Application.Features.DevPlatform.SystemConfig.IntegrationCatalog.Mappers;
 using ONEVO.Application.Features.DevPlatform.SystemConfig.IntegrationCatalog.RepositoryInterfaces;
 using ONEVO.Application.Features.DevPlatform.SystemConfig.PlatformOAuthApps.RepositoryInterfaces;
+using ONEVO.Application.Features.DevPlatform.SystemConfig.Validation;
 
 namespace ONEVO.Application.Features.DevPlatform.SystemConfig.IntegrationCatalog.Commands.UpdateIntegration;
 
-public sealed record UpdateIntegrationCommand(string IntegrationKey, string DisplayName, string? Description, string ConnectionScope, string CrownusAppProvider, string? LogoUrl, bool IsActive) : IRequest<Result<IntegrationCatalogDto>>;
+public sealed record UpdateIntegrationCommand(string IntegrationKey, string DisplayName, string? Description, string ConnectionScope, string CrownusAppProvider, string? LogoUrl, bool IsActive) : IRequest<Result<IntegrationCatalogDto>>, IIntegrationCatalogInput;
 public sealed class UpdateIntegrationCommandHandler : IRequestHandler<UpdateIntegrationCommand, Result<IntegrationCatalogDto>>
 {
     private readonly IIntegrationCatalogRepository _repo;

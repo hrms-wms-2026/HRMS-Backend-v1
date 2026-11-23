@@ -1,4 +1,5 @@
 using MediatR;
+using ONEVO.Application.Features.Leave.Type.Validation;
 using ONEVO.Application.Common.Models;
 using ONEVO.Application.Features.Leave.Type.DTOs.Responses;
 
@@ -14,4 +15,4 @@ public record CreateLeaveTypeCommand(
     bool RequiresDocument,
     decimal? DocumentRequiredAfterHours,
     string[] AcceptedDocumentTypes,
-    string? Icon = null) : IRequest<Result<LeaveTypeResponse>>;
+    string? Icon = null) : IRequest<Result<LeaveTypeResponse>>, ILeaveTypeInput;

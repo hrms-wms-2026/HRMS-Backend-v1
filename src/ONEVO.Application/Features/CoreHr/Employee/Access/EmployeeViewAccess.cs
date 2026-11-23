@@ -8,6 +8,14 @@ public interface IEmployeeViewAccess
 {
     /// <summary>True when the caller may view this employee's records (profile widgets, history, checklists).</summary>
     Task<bool> CanViewAsync(Guid employeeId, CancellationToken ct = default);
+
+    /// <summary>
+    /// The employee ids the caller may view, for list endpoints that would otherwise return the
+    /// whole tenant: themselves plus their management coverage, by the same rule as CanViewAsync.
+    /// Null means unrestricted (every employee in the tenant). The open-invitation exception of
+    /// CanViewAsync is left out - it exists for the invitee's detail page, not for lists.
+    /// </summary>
+    Task<IReadOnlyCollection<Guid>?> ListViewableEmployeeIdsAsync(CancellationToken ct = default);
 }
 
 /// <summary>
@@ -70,5 +78,18 @@ public sealed class EmployeeViewAccess : IEmployeeViewAccess
         var subject = await _employees.GetByIdAsync(tenantId, employeeId, ct);
         return subject is not null
             && await _invitationAccess.ResolveInviterUserIdAsync(invitation, subject.CreatedById, ct) == _currentUser.UserId;
+    }
+
+    public async Task<IReadOnlyCollection<Guid>?> ListViewableEmployeeIdsAsync(CancellationToken ct = default)
+    {
+        if (!_currentUser.IsAuthenticated)
+            return Array.Empty<Guid>();
+
+        var tenantId = _currentUser.TenantId;
+        var scope = await _scopeResolver.ResolveAsync(tenantId, _currentUser.UserId, ct);
+        if (scope.CanViewAllTenantEmployees)
+            return null;
+
+        return await _visibleEmployees.ListVisibleIdsAsync(tenantId, scope, ct);
     }
 }

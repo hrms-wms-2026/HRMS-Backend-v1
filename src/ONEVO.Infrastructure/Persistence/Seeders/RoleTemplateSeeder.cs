@@ -3,6 +3,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
+using ONEVO.Application.Common.Authorization;
 using ONEVO.Domain.Features.Auth.Entities;
 using ONEVO.Infrastructure.Persistence;
 
@@ -11,8 +12,14 @@ namespace ONEVO.Infrastructure.Persistence.Seeders;
 /// <summary>Boot-time seed for built-in (system) role templates. Idempotent by template name.</summary>
 public sealed class RoleTemplateSeeder : IHostedService
 {
-    public const string HrManagerPermissionCodesJson =
-        """["attendance:read","leave:approve","leave:manage","leave:read"]""";
+    /// <summary>Permission codes of the built-in HR Manager template, in the stored JSON order.</summary>
+    public static readonly IReadOnlyList<string> HrManagerPermissionCodes =
+    [
+        PermissionCatalog.Attendance.Read, PermissionCatalog.Leave.Approve, PermissionCatalog.Leave.Manage, PermissionCatalog.Leave.Read
+    ];
+
+    /// <summary>Stored as <c>["attendance:read","leave:approve","leave:manage","leave:read"]</c>, the same text as before.</summary>
+    public static readonly string HrManagerPermissionCodesJson = JsonSerializer.Serialize(HrManagerPermissionCodes);
 
     public static string[] HrManagerPermissionCodesForTest() =>
         JsonSerializer.Deserialize<string[]>(HrManagerPermissionCodesJson)!;

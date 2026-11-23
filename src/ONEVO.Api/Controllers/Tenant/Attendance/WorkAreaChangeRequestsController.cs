@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using ONEVO.Api.Contracts.Attendance.WorkAreaChangeRequests;
 using ONEVO.Api.Filters;
+using ONEVO.Application.Common.Authorization;
 using ONEVO.Application.Common.Models;
 using ONEVO.Application.Features.TimeAttendance.Commands.WorkAreaChangeRequests;
 using ONEVO.Application.Features.TimeAttendance.Queries.WorkAreaChangeRequests;
@@ -47,7 +48,7 @@ public sealed class WorkAreaChangeRequestsController(IMediator mediator) : Contr
     }
 
     [HttpGet("approvals")]
-    [RequirePermission("attendance:approve")]
+    [RequirePermission(PermissionCatalog.Attendance.Approve)]
     public async Task<IActionResult> Approvals(
         [FromQuery] DateOnly? from,
         [FromQuery] DateOnly? to,
@@ -59,7 +60,7 @@ public sealed class WorkAreaChangeRequestsController(IMediator mediator) : Contr
     }
 
     [HttpPost("{id:guid}/approve")]
-    [RequirePermission("attendance:approve")]
+    [RequirePermission(PermissionCatalog.Attendance.Approve)]
     public async Task<IActionResult> Approve(
         Guid id, [FromBody] ReviewWorkAreaChangeRequestRequest request, CancellationToken ct = default)
     {
@@ -68,7 +69,7 @@ public sealed class WorkAreaChangeRequestsController(IMediator mediator) : Contr
     }
 
     [HttpPost("{id:guid}/reject")]
-    [RequirePermission("attendance:approve")]
+    [RequirePermission(PermissionCatalog.Attendance.Approve)]
     public async Task<IActionResult> Reject(
         Guid id, [FromBody] ReviewWorkAreaChangeRequestRequest request, CancellationToken ct = default)
     {
