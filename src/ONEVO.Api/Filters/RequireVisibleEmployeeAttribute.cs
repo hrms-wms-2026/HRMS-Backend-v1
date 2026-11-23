@@ -8,7 +8,10 @@ namespace ONEVO.Api.Filters;
 /// <summary>
 /// Relationship-based gate for per-employee endpoints: the employee named by the route value must
 /// be the caller or someone inside the caller's management coverage (IEmployeeViewAccess). There is
-/// no permission code - managing the employee is the grant.
+/// no permission code - managing the employee is the grant. When the route has no such value the
+/// query string is read instead, for endpoints such as GET /monitoring/activity/snapshots?employeeId=
+/// (a permission code alone let any holder read every employee in the tenant there). A missing or
+/// unparseable id is refused, never treated as "no filter".
 /// </summary>
 [AttributeUsage(AttributeTargets.Method)]
 public sealed class RequireVisibleEmployeeAttribute : Attribute, IAsyncAuthorizationFilter
@@ -29,7 +32,11 @@ public sealed class RequireVisibleEmployeeAttribute : Attribute, IAsyncAuthoriza
             return;
         }
 
-        var raw = context.RouteData.Values.TryGetValue(_routeKey, out var value) ? value?.ToString() : null;
+        var raw = context.RouteData.Values.TryGetValue(_routeKey, out var value)
+            ? value?.ToString()
+            : context.HttpContext.Request.Query.TryGetValue(_routeKey, out var query) && query.Count == 1
+                ? query[0]
+                : null;
         if (!Guid.TryParse(raw, out var employeeId))
         {
             context.Result = Forbidden();

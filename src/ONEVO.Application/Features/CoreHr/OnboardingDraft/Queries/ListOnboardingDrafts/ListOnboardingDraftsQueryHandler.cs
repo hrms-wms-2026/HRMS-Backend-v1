@@ -1,4 +1,5 @@
 using MediatR;
+using ONEVO.Application.Common.Authorization;
 using ONEVO.Application.Common.Models;
 using ONEVO.Application.Common.ServiceInterfaces;
 using ONEVO.Application.Features.CoreHr.OnboardingDrafts.DTOs.Responses;
@@ -24,7 +25,7 @@ public class ListOnboardingDraftsQueryHandler : IRequestHandler<ListOnboardingDr
 
         // Per the documented rule, only the creator's own drafts are shown unless the caller
         // holds employees:write (which can see and Continue Draft on behalf of others).
-        var startedById = request.Mine || !_currentUser.HasPermission("employees:write") ? _currentUser.UserId : (Guid?)null;
+        var startedById = request.Mine || !_currentUser.HasPermission(PermissionCatalog.Employees.Write) ? _currentUser.UserId : (Guid?)null;
 
         var (items, totalCount) = await _draftRepository.ListWithNamesAsync(
             _currentUser.TenantId, startedById, page, pageSize, ct, openOnly: request.Mine);

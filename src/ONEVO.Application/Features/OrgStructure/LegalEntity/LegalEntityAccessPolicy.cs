@@ -1,3 +1,4 @@
+using ONEVO.Application.Common.Authorization;
 using ONEVO.Application.Common.ServiceInterfaces;
 
 namespace ONEVO.Application.Features.OrgStructure;
@@ -13,12 +14,12 @@ namespace ONEVO.Application.Features.OrgStructure;
 public static class LegalEntityAccessPolicy
 {
     public static bool HasManagementAccess(ICurrentUser currentUser)
-        => currentUser.HasPermission("legal_entity:update") || currentUser.HasPermission("legal_entity:delete");
+        => currentUser.HasPermission(PermissionCatalog.LegalEntity.Update) || currentUser.HasPermission(PermissionCatalog.LegalEntity.Delete);
 
     /// <summary>
     /// Tenant-wide read-only access to a company's General Settings. Used only by the
     /// General Settings read; the company selector list keeps using HasManagementAccess.
     /// </summary>
     public static bool HasReadAccess(ICurrentUser currentUser)
-        => HasManagementAccess(currentUser) || currentUser.HasPermission("legal_entity:read");
+        => HasManagementAccess(currentUser) || currentUser.HasPermission(PermissionCatalog.LegalEntity.Read);
 }

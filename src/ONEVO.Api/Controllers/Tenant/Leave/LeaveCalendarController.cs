@@ -2,6 +2,7 @@ using MediatR;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using ONEVO.Api.Filters;
+using ONEVO.Application.Common.Authorization;
 using ONEVO.Application.Features.Leave.Calendar.Queries;
 
 namespace ONEVO.Api.Controllers.Tenant.Leave;
@@ -19,7 +20,7 @@ public sealed class LeaveCalendarController : ControllerBase
     }
 
     [HttpGet]
-    [RequirePermission("calendar:read")]
+    [RequirePermission(PermissionCatalog.Calendar.Read)]
     public async Task<IActionResult> Get(
         [FromQuery] int year,
         [FromQuery] int month,

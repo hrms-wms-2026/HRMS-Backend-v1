@@ -4,8 +4,6 @@ using ONEVO.Application.Features.Auth.Invite.DTOs.Responses;
 namespace ONEVO.Application.Features.Auth.Invite.DTOs.Responses;
 
 public sealed record InvitationDetailDto(
-    [property: JsonPropertyName("invitation_id")] Guid InvitationId,
-    [property: JsonPropertyName("tenant_id")] Guid TenantId,
     [property: JsonPropertyName("tenant_name")] string TenantName,
     [property: JsonPropertyName("invited_email")] string InvitedEmail,
     [property: JsonPropertyName("first_name")] string FirstName,

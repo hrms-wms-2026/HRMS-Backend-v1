@@ -37,6 +37,7 @@ public sealed class GlobalAppCatalogController(IMediator mediator, ICurrentPlatf
 
     [HttpPut("{id:guid}/logo")]
     [Consumes("multipart/form-data")]
+    [RequestSizeLimit(ONEVO.Api.Configuration.RequestBodyLimits.AppCatalogLogo)]
     [RequirePlatformPermission(PlatformPermissionCatalog.AppCatalogManage)]
     public async Task<IActionResult> SetLogo(Guid id, [FromForm] IFormFile file, CancellationToken ct)
     {
