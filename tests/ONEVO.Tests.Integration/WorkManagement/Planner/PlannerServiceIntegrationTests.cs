@@ -462,7 +462,7 @@ public sealed class PlannerServiceIntegrationTests
                 db.EmployeeHierarchyClosures.Add(new EmployeeHierarchyClosure
                 {
                     TenantId = w.H.TenantId, AncestorEmployeeId = ancestor, DescendantEmployeeId = w.Employee, Depth = depth,
-                    SourcePositionAssignmentId = Guid.NewGuid(), GeneratedAt = DateTimeOffset.UtcNow,
+                    SourcePositionAssignmentId = w.H.ClosureSourceFor(db, w.Employee), GeneratedAt = DateTimeOffset.UtcNow,
                 });
             var series = w.H.AddSeries(db, w.At, Local(15).ToUniversalTime());
             series.Title = "1:1 with HR";

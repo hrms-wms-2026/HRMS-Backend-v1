@@ -50,8 +50,9 @@ public sealed class BulkOnboardingUploadTests : IAsyncLifetime
         };
         _legalEntityId = legalEntity.Id;
         db.LegalEntities.Add(legalEntity);
+        // The caller is a real user: bulk_onboarding_batches.created_by_user_id has a key to users (task 39b).
+        _userId = TestUsers.New(db, _tenantId);
         await db.SaveChangesAsync();
-        _userId = Guid.NewGuid();
     }
 
     public Task DisposeAsync() => Task.CompletedTask;

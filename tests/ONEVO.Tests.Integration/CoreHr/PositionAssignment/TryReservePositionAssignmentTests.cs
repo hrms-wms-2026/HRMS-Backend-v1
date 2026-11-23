@@ -119,6 +119,7 @@ public sealed class TryReservePositionAssignmentTests : IAsyncLifetime
             Email = $"{Guid.NewGuid():N}@try-reserve.onevo.dev",
             HireDate = DateOnly.FromDateTime(DateTime.UtcNow),
         });
+        TestUsers.AddForNewEmployees(db);
         await db.SaveChangesAsync();
         return employeeId;
     }

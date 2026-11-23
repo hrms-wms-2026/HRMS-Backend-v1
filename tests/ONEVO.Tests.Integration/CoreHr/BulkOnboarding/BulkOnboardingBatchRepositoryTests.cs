@@ -69,7 +69,7 @@ public sealed class BulkOnboardingBatchRepositoryTests : IAsyncLifetime
             TenantId = tenantId,
             LegalEntityId = _legalEntityId,
             OriginalFileName = "employees.csv",
-            CreatedByUserId = Guid.NewGuid(),
+            CreatedByUserId = TestUsers.New(db, tenantId),
             TotalRows = 1,
         };
         var rows = new List<BulkOnboardingBatchRow>

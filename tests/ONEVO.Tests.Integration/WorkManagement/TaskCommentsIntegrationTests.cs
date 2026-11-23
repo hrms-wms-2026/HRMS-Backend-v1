@@ -143,6 +143,7 @@ public sealed class TaskCommentsIntegrationTestsFixture : IAsyncLifetime
             Content = content, CreatedById = Guid.NewGuid(), CreatedAt = DateTimeOffset.UtcNow
         };
         db.Set<ONEVO.Domain.Features.WorkManagement.Tasks.Entities.TaskComment>().Add(comment);
+        TestUsers.AddForNewEmployees(db);
         await db.SaveChangesAsync();
         return comment.Id;
     }
@@ -336,6 +337,7 @@ public sealed class TaskCommentsIntegrationTestsFixture : IAsyncLifetime
             CreatedAt = DateTimeOffset.UtcNow
         };
         db.Employees.Add(employee);
+        TestUsers.AddForNewEmployees(db);
         await db.SaveChangesAsync();
         return employee.Id;
     }

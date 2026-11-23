@@ -150,6 +150,11 @@ public class EfLeavePolicyRepository : ILeavePolicyRepository
 
     public void RemoveVersion(LeavePolicyVersion version) => _db.LeavePolicyVersions.Remove(version);
 
+    public async Task<bool> IsVersionInUseAsync(Guid tenantId, Guid versionId, CancellationToken ct = default) =>
+        await _db.LeaveRequests.AsNoTracking().AnyAsync(r => r.TenantId == tenantId && r.LeavePolicyVersionId == versionId, ct)
+        || await _db.LeaveEntitlements.AsNoTracking().AnyAsync(e => e.TenantId == tenantId && e.LeavePolicyVersionId == versionId, ct)
+        || await _db.LeaveBalanceAudits.AsNoTracking().AnyAsync(a => a.TenantId == tenantId && a.LeavePolicyVersionId == versionId, ct);
+
     public void AddAssignment(LeavePolicyAssignment assignment) => _db.LeavePolicyAssignments.Add(assignment);
 
     public void RemoveAssignment(LeavePolicyAssignment assignment) => _db.LeavePolicyAssignments.Remove(assignment);

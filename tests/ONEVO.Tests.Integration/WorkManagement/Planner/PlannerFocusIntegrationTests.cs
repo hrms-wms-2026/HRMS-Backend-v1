@@ -128,7 +128,7 @@ public sealed class PlannerFocusIntegrationTests
             var meeting = w.H.AddOccurrence(db, w.H.AddSeries(db, w.At, Local(10).ToUniversalTime()), w.At).Task;
             db.TaskAssignments.Add(new TaskAssignment
             {
-                Id = Guid.NewGuid(), TaskId = meeting.Id, EmployeeId = w.Employee, UserId = Guid.NewGuid(),
+                Id = Guid.NewGuid(), TaskId = meeting.Id, EmployeeId = w.Employee, UserId = MyTeamDb.UserIdOf(db, w.Employee),
                 AssignedById = w.Employee, AssignedAt = Now,
             });
             w.H.AddTask(db, w.At.ProjectId, w.At.ObjectiveId, w.At.StatusId, progress: 0, due: Today, assigneeEmployeeId: w.Employee)

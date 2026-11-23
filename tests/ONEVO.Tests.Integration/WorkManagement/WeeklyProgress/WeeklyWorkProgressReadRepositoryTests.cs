@@ -36,7 +36,7 @@ public sealed class WeeklyWorkProgressReadRepositoryTests
         meeting.EstimatedHours = 1m;
         db.TaskAssignments.Add(new TaskAssignment
         {
-            Id = Guid.NewGuid(), TaskId = meeting.Id, EmployeeId = me, UserId = Guid.NewGuid(), AssignedById = me,
+            Id = Guid.NewGuid(), TaskId = meeting.Id, EmployeeId = me, UserId = MyTeamDb.UserIdOf(db, me), AssignedById = me,
             AssignedAt = DateTimeOffset.UtcNow,
         });
         var deleted = h.AddTask(db, at.ProjectId, at.ObjectiveId, at.StatusId, 0, WeekStart, assigneeEmployeeId: me, estimatedHours: 8m);

@@ -102,6 +102,7 @@ public sealed class EmployeeExistsInLegalEntityAsyncTests : IAsyncLifetime
             Email = email,
             HireDate = DateOnly.FromDateTime(DateTime.UtcNow),
         });
+        TestUsers.AddForNewEmployees(db);
         await db.SaveChangesAsync();
     }
 

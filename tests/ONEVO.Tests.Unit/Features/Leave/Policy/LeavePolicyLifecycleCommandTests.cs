@@ -76,6 +76,19 @@ public class LeavePolicyLifecycleCommandTests
     }
 
     [Fact]
+    public async Task AddVersion_does_not_replace_a_same_date_version_already_used_by_leave()
+    {
+        var policy = _h.SeedPolicy("Annual", _h.AnnualTypeId);
+        var first = await AddVersion(policy.Id, new DateOnly(2026, 11, 1), 10m);
+        _h.Repository.VersionsInUse.Add(first.Value);
+
+        var second = await AddVersion(policy.Id, new DateOnly(2026, 11, 1), 12m);
+
+        second.IsSuccess.Should().BeFalse();
+        _h.Repository.Versions.Should().Contain(v => v.Id == first.Value && v.AmountHours == 10m);
+    }
+
+    [Fact]
     public async Task AddVersion_on_inactive_policy_is_rejected()
     {
         var policy = _h.SeedPolicy("Annual", _h.AnnualTypeId);
@@ -111,6 +124,20 @@ public class LeavePolicyLifecycleCommandTests
 
         result.IsSuccess.Should().BeTrue();
         _h.Repository.Versions.Should().ContainSingle();
+    }
+
+    [Fact]
+    public async Task DeleteVersion_rejects_future_version_already_used_by_leave()
+    {
+        var policy = _h.SeedPolicy("Annual", _h.AnnualTypeId);
+        var future = await AddVersion(policy.Id, new DateOnly(2026, 11, 1));
+        _h.Repository.VersionsInUse.Add(future.Value);
+
+        var result = await new DeleteLeavePolicyVersionCommandHandler(_h.Repository, _h.CurrentUser.Object, _h.Clock.Object)
+            .Handle(new DeleteLeavePolicyVersionCommand(policy.Id, future.Value), CancellationToken.None);
+
+        result.IsSuccess.Should().BeFalse();
+        _h.Repository.Versions.Should().HaveCount(2);
     }
 
     [Fact]

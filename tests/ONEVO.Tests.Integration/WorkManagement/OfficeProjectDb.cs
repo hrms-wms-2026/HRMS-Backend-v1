@@ -134,6 +134,7 @@ public sealed class OfficeProjectDb : IAsyncDisposable
             LegalEntityId = legalEntityId, EmploymentStatusId = employmentStatusId,
         };
         db.Employees.Add(employee);
+        TestUsers.AddForNewEmployees(db);
         await db.SaveChangesAsync();
         return employee;
     }

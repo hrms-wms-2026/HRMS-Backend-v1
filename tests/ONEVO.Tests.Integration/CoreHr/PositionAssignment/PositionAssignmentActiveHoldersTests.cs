@@ -132,6 +132,7 @@ public sealed class PositionAssignmentActiveHoldersTests : IAsyncLifetime
             Email = $"{Guid.NewGuid():N}@active-holders.onevo.dev",
             HireDate = DateOnly.FromDateTime(DateTime.UtcNow),
         });
+        TestUsers.AddForNewEmployees(db);
         await db.SaveChangesAsync();
         return employeeId;
     }

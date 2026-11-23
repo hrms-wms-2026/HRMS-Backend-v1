@@ -293,6 +293,7 @@ public sealed class TaskAttachmentsIntegrationTestsFixture : IAsyncLifetime
             CreatedAt = DateTimeOffset.UtcNow
         };
         db.Employees.Add(employee);
+        TestUsers.AddForNewEmployees(db);
         await db.SaveChangesAsync();
         return employee.Id;
     }

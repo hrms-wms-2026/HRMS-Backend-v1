@@ -342,6 +342,7 @@ public sealed class CreateProjectEndpointTestsFixture : IAsyncLifetime
             CreatedById = user.Id,
             CreatedAt = DateTimeOffset.UtcNow
         });
+        TestUsers.AddForNewEmployees(db);
         await db.SaveChangesAsync();
     }
 
