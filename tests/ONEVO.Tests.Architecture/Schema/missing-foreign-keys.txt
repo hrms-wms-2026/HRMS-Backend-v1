@@ -192,6 +192,13 @@ inbox_decision_journal.created_by_id | audit | AuditableEntityInterceptor writes
 inbox_decision_journal.item_id | reference | not reviewed yet: task-39e
 inbox_decision_journal.reverted_by_journal_id | reference | not reviewed yet: task-39e
 inbox_decision_journal.tenant_id | tenant | foreign key to tenants, added in batches: task-39d
+inbox_item_assignees.employee_id | reference | employees.id; tables created by task 37a before the task 39 ratchet, key still to add: task-39e
+inbox_item_assignees.tenant_id | tenant | foreign key to tenants, added in batches: task-39d
+inbox_items.decided_by_employee_id | reference | employees.id; tables created by task 37a before the task 39 ratchet, key still to add: task-39e
+inbox_items.requested_by_employee_id | reference | employees.id; tables created by task 37a before the task 39 ratchet, key still to add: task-39e
+inbox_items.subject_employee_id | reference | employees.id; tables created by task 37a before the task 39 ratchet, key still to add: task-39e
+inbox_items.subject_id | polymorphic | the source and kind columns next to it name the table, so no foreign key is possible
+inbox_items.tenant_id | tenant | foreign key to tenants, added in batches: task-39d
 invitation_tokens.created_by_id | audit | AuditableEntityInterceptor writes Guid.Empty for system writes: task-39c
 invitation_tokens.employee_id | reference | not reviewed yet: task-39e
 invitation_tokens.legal_entity_id | reference | not reviewed yet: task-39e

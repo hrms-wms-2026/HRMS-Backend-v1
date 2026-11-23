@@ -22,6 +22,7 @@ public class UpdatePositionCommandHandler
     private readonly IDateTimeProvider _dateTimeProvider;
     private readonly IOutboxWriter _outboxWriter;
     private readonly IEmployeeHierarchyClosureRepository _closureRepository;
+    private readonly IRowVersionStore? _versions;
 
     public UpdatePositionCommandHandler(
         IPositionRepository positions,
@@ -30,7 +31,8 @@ public class UpdatePositionCommandHandler
         ICurrentUser currentUser,
         IDateTimeProvider dateTimeProvider,
         IOutboxWriter outboxWriter,
-        IEmployeeHierarchyClosureRepository closureRepository)
+        IEmployeeHierarchyClosureRepository closureRepository,
+        IRowVersionStore? versions = null)
     {
         _positions = positions;
         _departments = departments;
@@ -39,6 +41,7 @@ public class UpdatePositionCommandHandler
         _dateTimeProvider = dateTimeProvider;
         _outboxWriter = outboxWriter;
         _closureRepository = closureRepository;
+        _versions = versions;
     }
 
     public async Task<Result<PositionResponse>> Handle(
@@ -109,6 +112,7 @@ public class UpdatePositionCommandHandler
         existing.UpdatedAt = _dateTimeProvider.UtcNow;
 
         _positions.Update(existing);
+        _versions?.SetExpectedVersion(existing, request.Version); // task 42: 409 when someone saved in between
 
         if (reportsToChanged)
         {
@@ -210,6 +214,6 @@ public class UpdatePositionCommandHandler
         var childCount = await _positions.CountActiveReportsToPositionAsync(tenantId, request.LegalEntityId, existing.Id, ct);
 
         return Result<PositionResponse>.Success(
-            PositionMapper.ToResponse(existing, department.Name, reportsTo?.Name, childCount));
+            PositionMapper.ToResponse(existing, department.Name, reportsTo?.Name, childCount) with { Version = _versions?.GetVersion(existing) });
     }
 }

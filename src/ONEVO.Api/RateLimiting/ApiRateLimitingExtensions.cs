@@ -127,6 +127,7 @@ public static class ApiRateLimitingExtensions
             ? Math.Max(1, (int)Math.Ceiling(retryAfter.TotalSeconds))
             : FallbackRetryAfterSeconds;
 
+        ONEVO.Application.Common.Observability.CrownusMetrics.RecordRateLimitRejection("api", partition);
         context.RequestServices.GetRequiredService<ILoggerFactory>()
             .CreateLogger(LoggerCategory)
             .LogWarning(

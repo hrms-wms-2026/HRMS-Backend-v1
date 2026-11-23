@@ -1,7 +1,8 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata.Builders;
 using ONEVO.Domain.Features.WorkManagement.Objectives.Entities;
-using ONEVO.Domain.Features.WorkManagement.Projects.Entities;
+using ONEVO.Domain.Features.WorkManagement.Projects.Entities;
+using ONEVO.Infrastructure.Persistence.SqlServer;
 
 namespace ONEVO.Infrastructure.Persistence.Configurations.WorkManagement;
 
@@ -9,6 +10,7 @@ public class ObjectiveConfiguration : IEntityTypeConfiguration<Objective>
 {
     public void Configure(EntityTypeBuilder<Objective> builder)
     {
+        builder.HasRowVersionToken(); // task 42: lost-update protection (409 on a stale save)
         builder.ToTable("objectives", table => table.HasTrigger("trg_objectives_module_hour_summary_insert"));
         builder.HasKey(o => o.Id);
         builder.Property(o => o.Title).HasMaxLength(255).IsRequired();

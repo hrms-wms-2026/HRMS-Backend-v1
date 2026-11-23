@@ -9,7 +9,8 @@ namespace ONEVO.Application.Features.Auth.Roles.Commands.UpdateRole;
 public record UpdateRoleCommand(
     Guid RoleId,
     string Name,
-    string? Description) : IRequest<Result<RoleSummaryDto>>, IAuditedCommand<Result<RoleSummaryDto>>
+    string? Description,
+    string? Version = null) : IRequest<Result<RoleSummaryDto>>, IAuditedCommand<Result<RoleSummaryDto>>
 {
     public AuditEntry DescribeAudit(Result<RoleSummaryDto>? response)
         => AuditEntry.For("role.updated", "role", RoleId, null, new { Name, Description });

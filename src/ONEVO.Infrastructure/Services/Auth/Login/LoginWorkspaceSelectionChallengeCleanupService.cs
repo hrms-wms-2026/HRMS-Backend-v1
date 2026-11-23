@@ -2,12 +2,15 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using ONEVO.Application.Common.ServiceInterfaces;
+using ONEVO.Infrastructure.Services.SharedPlatform.Jobs;
 
 namespace ONEVO.Infrastructure.Services.Auth.Login;
 
 public sealed class LoginWorkspaceSelectionChallengeCleanupService : BackgroundService
 {
     private static readonly TimeSpan PollInterval = TimeSpan.FromHours(1);
+    public static readonly JobSchedule Schedule = JobSchedule.Every(
+        "login-workspace-challenge-cleanup", PollInterval, TimeSpan.FromMinutes(10));
 
     private readonly IServiceProvider _services;
     private readonly ILogger<LoginWorkspaceSelectionChallengeCleanupService> _logger;
@@ -26,16 +29,13 @@ public sealed class LoginWorkspaceSelectionChallengeCleanupService : BackgroundS
         {
             try
             {
-                await using var scope = _services.CreateAsyncScope();
-                var runner = scope.ServiceProvider.GetRequiredService<ILoginWorkspaceSelectionChallengeCleanupRunner>();
-                var deletedRows = await runner.RunOnceAsync(stoppingToken);
-
-                if (deletedRows > 0)
+                // The runner's log line carries the deleted row count.
+                await _services.RunExclusiveAsync(Schedule, async ct =>
                 {
-                    _logger.LogInformation(
-                        "Deleted {Count} expired/consumed login_workspace_selection_challenges rows older than 24 hours.",
-                        deletedRows);
-                }
+                    await using var scope = _services.CreateAsyncScope();
+                    var runner = scope.ServiceProvider.GetRequiredService<ILoginWorkspaceSelectionChallengeCleanupRunner>();
+                    return (int?)await runner.RunOnceAsync(ct);
+                }, stoppingToken);
             }
             catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
             {

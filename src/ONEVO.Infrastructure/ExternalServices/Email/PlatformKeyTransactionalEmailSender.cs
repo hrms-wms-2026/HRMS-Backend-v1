@@ -97,7 +97,7 @@ public sealed class PlatformKeyTransactionalEmailSender : ITransactionalEmailSen
         {
             _logger.LogInformation(
                 "Transactional email sent to {Recipient} via {Provider} (provider message id: {ProviderMessageId}).",
-                request.RecipientEmail, result.Provider, result.ProviderMessageId ?? "n/a");
+                ONEVO.Application.Common.Observability.LogRedaction.MaskEmail(request.RecipientEmail), result.Provider, result.ProviderMessageId ?? "n/a");
         }
 
         return result;

@@ -80,6 +80,8 @@ public sealed class SchemaParityTests(SqlServerFixture fixture)
         "platform_audit_logs",
         // 20261119155238_AddPermissionLifecycle
         "permission_changes",
+        // 20261120141304_AddInboxItems (task 37a)
+        "inbox_items", "inbox_item_assignees",
     ];
 
     // Columns added to existing tables by migrations after the SQL Server baseline, as "table.column".

@@ -61,7 +61,16 @@ public class E2ETestFactory : WebApplicationFactory<Program>
                 ["Outbox:PollSeconds"] = "1",
                 // Leave/org E2E tests are not tray-gating tests. Smoke tenants can have
                 // activity_monitoring on, which would 428 calendar/leave GETs under Enforce.
-                ["TrayPresence:Mode"] = "Off"
+                ["TrayPresence:Mode"] = "Off",
+                // Test classes on this host drive dozens of facts through one signed-in user in a
+                // few seconds, which outruns the production per-user bucket (100 burst, 10/s) on a
+                // fast runner and turns arbitrary calls into 429. The limiter stays on, with room;
+                // its behaviour is covered by ApiRateLimitingTests.
+                ["RateLimiting:SignedIn:TokenLimit"] = "100000",
+                ["RateLimiting:SignedIn:TokensPerPeriod"] = "10000",
+                ["RateLimiting:Anonymous:PermitLimit"] = "100000",
+                ["RateLimiting:TenantCeiling:TokenLimit"] = "100000",
+                ["RateLimiting:TenantCeiling:TokensPerPeriod"] = "10000"
             });
         });
 

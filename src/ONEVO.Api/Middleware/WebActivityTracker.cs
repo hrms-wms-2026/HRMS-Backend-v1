@@ -6,15 +6,37 @@ using ONEVO.Application.Common.Models;
 
 namespace ONEVO.Api.Middleware;
 
-/// <summary>Last authenticated web-app request per (tenant, user); see <see cref="IWebActivityPresence"/>.</summary>
-public sealed class WebActivityTracker : IWebActivityPresence
+/// <summary>
+/// Last authenticated web-app request per (tenant, user); see <see cref="IWebActivityPresence"/>.
+/// Task 21: with Redis configured the time is also shared, at most once per <see cref="SharedWriteInterval"/> per
+/// user so requests do not each become a Redis write, and reads take the later of the local and shared times.
+/// If Redis cannot be asked, the local time is used.
+/// </summary>
+public sealed class WebActivityTracker(ONEVO.Infrastructure.SharedState.ISharedPresenceStore? shared = null) : IWebActivityPresence
 {
+    public static readonly TimeSpan SharedWriteInterval = TimeSpan.FromSeconds(10);
+
     private readonly ConcurrentDictionary<(Guid TenantId, Guid UserId), DateTimeOffset> _lastSeen = new();
+    private readonly ConcurrentDictionary<(Guid TenantId, Guid UserId), DateTimeOffset> _lastShared = new();
 
-    public DateTimeOffset? LastSeenAt(Guid tenantId, Guid userId) =>
-        _lastSeen.TryGetValue((tenantId, userId), out var seen) ? seen : null;
+    public DateTimeOffset? LastSeenAt(Guid tenantId, Guid userId)
+    {
+        DateTimeOffset? local = _lastSeen.TryGetValue((tenantId, userId), out var seen) ? seen : null;
+        var remote = shared?.WebLastSeenAt(tenantId, userId);
+        return remote is { } r && (local is null || r > local) ? r : local;
+    }
 
-    public void Touch(Guid tenantId, Guid userId, DateTimeOffset now) => _lastSeen[(tenantId, userId)] = now;
+    public void Touch(Guid tenantId, Guid userId, DateTimeOffset now)
+    {
+        var key = (tenantId, userId);
+        _lastSeen[key] = now;
+        if (shared is null)
+            return;
+        if (_lastShared.TryGetValue(key, out var last) && now - last < SharedWriteInterval)
+            return;
+        _lastShared[key] = now;
+        shared.TouchWeb(tenantId, userId, now);
+    }
 }
 
 /// <summary>

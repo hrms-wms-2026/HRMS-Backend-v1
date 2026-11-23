@@ -183,7 +183,8 @@ public class PositionsController : ControllerBase
                 request.Name,
                 request.Code,
                 request.MaxOccupancy,
-                request.ReportsToPositionId),
+                request.ReportsToPositionId,
+                request.Version),
             ct);
 
         return result.IsSuccess

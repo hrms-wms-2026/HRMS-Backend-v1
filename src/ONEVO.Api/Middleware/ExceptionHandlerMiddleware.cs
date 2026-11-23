@@ -74,6 +74,14 @@ public class ExceptionHandlerMiddleware
                 se.ErrorCode,
                 (object?)null),
 
+            // Task 42: a save that lost an optimistic-concurrency check (stale version, or another save in between).
+            // The client reloads the record and reapplies its change; no row data is returned here.
+            ConcurrencyConflictException or Microsoft.EntityFrameworkCore.DbUpdateConcurrencyException => (
+                (int)HttpStatusCode.Conflict,
+                "Concurrency Conflict",
+                "This record was changed by someone else. Reload it and try again.",
+                (object?)null),
+
             _ => (
                 (int)HttpStatusCode.InternalServerError,
                 "Internal Server Error",
