@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata.Builders;
-using ONEVO.Domain.Features.OrgStructure.Entities;
+using ONEVO.Domain.Features.OrgStructure.Entities;
+using ONEVO.Infrastructure.Persistence.SqlServer;
 
 // Namespace deliberately stops at the feature segment: a ".Department" segment would
 // collide with the Department entity type and force using-aliases everywhere (same
@@ -11,6 +12,7 @@ public class DepartmentConfiguration : IEntityTypeConfiguration<Department>
 {
     public void Configure(EntityTypeBuilder<Department> builder)
     {
+        builder.HasRowVersionToken(); // task 42: lost-update protection (409 on a stale save)
         builder.ToTable("departments");
         builder.HasKey(d => d.Id);
         builder.Property(d => d.Name).HasMaxLength(100).IsRequired();

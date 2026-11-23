@@ -7,6 +7,7 @@ namespace ONEVO.Api.Controllers.Public.Calendar;
 
 [ApiController]
 [Route("api/v1/calendar/connections")]
+// Public by design: the OAuth state is data-protected (signed, encrypted, expiring); per-IP /api/v1 rate limit.
 [AllowAnonymous]
 public class CalendarOAuthCallbackController(IMediator mediator) : ControllerBase
 {

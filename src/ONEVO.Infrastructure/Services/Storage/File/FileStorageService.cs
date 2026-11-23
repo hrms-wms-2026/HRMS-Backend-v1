@@ -22,6 +22,7 @@ public sealed class FileStorageService : IFileStorageService
     private readonly IObjectStorageAdapter _objectStorage;
     private readonly IUploadPurposePolicy _purposePolicy;
     private readonly IAvatarImageProcessor _avatarImageProcessor;
+    private readonly IImageSanitizer _imageSanitizer;
     private readonly IUnitOfWork _unitOfWork;
     private readonly IDateTimeProvider _clock;
     private readonly FileStorageOptions _options;
@@ -34,6 +35,7 @@ public sealed class FileStorageService : IFileStorageService
         IObjectStorageAdapter objectStorage,
         IUploadPurposePolicy purposePolicy,
         IAvatarImageProcessor avatarImageProcessor,
+        IImageSanitizer imageSanitizer,
         IUnitOfWork unitOfWork,
         IDateTimeProvider clock,
         IOptions<FileStorageOptions> options,
@@ -45,6 +47,7 @@ public sealed class FileStorageService : IFileStorageService
         _objectStorage = objectStorage;
         _purposePolicy = purposePolicy;
         _avatarImageProcessor = avatarImageProcessor;
+        _imageSanitizer = imageSanitizer;
         _unitOfWork = unitOfWork;
         _clock = clock;
         _options = options.Value;
@@ -331,24 +334,39 @@ public sealed class FileStorageService : IFileStorageService
             return Result<FileRecordDto>.Failure("Upload content is empty.", 400);
         }
 
-        Stream uploadContent = content;
+        // Task 23: check the file exactly as the client sent it - allow-listed extension and
+        // Content-Type for the purpose, size, and the real file signature (magic bytes) - before any
+        // decoding, quota or storage work. The stored bytes are checked again below.
+        var sourceValidation = _purposePolicy.ValidateUpload(
+            purpose, originalFileName, contentType, content.Length);
+        if (!sourceValidation.IsSuccess)
+        {
+            return Result<FileRecordDto>.Failure(
+                sourceValidation.Error!, sourceValidation.StatusCode ?? 400);
+        }
+
+        using var source = new MemoryStream();
+        if (content.CanSeek)
+            content.Position = 0;
+        await content.CopyToAsync(source, ct);
+        source.Position = 0;
+
+        var sourceSignature = _purposePolicy.ValidateSignature(originalFileName, source);
+        if (!sourceSignature.IsSuccess)
+        {
+            return Result<FileRecordDto>.Failure(
+                sourceSignature.Error!, sourceSignature.StatusCode ?? 400);
+        }
+
+        Stream uploadContent = source;
         Stream? processedContent = null;
         var storageFileName = originalFileName;
         var storedContentType = contentType;
 
         if (purpose.Equals(UploadPurposeCatalog.EmployeeAvatar, StringComparison.Ordinal))
         {
-            // Validate the caller-supplied size, extension, and MIME type before
-            // decoding. The normalized output is validated again below.
-            var sourceValidation = _purposePolicy.ValidateUpload(
-                purpose, originalFileName, contentType, content.Length);
-            if (!sourceValidation.IsSuccess)
-            {
-                return Result<FileRecordDto>.Failure(
-                    sourceValidation.Error!, sourceValidation.StatusCode ?? 400);
-            }
-
-            var processed = await _avatarImageProcessor.ProcessAsync(originalFileName, content, ct);
+            // Avatars are cropped and normalized to a 256px WebP, which also strips metadata.
+            var processed = await _avatarImageProcessor.ProcessAsync(originalFileName, source, ct);
             if (!processed.IsSuccess)
             {
                 return Result<FileRecordDto>.Failure(processed.Error!, processed.StatusCode ?? 400);
@@ -358,6 +376,20 @@ public sealed class FileStorageService : IFileStorageService
             uploadContent = processedContent;
             storageFileName = processed.Value.StorageFileName;
             storedContentType = processed.Value.ContentType;
+        }
+        else if (_imageSanitizer.CanSanitize(originalFileName))
+        {
+            // Task 23: every other PNG/JPEG/WebP (check-in photos, screenshots, logos, attachments)
+            // is re-encoded in the same format, which drops EXIF/GPS and any hidden trailing bytes.
+            var sanitized = await _imageSanitizer.SanitizeAsync(originalFileName, source, ct);
+            if (!sanitized.IsSuccess)
+            {
+                return Result<FileRecordDto>.Failure(sanitized.Error!, sanitized.StatusCode ?? 400);
+            }
+
+            processedContent = sanitized.Value!.Content;
+            uploadContent = processedContent;
+            storedContentType = sanitized.Value.ContentType;
         }
 
         try

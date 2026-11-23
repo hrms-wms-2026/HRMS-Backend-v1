@@ -29,7 +29,7 @@ public class LeaveLedgerArchitectureTests
                  })
             Assert.True(audit.FindProperty(name)!.IsNullable, name);
 
-        var check = Assert.Single(audit.GetCheckConstraints());
+        var check = Assert.Single(audit.GetCheckConstraints(), c => c.Name == "ck_leave_balance_audits_covers_months");
         Assert.Contains("covers_from_month", check.Sql);
         Assert.Contains("covers_to_month", check.Sql);
     }

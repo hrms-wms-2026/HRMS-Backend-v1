@@ -5,7 +5,9 @@ using Moq;
 using ONEVO.Application.Features.CoreHr.Onboarding.Services;
 using ONEVO.Application.Features.DevPlatform.Tenancy.RepositoryInterfaces;
 using ONEVO.Domain.Features.InfrastructureModule.Entities;
+using ONEVO.Application.Common.ServiceInterfaces;
 using ONEVO.Infrastructure.Services.CoreHr;
+using ONEVO.Infrastructure.Services.SharedPlatform.Jobs;
 using Xunit;
 
 namespace ONEVO.Tests.Unit.Features.CoreHr.Onboarding;
@@ -24,10 +26,20 @@ public class OfficeProjectReconciliationStartupServiceTests
         var services = new ServiceCollection();
         services.AddSingleton(repository.Object);
         services.AddSingleton(reconciler.Object);
+        AddFreeJobLease(services);
         var provider = services.BuildServiceProvider();
 
         return (new OfficeProjectReconciliationStartupService(
             provider, hostEnvironment.Object, NullLogger<OfficeProjectReconciliationStartupService>.Instance), reconciler);
+    }
+
+    /// <summary>A single instance: the job lease is always free (lease behaviour is tested in ExclusiveJobRunnerTests).</summary>
+    private static void AddFreeJobLease(IServiceCollection services)
+    {
+        var leases = new Mock<IJobLeaseService>();
+        leases.Setup(l => l.TryAcquireAsync(It.IsAny<string>(), It.IsAny<TimeSpan>(), It.IsAny<CancellationToken>())).ReturnsAsync(true);
+        leases.Setup(l => l.RenewAsync(It.IsAny<string>(), It.IsAny<TimeSpan>(), It.IsAny<CancellationToken>())).ReturnsAsync(true);
+        services.AddSingleton(new ExclusiveJobRunner(leases.Object, NullLogger<ExclusiveJobRunner>.Instance));
     }
 
     private static IReadOnlyList<Tenant> Page(IEnumerable<Tenant> tenants, Guid? afterId, int take) =>
@@ -123,6 +135,7 @@ public class OfficeProjectReconciliationStartupServiceTests
         var services = new ServiceCollection();
         services.AddSingleton(repository.Object);
         services.AddSingleton(reconciler.Object);
+        AddFreeJobLease(services);
         return new OfficeProjectReconciliationStartupService(
             services.BuildServiceProvider(), hostEnvironment.Object,
             NullLogger<OfficeProjectReconciliationStartupService>.Instance,

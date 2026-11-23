@@ -61,10 +61,25 @@ public class ExceptionHandlerMiddleware
                 fe.Message,
                 (object?)null),
 
+            // Task 23: a chunked body that runs past the endpoint's limit (RequestBodySizeLimitMiddleware).
+            Microsoft.AspNetCore.Http.BadHttpRequestException { StatusCode: StatusCodes.Status413PayloadTooLarge } => (
+                StatusCodes.Status413PayloadTooLarge,
+                "Payload Too Large",
+                "The request body is larger than this endpoint accepts.",
+                (object?)null),
+
             ServiceUnavailableException se => (
                 (int)HttpStatusCode.ServiceUnavailable,
                 "Service Unavailable",
                 se.ErrorCode,
+                (object?)null),
+
+            // Task 42: a save that lost an optimistic-concurrency check (stale version, or another save in between).
+            // The client reloads the record and reapplies its change; no row data is returned here.
+            ConcurrencyConflictException or Microsoft.EntityFrameworkCore.DbUpdateConcurrencyException => (
+                (int)HttpStatusCode.Conflict,
+                "Concurrency Conflict",
+                "This record was changed by someone else. Reload it and try again.",
                 (object?)null),
 
             _ => (

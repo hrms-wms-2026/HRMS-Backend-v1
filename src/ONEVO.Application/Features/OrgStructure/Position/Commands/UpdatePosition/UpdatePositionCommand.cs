@@ -1,4 +1,5 @@
 using MediatR;
+using ONEVO.Application.Features.OrgStructure.Commands.PositionValidation;
 using ONEVO.Application.Common.Models;
 using ONEVO.Application.Features.OrgStructure.DTOs.Responses;
 
@@ -11,4 +12,5 @@ public record UpdatePositionCommand(
     string Name,
     string Code,
     int MaxOccupancy,
-    Guid? ReportsToPositionId) : IRequest<Result<PositionResponse>>;
+    Guid? ReportsToPositionId,
+    string? Version = null) : IRequest<Result<PositionResponse>>, IPositionInput;

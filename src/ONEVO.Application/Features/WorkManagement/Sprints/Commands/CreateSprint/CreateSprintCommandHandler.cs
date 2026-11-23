@@ -1,4 +1,5 @@
 using MediatR;
+using ONEVO.Application.Common.Authorization;
 using ONEVO.Application.Common.Models;
 using ONEVO.Application.Common.ServiceInterfaces;
 using ONEVO.Application.Features.Auth.Permission.ServiceInterfaces;
@@ -58,7 +59,7 @@ public class CreateSprintCommandHandler : IRequestHandler<CreateSprintCommand, R
             return Result<SprintWriteOutcome>.NotFound("Project not found.");
 
         var permissions = await _permissionResolver.ResolveAsync(userId, tenantId, null, ct);
-        var hasReadPermission = permissions.Contains("*");
+        var hasReadPermission = permissions.Contains(PermissionCatalog.SuperAdmin);
         if (!hasReadPermission && !await _members.HasActiveMembershipAsync(tenantId, project.Id, callerEmployeeId.Value, ct))
             return Result<SprintWriteOutcome>.Forbidden("Only project members can create sprints.");
 

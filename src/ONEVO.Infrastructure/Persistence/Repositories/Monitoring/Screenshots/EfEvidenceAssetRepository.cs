@@ -28,7 +28,7 @@ public class EfEvidenceAssetRepository : IEvidenceAssetRepository
             .AsNoTracking()
             .FirstOrDefaultAsync(a => a.TenantId == tenantId && a.Id == id, ct);
 
-    public async Task<(List<MonitoringEvidenceAsset> Items, int Total)> GetPagedAsync(
+    public Task<(List<MonitoringEvidenceAsset> Items, int Total)> GetPagedAsync(
         Guid tenantId,
         Guid? employeeId,
         DateOnly? from,
@@ -44,6 +44,37 @@ public class EfEvidenceAssetRepository : IEvidenceAssetRepository
         if (employeeId.HasValue)
             q = q.Where(a => a.EmployeeId == employeeId.Value);
 
+        return PageAsync(q, from, to, page, pageSize, ct);
+    }
+
+    public async Task<(List<MonitoringEvidenceAsset> Items, int Total)> GetPagedForEmployeesAsync(
+        Guid tenantId,
+        IReadOnlyCollection<Guid> employeeIds,
+        DateOnly? from,
+        DateOnly? to,
+        int page,
+        int pageSize,
+        CancellationToken ct)
+    {
+        if (employeeIds.Count == 0)
+            return ([], 0);
+
+        var ids = employeeIds.ToList();
+        var q = _db.MonitoringEvidenceAssets
+            .AsNoTracking()
+            .Where(a => a.TenantId == tenantId && ids.Contains(a.EmployeeId));
+
+        return await PageAsync(q, from, to, page, pageSize, ct);
+    }
+
+    private static async Task<(List<MonitoringEvidenceAsset> Items, int Total)> PageAsync(
+        IQueryable<MonitoringEvidenceAsset> q,
+        DateOnly? from,
+        DateOnly? to,
+        int page,
+        int pageSize,
+        CancellationToken ct)
+    {
         if (from.HasValue)
         {
             var fromUtc = new DateTimeOffset(from.Value.ToDateTime(TimeOnly.MinValue), TimeSpan.Zero);

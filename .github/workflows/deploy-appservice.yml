@@ -266,6 +266,38 @@ jobs:
           fi
           exit 1
 
+      # --- post-deploy smoke test (task 29, docs/deployment/release-gate.md) ---
+      # One pass of the k6 user journeys against the new build, signed in with UAT test accounts. Off until
+      # vars.LOADTEST_SMOKE is 'true'. A failed smoke fails the deploy run; the new build stays live, so roll back
+      # by redeploying the previous commits (docs/runbooks/uat-deploy.md).
+
+      - name: Checkout load test (same commit as the package)
+        if: ${{ vars.LOADTEST_SMOKE == 'true' }}
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.build.outputs.backend_sha }}
+          path: smoke
+          sparse-checkout: ops/loadtest
+          persist-credentials: false
+
+      - name: Smoke test (k6)
+        id: smoke
+        if: ${{ vars.LOADTEST_SMOKE == 'true' }}
+        env:
+          LOADTEST_USERS: ${{ secrets.LOADTEST_USERS }}
+          LOADTEST_PASSWORD: ${{ secrets.LOADTEST_PASSWORD }}
+          LOADTEST_TENANT: ${{ vars.LOADTEST_TENANT }}
+        run: |
+          if [ -z "$LOADTEST_USERS" ] || [ -z "$LOADTEST_PASSWORD" ] || [ -z "$LOADTEST_TENANT" ]; then
+            echo "::error::LOADTEST_SMOKE is on but secret LOADTEST_USERS, secret LOADTEST_PASSWORD or variable LOADTEST_TENANT is missing. See ops/loadtest/README.md"
+            exit 1
+          fi
+          # Single-host App Service: one host, the tenant from the X-Crownus-Tenant header.
+          docker run --rm -v "$PWD/smoke/ops/loadtest:/work" -w /work \
+            -e PROFILE=smoke -e ROOT_URL="https://${APPSERVICE_HOST}" -e TENANT_URL="https://${APPSERVICE_HOST}" \
+            -e TENANT_HEADER="$LOADTEST_TENANT" -e USERS="$LOADTEST_USERS" -e PASSWORD="$LOADTEST_PASSWORD" \
+            grafana/k6@sha256:1f40432b1cbe7234e977f96c362c9bc550a2d2b583d014dd8669fe40d3e9e755 run --quiet journeys.js
+
       - name: Run summary
         if: always()
         env:
@@ -277,6 +309,7 @@ jobs:
           ZIP_SHA256: ${{ needs.build.outputs.zip_sha256 }}
           JOB_STATUS: ${{ job.status }}
           MIGRATIONS: ${{ inputs.apply_migrations && steps.migrate.outcome || 'not requested' }}
+          SMOKE: ${{ vars.LOADTEST_SMOKE == 'true' && steps.smoke.outcome || 'off' }}
           BUILD_ID: ${{ needs.build.outputs.build_id }}
         run: |
           {
@@ -289,4 +322,5 @@ jobs:
             echo "- Package SHA-256: \`${ZIP_SHA256}\`"
             echo "- Build id: \`${BUILD_ID}\`"
             echo "- Database migrations: ${MIGRATIONS}"
+            echo "- Smoke test: ${SMOKE}"
           } >> "$GITHUB_STEP_SUMMARY"

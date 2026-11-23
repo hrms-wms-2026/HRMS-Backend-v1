@@ -9,4 +9,5 @@ public record DepartmentResponse(
     Guid? HeadPositionId,
     bool IsActive,
     DateTimeOffset CreatedAt,
-    DateTimeOffset? UpdatedAt);
+    DateTimeOffset? UpdatedAt,
+    string? Version = null);

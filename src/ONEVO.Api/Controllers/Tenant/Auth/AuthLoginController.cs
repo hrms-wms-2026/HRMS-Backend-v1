@@ -29,6 +29,7 @@ public class AuthLoginController : ControllerBase
 
     /// <summary>Base-host credential-first email + password login only. Tenant-host password login is not supported.</summary>
     [HttpPost("login")]
+    // Public by design: base-host only, generic credential failure; AuthRateLimiting per IP and per email.
     [AllowAnonymous]
     public async Task<IActionResult> Login([FromBody] LoginRequest request, CancellationToken ct)
     {
@@ -43,7 +44,10 @@ public class AuthLoginController : ControllerBase
         var baseResult = await _mediator.Send(new BaseLoginCommand(request.Email, request.Password, ip, ua), ct);
 
         if (!baseResult.IsSuccess)
+        {
+            ONEVO.Application.Common.Observability.CrownusMetrics.RecordSignInFailure("tenant", baseResult.StatusCode ?? 400);
             return Problem(baseResult.Error, statusCode: baseResult.StatusCode ?? 400);
+        }
 
         var baseDto = baseResult.Value!;
         if (baseDto.WorkspaceSelection is not null)
@@ -62,6 +66,7 @@ public class AuthLoginController : ControllerBase
 
     /// <summary>Complete base-domain login after multiple candidate workspaces were offered.</summary>
     [HttpPost("login/select-workspace")]
+    // Public by design: needs the short-lived login_challenge from a proven login; AuthRateLimiting per IP and per challenge.
     [AllowAnonymous]
     public async Task<IActionResult> SelectWorkspace([FromBody] SelectWorkspaceRequest request, CancellationToken ct)
     {
@@ -76,6 +81,7 @@ public class AuthLoginController : ControllerBase
 
     /// <summary>Base-domain Google login: verify Google identity first, then resolve eligible workspace(s).</summary>
     [HttpPost("login/google")]
+    // Public by design: Google ID token verified server-side; AuthRateLimiting per IP and per token.
     [AllowAnonymous]
     public async Task<IActionResult> LoginWithGoogle([FromBody] BaseGoogleLoginRequest request, CancellationToken ct)
     {
@@ -88,7 +94,10 @@ public class AuthLoginController : ControllerBase
         var baseResult = await _mediator.Send(new BaseGoogleLoginCommand(request.GoogleIdToken, ip, ua), ct);
 
         if (!baseResult.IsSuccess)
+        {
+            ONEVO.Application.Common.Observability.CrownusMetrics.RecordSignInFailure("tenant", baseResult.StatusCode ?? 400);
             return Problem(baseResult.Error, statusCode: baseResult.StatusCode ?? 400);
+        }
 
         var baseDto = baseResult.Value!;
         if (baseDto.WorkspaceSelection is not null)

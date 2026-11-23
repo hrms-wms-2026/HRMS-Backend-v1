@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using ONEVO.Api.Contracts.Monitoring.DeviceChangeRequests;
 using ONEVO.Api.Filters;
+using ONEVO.Application.Common.Authorization;
 using ONEVO.Application.Common.Models;
 using ONEVO.Application.Features.Monitoring.TrayActivation.Commands.DeviceChangeRequests;
 using ONEVO.Application.Features.Monitoring.TrayActivation.Queries.DeviceChangeRequests;
@@ -19,7 +20,7 @@ namespace ONEVO.Api.Controllers.Tenant.Monitoring;
 public sealed class DeviceChangeRequestsController(IMediator mediator) : ControllerBase
 {
     [HttpGet("approvals")]
-    [RequirePermission("attendance:approve")]
+    [RequirePermission(PermissionCatalog.Attendance.Approve)]
     public async Task<IActionResult> Approvals([FromQuery] PagedRequest paging, CancellationToken ct = default)
     {
         var result = await mediator.Send(new ListDeviceChangeRequestApprovalsQuery(paging), ct);
@@ -27,7 +28,7 @@ public sealed class DeviceChangeRequestsController(IMediator mediator) : Control
     }
 
     [HttpPost("{id:guid}/approve")]
-    [RequirePermission("attendance:approve")]
+    [RequirePermission(PermissionCatalog.Attendance.Approve)]
     public async Task<IActionResult> Approve(
         Guid id, [FromBody] ReviewDeviceChangeRequestRequest request, CancellationToken ct = default)
     {
@@ -36,7 +37,7 @@ public sealed class DeviceChangeRequestsController(IMediator mediator) : Control
     }
 
     [HttpPost("{id:guid}/reject")]
-    [RequirePermission("attendance:approve")]
+    [RequirePermission(PermissionCatalog.Attendance.Approve)]
     public async Task<IActionResult> Reject(
         Guid id, [FromBody] ReviewDeviceChangeRequestRequest request, CancellationToken ct = default)
     {

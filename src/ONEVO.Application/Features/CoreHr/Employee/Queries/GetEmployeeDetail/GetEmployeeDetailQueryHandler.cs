@@ -1,4 +1,5 @@
 using MediatR;
+using ONEVO.Application.Common.Authorization;
 using ONEVO.Application.Common.Models;
 using ONEVO.Application.Common.ServiceInterfaces;
 using ONEVO.Application.Features.Auth.Invite.RepositoryInterfaces;
@@ -26,7 +27,7 @@ namespace ONEVO.Application.Features.CoreHr.Employee.Queries.GetEmployeeDetail;
 /// </summary>
 public class GetEmployeeDetailQueryHandler : IRequestHandler<GetEmployeeDetailQuery, Result<EmployeeDetailResponse>>
 {
-    private const string AttendanceReadPermission = "attendance:read";
+    private const string AttendanceReadPermission = PermissionCatalog.Attendance.Read;
 
     private readonly IEmployeeRepository _employeeRepository;
     private readonly IEmployeeVisibilityScopeResolver _visibilityScopeResolver;
@@ -80,7 +81,7 @@ public class GetEmployeeDetailQueryHandler : IRequestHandler<GetEmployeeDetailQu
         if (existing is null)
             return Result<EmployeeDetailResponse>.NotFound("The employee or selected organization record could not be found.");
 
-        var scope = _currentUser.HasPermission("org:manage")
+        var scope = _currentUser.HasPermission(PermissionCatalog.Org.Manage)
             ? EmployeeVisibilityScope.Unrestricted()
             : await _visibilityScopeResolver.ResolveAsync(tenantId, _currentUser.UserId, ct);
 
@@ -105,7 +106,7 @@ public class GetEmployeeDetailQueryHandler : IRequestHandler<GetEmployeeDetailQu
         var emergencyContacts = await _profile.ListEmergencyContactsAsync(tenantId, request.EmployeeId, ct);
 
         EmployeeDetailPayroll? payroll = null;
-        if (_currentUser.HasPermission("employees:read:sensitive"))
+        if (_currentUser.HasPermission(PermissionCatalog.Employees.ReadSensitive))
         {
             var bankDetail = await _profile.GetPrimaryBankDetailAsync(tenantId, request.EmployeeId, ct);
             var maskedAccountNumber = bankDetail is null

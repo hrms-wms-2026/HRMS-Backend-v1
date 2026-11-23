@@ -5,4 +5,5 @@ public record UpdatePositionRequest(
     string Name,
     string Code,
     int MaxOccupancy,
-    Guid? ReportsToPositionId);
+    Guid? ReportsToPositionId,
+    string? Version = null);

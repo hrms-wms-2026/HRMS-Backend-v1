@@ -8,53 +8,92 @@ using ONEVO.Application.Common.Json;
 using ONEVO.Infrastructure;
 using ONEVO.Infrastructure.Configuration;
 using Serilog;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 using System.Security.Claims;
 
 DotEnvLoader.LoadIfPresent();
 
 var builder = WebApplication.CreateBuilder(args);
 
-ConfigurationStartupValidator.ValidateRequiredLocalConfiguration(
-    builder.Configuration,
-    builder.Environment.EnvironmentName);
-ConfigurationStartupValidator.ValidateTrayJwtSigningKeys(
-    builder.Configuration,
-    builder.Environment.EnvironmentName);
+// Task 23: `dotnet build` runs this file up to builder.Build() to write the OpenAPI documents
+// (Microsoft.Extensions.ApiDescription.Server). That must work with no database and no secrets, so
+// the startup checks below are skipped in that mode only. The documents need nothing but routing.
+var generatingOpenApiDocuments = OpenApiDocumentExtensions.IsGeneratingDocuments;
+if (generatingOpenApiDocuments)
+    builder.Configuration.AddInMemoryCollection(OpenApiDocumentExtensions.GenerationPlaceholderSettings);
 
-// Development only: generates the local mkcert certificate if it's missing, before anything
-// that depends on the database, so a fresh clone doesn't need a separate manual cert-setup
-// step. Production/Staging terminate TLS with a real certificate authority.
-if (builder.Environment.IsDevelopment())
+if (!generatingOpenApiDocuments)
 {
-    DevCertificateBootstrapper.EnsureCertificateExists(
+    ConfigurationStartupValidator.ValidateRequiredLocalConfiguration(
         builder.Configuration,
-        builder.Environment.ContentRootPath);
+        builder.Environment.EnvironmentName);
+    // Outside Development/Test: refuse to start on a missing, placeholder or local-host setting (task 05).
+    ONEVO.Infrastructure.Configuration.DeploymentConfigurationValidator.Validate(
+        builder.Configuration,
+        builder.Environment.EnvironmentName);
+    ConfigurationStartupValidator.ValidateTrayJwtSigningKeys(
+        builder.Configuration,
+        builder.Environment.EnvironmentName);
+
+    // Development only: generates the local mkcert certificate if it's missing, before anything
+    // that depends on the database, so a fresh clone doesn't need a separate manual cert-setup
+    // step. Production/Staging terminate TLS with a real certificate authority.
+    if (builder.Environment.IsDevelopment())
+    {
+        DevCertificateBootstrapper.EnsureCertificateExists(
+            builder.Configuration,
+            builder.Environment.ContentRootPath);
+    }
+
+    await DatabaseConnectionStartupValidator.ValidateAndOpenAsync(
+        builder.Configuration,
+        builder.Environment.EnvironmentName,
+        DotEnvLoader.DefaultConnectionProcessOverrideActive
+            || DotEnvLoader.MigrationConnectionProcessOverrideActive);
+
+    await ONEVO.Infrastructure.Configuration.DatabaseSettingsStartupValidator.ValidateAsync(
+        builder.Configuration.GetConnectionString("DefaultConnection")!,
+        CancellationToken.None);
+
+    // Development only: Test bootstraps its own Testcontainers database via
+    // IntegrationDatabaseBootstrap before this process starts, and Production/Staging must apply
+    // migrations through their own deployment pipeline, never automatically on process start.
+    if (builder.Environment.IsDevelopment())
+    {
+        await DatabaseMigrationRunner.MigrateIfPendingAsync(builder.Configuration);
+    }
 }
 
-await DatabaseConnectionStartupValidator.ValidateAndOpenAsync(
-    builder.Configuration,
-    builder.Environment.EnvironmentName,
-    DotEnvLoader.DefaultConnectionProcessOverrideActive
-        || DotEnvLoader.MigrationConnectionProcessOverrideActive);
-
-await ONEVO.Infrastructure.Configuration.DatabaseSettingsStartupValidator.ValidateAsync(
-    builder.Configuration.GetConnectionString("DefaultConnection")!,
-    CancellationToken.None);
-
-// Development only: Test bootstraps its own Testcontainers database via
-// IntegrationDatabaseBootstrap before this process starts, and Production/Staging must apply
-// migrations through their own deployment pipeline, never automatically on process start.
-if (builder.Environment.IsDevelopment())
-{
-    await DatabaseMigrationRunner.MigrateIfPendingAsync(builder.Configuration);
-}
-
+// Task 17: OpenTelemetry when an exporter is configured (docs/deployment/observability.md). Serilog then also
+// forwards its events to the OpenTelemetry log provider.
+var telemetryExporter = builder.AddApiObservability();
 builder.Host.UseSerilog((ctx, cfg) =>
+{
     cfg.ReadFrom.Configuration(ctx.Configuration)
        .Enrich.FromLogContext()
-       .Enrich.WithProperty("Application", "ONEVO.Api"));
+       .Enrich.WithProperty("Application", "ONEVO.Api");
+    // Readable lines locally; one JSON object per line elsewhere, so the host's log store can query the fields.
+    if (ctx.HostingEnvironment.IsDevelopment())
+        cfg.WriteTo.Console();
+    else
+        cfg.WriteTo.Console(new Serilog.Formatting.Compact.RenderedCompactJsonFormatter());
+}, writeToProviders: telemetryExporter != ObservabilityExtensions.TelemetryExporter.None);
 
 builder.Services.AddApiForwardedHeaders(builder.Configuration);
+
+// Task 23: every tenant lives on a subdomain and every subdomain is HTTPS, so HSTS covers them all
+// for a year. No preload: that is a separate, hard-to-undo decision. UseHsts stays off in Development.
+builder.Services.AddHsts(options =>
+{
+    options.MaxAge = TimeSpan.FromDays(365);
+    options.IncludeSubDomains = true;
+    options.Preload = false;
+});
+
+// Task 23: server-wide backstop for the 1 MB default body limit. RequestBodySizeLimitMiddleware
+// raises it per request for endpoints that declare [RequestSizeLimit] (uploads).
+builder.WebHost.ConfigureKestrel(options =>
+    options.Limits.MaxRequestBodySize = RequestBodySizeLimitMiddleware.DefaultMaxBodyBytes);
 
 builder.Services.AddApplication();
 builder.Services.Configure<ONEVO.Application.Features.Monitoring.TrayActivation.Options.TrayPresenceOptions>(
@@ -65,36 +104,24 @@ builder.Services.Configure<ONEVO.Api.Configuration.TrayReleasesOptions>(
 builder.Services.AddInfrastructure(builder.Configuration);
 ONEVO.Api.Dashboard.Widgets.WidgetDataProviderRegistration.AddDashboardWidgetDataProviders(builder.Services);
 builder.Services.AddMemoryCache();
-builder.Services.AddControllers()
+builder.Services.AddControllers(options =>
+        // Task 23: every file response is a download with nosniff and a sandbox CSP.
+        options.Filters.Add<ONEVO.Api.Filters.UserFileResponseFilter>())
     .AddJsonOptions(options => options.JsonSerializerOptions.Converters.Add(new TimeOnlyHhMmJsonConverter()));
 builder.Services.AddHttpContextAccessor();
 builder.Services.AddApiAuthentication(builder.Environment, builder.Configuration);
 builder.Services.AddApiAuthorization();
-builder.Services.AddSignalR();
-builder.Services.AddSingleton<
-    ONEVO.Application.Features.Monitoring.Settings.ServiceInterfaces.ITrayPolicyRefreshNotifier,
-    ONEVO.Api.Hubs.SignalRTrayPolicyRefreshNotifier>();
-// Inbox realtime: replaces Infrastructure's null publisher with the InboxHub-backed one.
-Microsoft.Extensions.DependencyInjection.Extensions.ServiceCollectionDescriptorExtensions.Replace(
-    builder.Services,
-    ServiceDescriptor.Scoped<
-        ONEVO.Application.Features.Conversations.Contracts.IInboxRealtimePublisher,
-        ONEVO.Api.Hubs.SignalRInboxRealtimePublisher>());
-builder.Services.AddSingleton<
-    ONEVO.Application.Features.Monitoring.TrayActivation.ServiceInterfaces.ITrayPushNotifier,
-    ONEVO.Api.Hubs.SignalRTrayPushNotifier>();
-builder.Services.AddSingleton<ONEVO.Api.Hubs.TrayConnectionTracker>();
-builder.Services.AddSingleton<
-    ONEVO.Application.Features.Monitoring.TrayActivation.ServiceInterfaces.ITrayConnectionPresence>(
-    sp => sp.GetRequiredService<ONEVO.Api.Hubs.TrayConnectionTracker>());
-builder.Services.AddSingleton<ONEVO.Api.Middleware.WebActivityTracker>();
-builder.Services.AddSingleton<
-    ONEVO.Application.Features.Monitoring.TrayActivation.ServiceInterfaces.IWebActivityPresence>(
-    sp => sp.GetRequiredService<ONEVO.Api.Middleware.WebActivityTracker>());
-builder.Services.AddApiSwagger();
+// SignalR, hub-backed notifiers and presence trackers (Extensions/RealtimeExtensions.cs).
+var signalR = builder.Services.AddApiRealtime();
+// Task 23: no Swagger UI and no runtime /swagger or /openapi endpoint. The API description is generated
+// at build time only (docs/api/openapi); nothing here is ever mapped.
+builder.Services.AddApiOpenApiDocuments();
 builder.Services.AddApiCors(builder.Configuration);
 builder.Services.AddApiRateLimiting(builder.Configuration);
-builder.Services.AddHealthChecks()
+var healthChecks = builder.Services.AddHealthChecks();
+// Task 21: shared state for more than one instance (Redis when Redis:ConnectionString is set).
+builder.Services.AddApiSharedState(signalR, healthChecks, builder.Configuration);
+healthChecks
     .AddCheck("api", () => Microsoft.Extensions.Diagnostics.HealthChecks.HealthCheckResult.Healthy("API is running"))
     .AddAsyncCheck("sqlserver", async () =>
     {
@@ -113,9 +140,23 @@ builder.Services.AddHealthChecks()
         {
             return Microsoft.Extensions.Diagnostics.HealthChecks.HealthCheckResult.Unhealthy("SQL Server unreachable", ex);
         }
-    }, ["ready"]);
+    }, ["ready"])
+    // Task 17: Degraded (still 200) when storage or the outbox is in trouble; see the check classes for why.
+    .AddCheck<ONEVO.Infrastructure.Observability.ObjectStorageHealthCheck>("object-storage", tags: ["ready"])
+    .AddCheck<ONEVO.Infrastructure.Observability.OutboxBacklogHealthCheck>("outbox", tags: ["ready"]);
+builder.Services.AddSingleton<ONEVO.Infrastructure.Observability.OutboxBacklogProbe>();
+builder.Services.AddSingleton<ONEVO.Infrastructure.Observability.IOutboxBacklogSource>(
+    sp => sp.GetRequiredService<ONEVO.Infrastructure.Observability.OutboxBacklogProbe>());
+
+// Task 23: the build-time document generator starts the host, so drop the hosted services
+// (seeders, background jobs) that would otherwise reach for the database.
+if (generatingOpenApiDocuments)
+    builder.Services.RemoveAll<Microsoft.Extensions.Hosting.IHostedService>();
 
 var app = builder.Build();
+// Creating the probe registers the crownus.outbox.* gauges, so they report without waiting for a readiness call.
+app.Services.GetRequiredService<ONEVO.Infrastructure.Observability.OutboxBacklogProbe>();
+SharedStateExtensions.WarnIfKeyRingUnencrypted(app);
 
 if (ONEVO.Application.Common.Tenancy.TenancyModeReader.Read(app.Configuration)
     == ONEVO.Application.Common.Tenancy.TenancyMode.SingleHost)
@@ -131,7 +172,6 @@ app.UseMiddleware<CorrelationIdMiddleware>();
 app.UseMiddleware<SecurityHeadersMiddleware>();
 if (!app.Environment.IsDevelopment())
     app.UseHsts();
-app.UseApiSwagger();
 app.UseSerilogRequestLogging(opts =>
     opts.EnrichDiagnosticContext = (diag, ctx) =>
     {
@@ -147,6 +187,9 @@ if (!app.Environment.IsDevelopment())
 app.UseSpaHosting();
 app.UseCors("AllowFrontend");
 app.UseRouting();
+// Task 23: 1 MB default body limit, larger only where an endpoint declares [RequestSizeLimit].
+// Before anything that authenticates or reads the body.
+app.UseMiddleware<RequestBodySizeLimitMiddleware>();
 // Task 07: coarse per-IP flood guard before any credential is validated.
 app.UseApiPreAuthenticationRateLimiting();
 app.UseMiddleware<HostTenantResolutionMiddleware>();
@@ -167,19 +210,26 @@ app.UseAuthorization();
 
 app.MapControllers();
 // Close a tray connection when its device JWT expires — the live connection counts as presence.
+// Task 15: both hubs state their policy on the endpoint as well as on the hub class, so the
+// fallback policy never decides who may connect.
 app.MapHub<ONEVO.Api.Hubs.AgentCommandsHub>("/hubs/agent-commands",
-    options => options.CloseOnAuthenticationExpiration = true);
-app.MapHub<ONEVO.Api.Hubs.InboxHub>("/hubs/inbox");
+    options => options.CloseOnAuthenticationExpiration = true)
+    .RequireAuthorization("TrayDevicePolicy");
+app.MapHub<ONEVO.Api.Hubs.InboxHub>("/hubs/inbox")
+    .RequireAuthorization("TenantPolicy");
 // Liveness: process-only checks. Must NOT include dependency checks — a brief
 // DB outage should fail readiness, not liveness.
 app.MapHealthChecks("/health", new HealthCheckOptions
 {
     Predicate = check => !check.Tags.Contains("ready")
-});
+})
+    // Task 15: probes for the load balancer / orchestrator; they return only Healthy/Unhealthy.
+    .AllowAnonymous();
 app.MapHealthChecks("/health/ready", new HealthCheckOptions
 {
     Predicate = check => check.Tags.Contains("ready")
-});
+})
+    .AllowAnonymous();
 app.MapSpaHostingFallbacks();
 
 app.Run();

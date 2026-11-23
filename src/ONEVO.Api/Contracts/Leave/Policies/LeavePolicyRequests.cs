@@ -34,7 +34,8 @@ public sealed record CreateLeavePolicyRequest(
     IReadOnlyList<LeavePolicyAssignmentRequest>? Assignments,
     bool ReplaceConflicts);
 
-public sealed record UpdateLeavePolicyDetailsRequest(string Name, string? Description);
+/// <summary>Version: task 42, the policy's row version from the last read; a stale one returns 409.</summary>
+public sealed record UpdateLeavePolicyDetailsRequest(string Name, string? Description, string? Version = null);
 
 public sealed record AddLeavePolicyVersionRequest(DateOnly ApplyFrom, LeavePolicyRulesRequest Rules);
 

@@ -262,6 +262,51 @@ public class HostTenantResolutionMiddlewareTests
         ctx.Response.StatusCode.Should().Be(400);
     }
 
+    // Container HEALTHCHECK calls localhost; load balancers often probe by IP. Neither is under the root domain.
+    [Theory]
+    [InlineData("localhost", "/health")]
+    [InlineData("10.0.0.4", "/health/ready")]
+    [InlineData("onevo.com", "/health")]
+    [InlineData("acme.onevo.com", "/health/ready")]
+    public async Task HealthProbe_AnyHost_SystemModeAndPassesThrough(string host, string path)
+    {
+        var ctx = MakeContext(host, path);
+
+        await Build().InvokeAsync(ctx);
+
+        ctx.Response.StatusCode.Should().Be(200);
+        _nextCalled.Should().BeTrue();
+        _ctx.Verify(c => c.SetSystemMode(), Times.Once);
+        _ctx.Verify(c => c.Resolve(It.IsAny<TenantRegistryEntry>()), Times.Never);
+        _tenants.Verify(r => r.GetBySlugAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Theory]
+    [InlineData("/healthz")]
+    [InlineData("/health/ready/extra")]
+    [InlineData("/health/other")]
+    [InlineData("/api/v1/health")]
+    public async Task NonHealthPath_ForeignHost_Still400(string path)
+    {
+        var ctx = MakeContext("localhost", path);
+
+        await Build().InvokeAsync(ctx);
+
+        ctx.Response.StatusCode.Should().Be(400);
+        _nextCalled.Should().BeFalse();
+    }
+
+    [Fact]
+    public async Task HealthProbe_SingleHostMode_ForeignHost_SystemMode()
+    {
+        var ctx = MakeContext("localhost", "/health");
+
+        await BuildSingleHost().InvokeAsync(ctx);
+
+        _nextCalled.Should().BeTrue();
+        _ctx.Verify(c => c.SetSystemMode(), Times.Once);
+    }
+
     [Theory]
     [InlineData("api.onevo.com")]
     public async Task ReservedRejectedHost_Returns400(string host)

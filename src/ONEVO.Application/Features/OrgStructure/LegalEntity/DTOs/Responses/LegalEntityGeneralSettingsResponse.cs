@@ -29,4 +29,5 @@ public record LegalEntityGeneralSettingsResponse(
     int? BreakDurationMinutes,
     string? OfficeAddress,
     double? OfficeLatitude,
-    double? OfficeLongitude);
+    double? OfficeLongitude,
+    string? Version = null);

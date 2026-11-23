@@ -9,6 +9,7 @@ using ONEVO.Application.Features.Calendar.RepositoryInterfaces;
 using ONEVO.Application.Features.DevPlatform.Tenancy.RepositoryInterfaces;
 using ONEVO.Application.Features.WorkManagement.Meetings.RepositoryInterfaces;
 using ONEVO.Domain.Features.InfrastructureModule.Entities;
+using ONEVO.Infrastructure.Services.SharedPlatform.Jobs;
 
 namespace ONEVO.Infrastructure.Services.Calendar;
 
@@ -22,6 +23,7 @@ namespace ONEVO.Infrastructure.Services.Calendar;
 public sealed class CalendarIncidentJob(IServiceProvider services, ILogger<CalendarIncidentJob> logger) : BackgroundService
 {
     private static readonly TimeSpan Interval = TimeSpan.FromHours(24);
+    public static readonly JobSchedule Schedule = JobSchedule.Every("calendar-incident", Interval, TimeSpan.FromMinutes(30));
     private static readonly TimeSpan StartupDelay = TimeSpan.FromMinutes(10);
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
@@ -39,7 +41,7 @@ public sealed class CalendarIncidentJob(IServiceProvider services, ILogger<Calen
         {
             do
             {
-                try { await RunOnceAsync(stoppingToken); }
+                try { await services.RunExclusiveAsync(Schedule, ct => RunOnceAsync(ct), stoppingToken); }
                 catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested) { break; }
                 catch (Exception ex) { logger.LogError(ex, "CalendarIncidentJob run failed."); }
             }

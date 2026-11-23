@@ -18,14 +18,17 @@ public class UpdateLegalEntityGeneralSettingsCommandHandler
     private readonly IEntityAssetRepository _entityAssets;
     private readonly ICurrentUser _currentUser;
     private readonly IDateTimeProvider _dateTimeProvider;
+    private readonly IRowVersionStore? _versions;
 
     public UpdateLegalEntityGeneralSettingsCommandHandler(
-        ILegalEntityRepository legalEntities, IEntityAssetRepository entityAssets, ICurrentUser currentUser, IDateTimeProvider dateTimeProvider)
+        ILegalEntityRepository legalEntities, IEntityAssetRepository entityAssets, ICurrentUser currentUser, IDateTimeProvider dateTimeProvider,
+        IRowVersionStore? versions = null)
     {
         _legalEntities = legalEntities;
         _entityAssets = entityAssets;
         _currentUser = currentUser;
         _dateTimeProvider = dateTimeProvider;
+        _versions = versions;
     }
 
     public async Task<Result<LegalEntityGeneralSettingsResponse>> Handle(
@@ -101,12 +104,13 @@ public class UpdateLegalEntityGeneralSettingsCommandHandler
         // TenantId are intentionally left untouched above - they are not
         // part of this request's field set and must be preserved.
         _legalEntities.Update(entity);
+        _versions?.SetExpectedVersion(entity, request.Version); // task 42: 409 when someone saved in between
         await _legalEntities.SaveChangesAsync(ct);
 
         var logoFileIds = await _entityAssets.GetPrimaryFileIdsByOwnerAsync(
             tenantId, EntityAssetOwnerTypes.LegalEntity, new[] { entity.Id }, UploadPurposeCatalog.CompanyLogo, ct);
         var logoFileId = logoFileIds.TryGetValue(entity.Id, out var fid) ? (Guid?)fid : null;
 
-        return Result<LegalEntityGeneralSettingsResponse>.Success(LegalEntityMapper.ToGeneralSettingsResponse(entity, logoFileId));
+        return Result<LegalEntityGeneralSettingsResponse>.Success(LegalEntityMapper.ToGeneralSettingsResponse(entity, logoFileId) with { Version = _versions?.GetVersion(entity) });
     }
 }

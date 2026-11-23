@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using ONEVO.Api.Contracts.CoreHr.Offboarding;
 using ONEVO.Api.Filters;
+using ONEVO.Application.Common.Authorization;
 using ONEVO.Application.Features.CoreHr.Offboarding.Commands.CancelOffboarding;
 using ONEVO.Application.Features.CoreHr.Offboarding.Commands.CompleteOffboarding;
 using ONEVO.Application.Features.CoreHr.Offboarding.Commands.SelectOffboardingChecklist;
@@ -20,7 +21,7 @@ public class EmployeeOffboardingController(IMediator mediator) : ControllerBase
 {
     /// <summary>Step 1 - start an employee's offboarding. Fails 409 if one is already open.</summary>
     [HttpPost]
-    [RequirePermission("employees:offboard")]
+    [RequirePermission(PermissionCatalog.Employees.Offboard)]
     [Idempotent]
     public async Task<IActionResult> Start(Guid employeeId, [FromBody] StartOffboardingRequest request, CancellationToken ct = default)
     {
@@ -59,7 +60,7 @@ public class EmployeeOffboardingController(IMediator mediator) : ControllerBase
     }
 
     [HttpPost("select-checklist")]
-    [RequirePermission("employees:offboard")]
+    [RequirePermission(PermissionCatalog.Employees.Offboard)]
     [Idempotent]
     public async Task<IActionResult> SelectChecklist(Guid employeeId, [FromBody] SelectOffboardingChecklistRequest request, CancellationToken ct = default)
     {
@@ -68,7 +69,7 @@ public class EmployeeOffboardingController(IMediator mediator) : ControllerBase
     }
 
     [HttpPost("cancel")]
-    [RequirePermission("employees:offboard")]
+    [RequirePermission(PermissionCatalog.Employees.Offboard)]
     [Idempotent]
     public async Task<IActionResult> Cancel(Guid employeeId, CancellationToken ct = default)
     {
@@ -77,7 +78,7 @@ public class EmployeeOffboardingController(IMediator mediator) : ControllerBase
     }
 
     [HttpPost("complete")]
-    [RequirePermission("employees:offboard")]
+    [RequirePermission(PermissionCatalog.Employees.Offboard)]
     [Idempotent]
     public async Task<IActionResult> Complete(Guid employeeId, CancellationToken ct = default)
     {

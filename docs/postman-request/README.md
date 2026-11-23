@@ -1,5 +1,20 @@
 # postman-request/ — Human-readable API docs
 
+## Import the whole API into Postman
+
+The full API description is generated at build time and committed as OpenAPI 3 documents (task 23; there is no Swagger UI and no `/swagger` or `/openapi` endpoint on any server):
+
+- `docs/api/openapi/tenant-v1.json`: the tenant web app and tray API (`/api/v1/...` and the other non-admin routes).
+- `docs/api/openapi/admin-v1.json`: the developer platform admin API (`/admin/v1/...`).
+
+To get every endpoint in Postman, use **Import → File**, pick one of these files, and import it as a collection. Postman builds a full collection from the OpenAPI document, one request per endpoint, grouped by path. Re-import after a pull when endpoints change. The security schemes in the documents match the real sign-in: the session cookie plus the `X-CSRF-Token` header for the web apps, and a bearer token for the tray app.
+
+The hand-made collection (`CROWNUS-HRMS.postman_collection.json`) and the per-endpoint Markdown files below stay as they are: they hold the hand-written examples, sign-in flows and notes that a generated collection does not have.
+
+To refresh the documents after changing endpoints, run `dotnet build src/ONEVO.Api/ONEVO.Api.csproj -p:UpdateOpenApiDocs=true` and commit `docs/api/openapi/`. A unit test fails when the committed files drift from what the build produces.
+
+## The Markdown docs
+
 Plain-Markdown companion to the Postman collection under `postman/collections/` (which is git-ignored and only readable inside the Postman app). One `.md` file per finished API endpoint, grouped by module folder, so anyone can read the request/response shape on GitHub without opening Postman.
 
 Maintenance rule: `docs/superpowers/rules/PROCESS_RULES.md` rule 7.

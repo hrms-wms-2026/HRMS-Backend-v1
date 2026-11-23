@@ -1,4 +1,5 @@
 using MediatR;
+using ONEVO.Application.Common.Authorization;
 using ONEVO.Application.Common.Constants;
 using ONEVO.Application.Common.Models;
 using ONEVO.Application.Common.ServiceInterfaces;
@@ -110,7 +111,7 @@ public class GetMyProfileQueryHandler : IRequestHandler<GetMyProfileQuery, Resul
 
         var payroll = new MyPayrollResponse(
             bankDetail is not null, bankDetail?.BankName, maskedAccountNumber, bankDetail?.AccountType,
-            _currentUser.HasPermission("employees:write"));
+            _currentUser.HasPermission(PermissionCatalog.Employees.Write));
 
         var user = await _users.GetByIdAsync(_currentUser.UserId, ct);
         var verifiedMfa = await _userMfa.GetTotpAsync(_currentUser.UserId, isVerified: true, ct);
