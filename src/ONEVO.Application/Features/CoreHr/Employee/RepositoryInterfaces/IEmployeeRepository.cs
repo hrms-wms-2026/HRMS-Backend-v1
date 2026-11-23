@@ -44,6 +44,15 @@ public interface IEmployeeRepository
         Guid employeeId,
         CancellationToken ct = default);
 
+    /// <summary>
+    /// Ids of every employee GetVisibleByIdAsync would return for <paramref name="scope"/>, any
+    /// employment status. Backs IEmployeeViewAccess.ListViewableEmployeeIdsAsync.
+    /// </summary>
+    Task<IReadOnlyList<Guid>> ListVisibleIdsAsync(
+        Guid tenantId,
+        EmployeeVisibilityScope scope,
+        CancellationToken ct = default);
+
     /// <summary>Employees this specific user invited (invitation_tokens.created_by_id) who
     /// haven't yet accepted (UsedAt is null) or been revoked - a brand-new invitee has no active
     /// PrimaryEmployment position assignment yet, so pure coverage-based visibility can't include

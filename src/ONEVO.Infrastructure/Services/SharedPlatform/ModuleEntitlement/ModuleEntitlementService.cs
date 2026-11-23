@@ -1,5 +1,6 @@
 using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
+using ONEVO.Application.Common.Authorization;
 using ONEVO.Application.Common.RepositoryInterfaces;
 using ONEVO.Application.Common.ServiceInterfaces;
 using ONEVO.Application.Features.Auth.Permission;
@@ -91,7 +92,7 @@ public sealed class ModuleEntitlementService : IModuleEntitlementService
             .AsNoTracking()
             .Where(p =>
                 keys.Contains(p.Module)
-                && p.Code != "*"
+                && p.Code != PermissionCatalog.SuperAdmin
                 && !autoGrantCodes.Contains(p.Code))
             .OrderBy(p => p.Module)
             .ThenBy(p => p.Code)

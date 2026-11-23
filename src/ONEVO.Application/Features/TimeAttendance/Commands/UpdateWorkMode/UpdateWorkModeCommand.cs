@@ -1,4 +1,5 @@
 using MediatR;
+using ONEVO.Application.Features.TimeAttendance.Validation;
 using ONEVO.Application.Common.Models;
 using ONEVO.Application.Features.TimeAttendance.DTOs.Responses;
 
@@ -12,4 +13,4 @@ public record UpdateWorkModeCommand(
     bool TrayEnabled,
     bool PhotoRequired,
     bool SelfRegistersLocation,
-    bool AllowsDailyLocationChoice) : IRequest<Result<WorkModeResponse>>;
+    bool AllowsDailyLocationChoice) : IRequest<Result<WorkModeResponse>>, IWorkModeInput;

@@ -31,6 +31,7 @@ public class MonitoringActivationController : ControllerBase
     }
 
     [HttpPost("exchange")]
+    // Public by design: single-use, hashed, short-lived activation code; per-IP /api/v1 rate limit.
     [AllowAnonymous]
     public async Task<IActionResult> Exchange([FromBody] ExchangeRequest request, CancellationToken ct)
     {
@@ -43,6 +44,7 @@ public class MonitoringActivationController : ControllerBase
     }
 
     [HttpPost("refresh")]
+    // Public by design: hashed refresh token bound to the device fingerprint; per-IP /api/v1 rate limit.
     [AllowAnonymous]
     public async Task<IActionResult> Refresh([FromBody] RefreshRequest request, CancellationToken ct)
     {

@@ -203,7 +203,8 @@ Every step has an expected result. If the output differs, stop and bring it back
   | `PlatformBootstrap__AllowPasswordBootstrap` | `true` (temporary) |
   | `DevAdmin__Password` | A temporary password, typed on the server |
   | `TrayPresence__Mode` | `Observe` until the tray app points at this server. With `Enforce`, users in a tenant that has monitoring turned on get HTTP 428 on every web request when no tray app is connected. |
-  | `ASPNETCORE__Swagger__Enabled` | `false` |
+
+  There is no Swagger setting any more: task 23 removed Swagger UI and every runtime `/swagger` and `/openapi` endpoint. The API description is committed in `docs/api/openapi/`.
 
   **Tray tokens in IIS logs (SEC-15):** the tray app sends its access token in the query string of `/hubs/agent-commands` (`?access_token=`), and IIS W3C logging records the query by default. On the `crownus-web` site, which ARR fronts, and on `crownus-api`, remove the **URI Query** (`cs-uri-query`) field from logging. The steps are in `docs/deployment/tray-device-jwt.md`.
 

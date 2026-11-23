@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using ONEVO.Api.Contracts.Leave.Requests;
 using ONEVO.Api.Filters;
+using ONEVO.Application.Common.Authorization;
 using ONEVO.Application.Features.Leave.Cancellation.Commands;
 using ONEVO.Application.Features.Leave.Request.Commands.SubmitLeaveRequest;
 using ONEVO.Application.Features.Leave.Request.Commands.UploadLeaveDocument;
@@ -21,7 +22,7 @@ public sealed class LeaveRequestsController : ControllerBase
     public LeaveRequestsController(IMediator mediator) => _mediator = mediator;
 
     [HttpPost]
-    [RequirePermission("leave:read-own")]
+    [RequirePermission(PermissionCatalog.Leave.ReadOwn)]
     public async Task<IActionResult> Submit([FromBody] SubmitLeaveRequestRequest request, CancellationToken ct)
     {
         var result = await _mediator.Send(new SubmitLeaveRequestCommand(
@@ -48,7 +49,7 @@ public sealed class LeaveRequestsController : ControllerBase
     }
 
     [HttpPost("preview")]
-    [RequirePermission("leave:read-own")]
+    [RequirePermission(PermissionCatalog.Leave.ReadOwn)]
     public async Task<IActionResult> Preview([FromBody] SubmitLeaveRequestRequest request, CancellationToken ct)
     {
         var result = await _mediator.Send(new PreviewSubmitLeaveRequestQuery(
@@ -63,7 +64,7 @@ public sealed class LeaveRequestsController : ControllerBase
     }
 
     [HttpPost("on-behalf")]
-    [RequirePermission("leave:manage")]
+    [RequirePermission(PermissionCatalog.Leave.Manage)]
     public async Task<IActionResult> SubmitOnBehalf([FromBody] SubmitLeaveRequestOnBehalfRequest request, CancellationToken ct)
     {
         var result = await _mediator.Send(new SubmitLeaveRequestCommand(
@@ -78,7 +79,7 @@ public sealed class LeaveRequestsController : ControllerBase
     }
 
     [HttpGet("my")]
-    [RequirePermission("leave:read-own")]
+    [RequirePermission(PermissionCatalog.Leave.ReadOwn)]
     public async Task<IActionResult> ListMine(
         [FromQuery] string? status,
         [FromQuery] DateOnly? fromDate,
@@ -91,7 +92,7 @@ public sealed class LeaveRequestsController : ControllerBase
     }
 
     [HttpPost("{requestId:guid}/cancel")]
-    [RequireAnyPermission("leave:read-own", "leave:manage")]
+    [RequireAnyPermission(PermissionCatalog.Leave.ReadOwn, PermissionCatalog.Leave.Manage)]
     public async Task<IActionResult> Cancel(
         Guid requestId,
         [FromBody] CancelLeaveRequestRequest? request,

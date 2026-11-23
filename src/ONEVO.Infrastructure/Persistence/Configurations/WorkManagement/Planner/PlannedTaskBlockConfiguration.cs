@@ -17,7 +17,7 @@ public class PlannedTaskBlockConfiguration : IEntityTypeConfiguration<PlannedTas
         builder.HasIndex(b => new { b.TenantId, b.EmployeeId, b.StartAt })
             .HasDatabaseName("ix_planned_task_blocks_tenant_id_employee_id_start_at");
 
-        builder.HasOne<Employee>().WithMany().HasForeignKey(b => b.EmployeeId).OnDelete(DeleteBehavior.Cascade);
+        builder.HasOne<Employee>().WithMany().HasForeignKey(b => b.EmployeeId).OnDelete(DeleteBehavior.NoAction);
         builder.HasOne<WorkTask>().WithMany().HasForeignKey(b => b.TaskId).OnDelete(DeleteBehavior.Cascade);
     }
 }

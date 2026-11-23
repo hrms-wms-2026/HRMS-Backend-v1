@@ -3,6 +3,7 @@ using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using ONEVO.Application.Common.ServiceInterfaces;
 using ONEVO.Application.Features.SharedPlatform.Notifications.RepositoryInterfaces;
+using ONEVO.Infrastructure.Services.SharedPlatform.Jobs;
 
 namespace ONEVO.Infrastructure.Services.SharedPlatform.Notifications;
 
@@ -13,6 +14,7 @@ namespace ONEVO.Infrastructure.Services.SharedPlatform.Notifications;
 public sealed class NotificationTrayExpiryJob : BackgroundService
 {
     private static readonly TimeSpan Interval = TimeSpan.FromMinutes(15);
+    public static readonly JobSchedule Schedule = JobSchedule.Every("notification-tray-expiry", Interval);
 
     private readonly IServiceProvider _services;
     private readonly ILogger<NotificationTrayExpiryJob> _logger;
@@ -29,7 +31,7 @@ public sealed class NotificationTrayExpiryJob : BackgroundService
         {
             try
             {
-                await RunOnceAsync(stoppingToken);
+                await _services.RunExclusiveAsync(Schedule, ct => RunOnceAsync(ct), stoppingToken);
             }
             catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
             {

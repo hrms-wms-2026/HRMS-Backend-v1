@@ -9,6 +9,7 @@ using ONEVO.Application.Features.Monitoring.Notifications.RepositoryInterfaces;
 using ONEVO.Application.Features.Monitoring.TrayActivation.ServiceInterfaces;
 using ONEVO.Domain.Features.Monitoring.Notifications.Entities;
 using ONEVO.Infrastructure.Persistence;
+using ONEVO.Infrastructure.Services.SharedPlatform.Jobs;
 
 namespace ONEVO.Infrastructure.Services.Monitoring.Notifications;
 
@@ -16,6 +17,7 @@ namespace ONEVO.Infrastructure.Services.Monitoring.Notifications;
 public sealed class WellnessRuleEvaluatorJob : BackgroundService
 {
     private static readonly TimeSpan EvaluationInterval = TimeSpan.FromMinutes(5);
+    public static readonly JobSchedule Schedule = JobSchedule.Every("wellness-rule-evaluator", EvaluationInterval);
     private static readonly TimeSpan LookbackWindow = TimeSpan.FromHours(3);
     private static readonly TimeSpan ActiveWindow = TimeSpan.FromMinutes(10);
     private static readonly TimeSpan BreakReminderCooldown = TimeSpan.FromHours(2);
@@ -39,7 +41,7 @@ public sealed class WellnessRuleEvaluatorJob : BackgroundService
             {
                 try
                 {
-                    await RunOnceAsync(stoppingToken);
+                    await _services.RunExclusiveAsync(Schedule, ct => RunOnceAsync(ct), stoppingToken);
                 }
                 catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
                 {

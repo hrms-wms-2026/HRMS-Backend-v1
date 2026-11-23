@@ -1,4 +1,5 @@
 using MediatR;
+using ONEVO.Application.Common.Authorization;
 using ONEVO.Application.Common.Models;
 using ONEVO.Application.Common.ServiceInterfaces;
 using ONEVO.Application.Features.CoreHr.Employee.RepositoryInterfaces;
@@ -20,7 +21,7 @@ public sealed class DeviceChangeRequestWorkflow(
     ITrayActivationRepository trayActivation,
     IEmployeeAuthorityResolver authority)
 {
-    private const string ApprovalPermission = "attendance:approve";
+    private const string ApprovalPermission = PermissionCatalog.Attendance.Approve;
 
     public Task<Result<DeviceChangeRequestResponse>> ApproveAsync(
         ApproveDeviceChangeRequestCommand command, CancellationToken ct)

@@ -1,5 +1,3 @@
-using ONEVO.Application.Common.ServiceInterfaces;
-
 namespace ONEVO.Application.Features.Leave.Cancellation.Outbox;
 
 public sealed record LeaveRequestCancelledPayload(
@@ -20,10 +18,3 @@ public sealed record LeaveRequestCancelledPayload(
     bool CancelledByHr,
     string? Reason,
     DateTimeOffset CancelledAt);
-
-public sealed class NoOpLeaveCancellationSideEffectOutboxHandler : IOutboxMessageHandler
-{
-    public string Type => OutboxMessageTypes.LeaveRequestCancelled;
-
-    public Task HandleAsync(string payloadJson, CancellationToken ct) => Task.CompletedTask;
-}

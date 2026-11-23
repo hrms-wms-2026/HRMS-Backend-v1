@@ -82,7 +82,7 @@ public class AgentCommandsHubTests
     [Fact]
     public async Task RefusedConnection_Disconnecting_DoesNotUnderflowAnotherConnection()
     {
-        _tracker.Connected(_tenantId, _userId); // a legitimate connection already open
+        _tracker.Connected(_tenantId, _userId, "existing-connection"); // a legitimate connection already open
         _devices.Setup(d => d.FindActiveDeviceAsync(_deviceId, _tenantId, It.IsAny<CancellationToken>()))
             .ReturnsAsync((TrayDeviceRegistration?)null);
         var hub = CreateHub();

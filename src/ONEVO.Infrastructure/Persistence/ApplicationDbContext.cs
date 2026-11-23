@@ -162,6 +162,7 @@ public class ApplicationDbContext : DbContext
     public DbSet<RoleTemplate> RoleTemplates => Set<RoleTemplate>();
     public DbSet<Role> Roles => Set<Role>();
     public DbSet<Permission> Permissions => Set<Permission>();
+    public DbSet<PermissionChange> PermissionChanges => Set<PermissionChange>();
     public DbSet<RolePermission> RolePermissions => Set<RolePermission>();
     public DbSet<UserRole> UserRoles => Set<UserRole>();
     public DbSet<UserPermissionOverride> UserPermissionOverrides => Set<UserPermissionOverride>();
@@ -353,6 +354,10 @@ public class ApplicationDbContext : DbContext
         => Set<ONEVO.Domain.Features.TimeAttendance.Alerts.AttendanceAlertDeduction>();
     public DbSet<ONEVO.Domain.Features.Inbox.Entities.InboxDecisionJournalEntry> InboxDecisionJournal
         => Set<ONEVO.Domain.Features.Inbox.Entities.InboxDecisionJournalEntry>();
+    public DbSet<ONEVO.Domain.Features.Inbox.Entities.InboxEntry> InboxEntries
+        => Set<ONEVO.Domain.Features.Inbox.Entities.InboxEntry>();
+    public DbSet<ONEVO.Domain.Features.Inbox.Entities.InboxEntryAssignee> InboxEntryAssignees
+        => Set<ONEVO.Domain.Features.Inbox.Entities.InboxEntryAssignee>();
     public DbSet<ONEVO.Domain.Features.Conversations.Entities.ConversationMessageMention> ConversationMessageMentions
         => Set<ONEVO.Domain.Features.Conversations.Entities.ConversationMessageMention>();
     public DbSet<ONEVO.Domain.Features.Conversations.Entities.ConversationMessageReaction> ConversationMessageReactions
@@ -425,6 +430,8 @@ public class ApplicationDbContext : DbContext
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         modelBuilder.ApplyConfigurationsFromAssembly(typeof(ApplicationDbContext).Assembly);
+        ONEVO.Infrastructure.Persistence.Integrity.ReferenceForeignKeys.Apply(modelBuilder);
+        ONEVO.Infrastructure.Persistence.Integrity.StatusCheckConstraints.Apply(modelBuilder);
 
         // Case-sensitive so = keeps PostgreSQL behaviour on hashes, tokens and unique indexes.
         modelBuilder.UseCollation("Latin1_General_100_CS_AS_SC");

@@ -104,6 +104,43 @@ public sealed class TryReservePositionAssignmentTests : IAsyncLifetime
         Assert.Single(results, r => r is null);
     }
 
+    [Fact]
+    public async Task TryReserve_ManyConcurrentCallsAgainstOneVacancy_ExactlyOneSucceeds()
+    {
+        // The capacity check and the insert are one statement; without locks on the counted range,
+        // two callers on SQL Server can both read a count of 0 and both insert. Eight callers make
+        // that race likely enough to fail reliably if the locking is removed.
+        const int callers = 8;
+        var employees = new List<Guid>();
+        for (var i = 0; i < callers; i++)
+            employees.Add(await SeedEmployeeAsync());
+        var contexts = employees.Select(_ => CreateContext(_tenantId, "try-reserve")).ToList();
+        try
+        {
+            var effectiveFrom = DateOnly.FromDateTime(DateTime.UtcNow);
+            using var start = new SemaphoreSlim(0, callers);
+            var calls = employees.Select((employeeId, i) => Task.Run(async () =>
+            {
+                var repo = PositionAssignmentRepositoryTestSupport.CreateRepository(contexts[i]);
+                await contexts[i].Database.OpenConnectionAsync();
+                await start.WaitAsync();
+                return await repo.TryReservePositionAssignmentAsync(
+                    _tenantId, employeeId, _positionId, effectiveFrom, Guid.NewGuid(), reportsToEmployeeId: null);
+            })).ToList();
+            start.Release(callers);
+            var results = await Task.WhenAll(calls);
+
+            Assert.Single(results, r => r is not null);
+            await using var db = CreateContext(_tenantId, "try-reserve");
+            Assert.Equal(1, await db.PositionAssignments.CountAsync(pa => pa.PositionId == _positionId));
+        }
+        finally
+        {
+            foreach (var context in contexts)
+                await context.DisposeAsync();
+        }
+    }
+
     private async Task<Guid> SeedEmployeeAsync()
     {
         await using var db = CreateContext(_tenantId, "try-reserve");

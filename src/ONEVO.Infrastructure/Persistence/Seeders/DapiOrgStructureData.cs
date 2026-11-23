@@ -1,3 +1,5 @@
+using ONEVO.Application.Common.Authorization;
+
 namespace ONEVO.Infrastructure.Persistence.Seeders;
 
 /// <summary>
@@ -110,23 +112,23 @@ public static class DapiOrgStructureData
 
     public static readonly IReadOnlyList<string> HrManagerPermissionCodes =
     [
-        "org:read", "org:manage", "employees:write", "checklists:manage",
-        "roles:read", "calendar:read", "leave:read", "leave:manage", "leave:approve"
+        PermissionCatalog.Org.Read, PermissionCatalog.Org.Manage, PermissionCatalog.Employees.Write, PermissionCatalog.Checklists.Manage,
+        PermissionCatalog.Roles.Read, PermissionCatalog.Calendar.Read, PermissionCatalog.Leave.Read, PermissionCatalog.Leave.Manage, PermissionCatalog.Leave.Approve
     ];
 
     public static readonly IReadOnlyList<string> GeneralManagerPermissionCodes =
     [
-        "org:read", "org:manage", "roles:read",
-        "calendar:read", "leave:read", "leave:approve", "attendance:approve", "monitoring:read",
-        "projects:create"
+        PermissionCatalog.Org.Read, PermissionCatalog.Org.Manage, PermissionCatalog.Roles.Read,
+        PermissionCatalog.Calendar.Read, PermissionCatalog.Leave.Read, PermissionCatalog.Leave.Approve, PermissionCatalog.Attendance.Approve, PermissionCatalog.Monitoring.Read,
+        PermissionCatalog.Projects.Create
     ];
 
     public static readonly IReadOnlyList<string> ManagerPermissionCodes =
     [
         // attendance:approve: managers review their own team's attendance requests and alerts (identity checks
         // included); without it every case skips them and lands on the owner at the top of the chain.
-        "leave:approve", "attendance:approve", "calendar:read",
-        "projects:create"
+        PermissionCatalog.Leave.Approve, PermissionCatalog.Attendance.Approve, PermissionCatalog.Calendar.Read,
+        PermissionCatalog.Projects.Create
     ];
 
     /// <summary>Employee is the baseline organizational role: no explicit permissions. Universal

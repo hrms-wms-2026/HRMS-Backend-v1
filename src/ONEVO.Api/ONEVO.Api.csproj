@@ -6,6 +6,19 @@
     <ImplicitUsings>enable</ImplicitUsings>
   </PropertyGroup>
 
+  <!--
+    Task 23: the OpenAPI documents are produced at build time only (no Swagger UI, nothing mapped at
+    runtime). Every build writes them to obj/openapi; OpenApiDocumentsAreCurrentTests compares those with
+    the committed copies in docs/api/openapi. To refresh the committed copies after changing endpoints:
+      dotnet build src/ONEVO.Api/ONEVO.Api.csproj -p:UpdateOpenApiDocs=true
+  -->
+  <PropertyGroup>
+    <OpenApiGenerateDocuments>true</OpenApiGenerateDocuments>
+    <OpenApiDocumentsDirectory>$(MSBuildProjectDirectory)/obj/openapi</OpenApiDocumentsDirectory>
+    <OpenApiGenerateDocumentsOptions>--file-name crownus-api</OpenApiGenerateDocumentsOptions>
+    <CommittedOpenApiDirectory>$(MSBuildProjectDirectory)/../../docs/api/openapi</CommittedOpenApiDirectory>
+  </PropertyGroup>
+
   <ItemGroup>
     <!-- Prevents Roslyn build-host content files (pulled in transitively by SemanticKernel) from being copied to publish output -->
     <Content Remove="$(NuGetPackageRoot)microsoft.codeanalysis.workspaces.msbuild\**\*" />
@@ -14,21 +27,44 @@
   <ItemGroup>
     <PackageReference Include="MediatR" Version="14.1.0" />
     <PackageReference Include="Microsoft.AspNetCore.Authentication.JwtBearer" Version="10.0.10" />
+    <PackageReference Include="Microsoft.AspNetCore.DataProtection.StackExchangeRedis" Version="10.0.15" />
+    <PackageReference Include="Microsoft.AspNetCore.SignalR.StackExchangeRedis" Version="10.0.15" />
 
     <PackageReference Include="Microsoft.EntityFrameworkCore.Design" Version="10.0.9">
       <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
       <PrivateAssets>all</PrivateAssets>
     </PackageReference>
+    <PackageReference Include="Microsoft.AspNetCore.OpenApi" Version="10.0.10" />
+    <PackageReference Include="Microsoft.Extensions.ApiDescription.Server" Version="10.0.10">
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+      <PrivateAssets>all</PrivateAssets>
+    </PackageReference>
     <PackageReference Include="Microsoft.OpenApi" Version="2.9.0" />
     <PackageReference Include="Microsoft.SemanticKernel" Version="1.77.0" />
+    <PackageReference Include="Azure.Monitor.OpenTelemetry.AspNetCore" Version="1.5.0" />
+    <PackageReference Include="OpenTelemetry.Exporter.OpenTelemetryProtocol" Version="1.20.1" />
+    <PackageReference Include="OpenTelemetry.Extensions.Hosting" Version="1.20.1" />
+    <PackageReference Include="OpenTelemetry.Instrumentation.AspNetCore" Version="1.20.2" />
+    <PackageReference Include="OpenTelemetry.Instrumentation.Http" Version="1.20.2" />
+    <PackageReference Include="OpenTelemetry.Instrumentation.Runtime" Version="1.20.1" />
+    <PackageReference Include="OpenTelemetry.Instrumentation.SqlClient" Version="1.20.2" />
     <PackageReference Include="Serilog.AspNetCore" Version="10.0.0" />
     <PackageReference Include="Stripe.net" Version="52.1.0" />
-    <PackageReference Include="Swashbuckle.AspNetCore" Version="10.2.3" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="ONEVO.Tests.Unit" />
   </ItemGroup>
 
   <ItemGroup>
     <ProjectReference Include="..\ONEVO.Application\ONEVO.Application.csproj" />
     <ProjectReference Include="..\ONEVO.Infrastructure\ONEVO.Infrastructure.csproj" />
   </ItemGroup>
+
+  <Target Name="UpdateCommittedOpenApiDocuments" AfterTargets="GenerateOpenApiDocuments" Condition="'$(UpdateOpenApiDocs)' == 'true'">
+    <Copy SourceFiles="$(OpenApiDocumentsDirectory)/crownus-api.json" DestinationFiles="$(CommittedOpenApiDirectory)/tenant-v1.json" />
+    <Copy SourceFiles="$(OpenApiDocumentsDirectory)/crownus-api_admin-v1.json" DestinationFiles="$(CommittedOpenApiDirectory)/admin-v1.json" />
+    <Message Importance="high" Text="OpenAPI documents copied to $(CommittedOpenApiDirectory)" />
+  </Target>
 
 </Project>

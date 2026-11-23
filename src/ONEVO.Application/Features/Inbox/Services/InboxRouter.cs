@@ -48,13 +48,16 @@ public sealed class InboxRouter : IInboxRouter
     private readonly IInboxStepsBuilder _steps;
     private readonly IUnitOfWork _unitOfWork;
     private readonly IDateTimeProvider _clock;
+    private readonly IReadOnlyList<IInboxHeaderCountSource> _headerCounts;
 
     public InboxRouter(
         IEnumerable<IInboxSourceProvider> providers, IConversationUnreadCounts unread, IInboxRealtimePublisher realtime,
         ILogger<InboxRouter> logger, IInboxKindRegistry kinds, IInboxDecisionJournal journal,
-        IEnumerable<IInboxDecisionReverter> reverters, IInboxStepsBuilder steps, IUnitOfWork unitOfWork, IDateTimeProvider clock)
+        IEnumerable<IInboxDecisionReverter> reverters, IInboxStepsBuilder steps, IUnitOfWork unitOfWork, IDateTimeProvider clock,
+        IEnumerable<IInboxHeaderCountSource> headerCounts)
     {
         _providers = providers.ToList();
+        _headerCounts = headerCounts.ToList();
         _unread = unread;
         _realtime = realtime;
         _logger = logger;
@@ -112,27 +115,34 @@ public sealed class InboxRouter : IInboxRouter
 
     public async Task<InboxCounts> GetCountsAsync(Guid tenantId, Guid callerEmployeeId, CancellationToken ct)
     {
+        // Task 37: sources converted to inbox_items count there; every other source counts itself (task 00a).
+        var headerSources = _headerCounts.Select(h => h.Source).ToHashSet(StringComparer.Ordinal);
         var pendingReceived = 0;
         var openAlerts = 0;
         var bySource = new Dictionary<string, int>();
         var byKind = new Dictionary<string, int>();
-        foreach (var provider in _providers)
+        void Add(string source, InboxSourceCounts counts)
         {
-            var counts = await provider.CountAsync(tenantId, callerEmployeeId, ct);
             pendingReceived += counts.PendingReceived;
             openAlerts += counts.OpenAlerts;
             var sourceTotal = counts.PendingReceived + counts.OpenAlerts;
             if (sourceTotal > 0)
-                bySource[provider.Source] = bySource.GetValueOrDefault(provider.Source) + sourceTotal;
+                bySource[source] = bySource.GetValueOrDefault(source) + sourceTotal;
             foreach (var (kind, count) in counts.ByKind)
             {
                 if (count > 0)
                 {
-                    var key = $"{provider.Source}:{kind}";
+                    var key = $"{source}:{kind}";
                     byKind[key] = byKind.GetValueOrDefault(key) + count;
                 }
             }
         }
+
+        foreach (var provider in _providers.Where(p => !headerSources.Contains(p.Source)))
+            Add(provider.Source, await provider.CountAsync(tenantId, callerEmployeeId, ct));
+        foreach (var source in _headerCounts)
+            Add(source.Source, await source.CountAsync(tenantId, callerEmployeeId, ct));
+
         return new InboxCounts(
             PendingReceived: pendingReceived,
             UnreadMessages: await _unread.TotalInChatsAsync(tenantId, callerEmployeeId, ct),

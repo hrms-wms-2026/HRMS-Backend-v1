@@ -13,14 +13,14 @@ namespace ONEVO.Tests.Unit.Features.Api.Middleware;
 public sealed class AuthRateLimitingMiddlewareTests
 {
     private const string MfaVerifyPath = "/api/v1/auth/mfa/verify";
-    private readonly IMemoryCache _cache = new MemoryCache(new MemoryCacheOptions());
+    private readonly ONEVO.Infrastructure.SharedState.IAttemptCounter _attempts = new ONEVO.Infrastructure.SharedState.MemoryAttemptCounter();
 
     private AuthRateLimitingMiddleware Build()
     {
         RequestDelegate next = _ => Task.CompletedTask;
         return new AuthRateLimitingMiddleware(
             next,
-            _cache,
+            _attempts,
             Mock.Of<ILogger<AuthRateLimitingMiddleware>>());
     }
 

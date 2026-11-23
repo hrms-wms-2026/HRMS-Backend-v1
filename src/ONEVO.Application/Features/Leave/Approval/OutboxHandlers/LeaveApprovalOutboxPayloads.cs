@@ -22,12 +22,3 @@ public sealed record LeaveRequestRejectedPayload(
     decimal UnpaidHours,
     Guid RejectedByEmployeeId,
     string Reason);
-
-public sealed class NoOpLeaveApprovalSideEffectOutboxHandler : ONEVO.Application.Common.ServiceInterfaces.IOutboxMessageHandler
-{
-    public NoOpLeaveApprovalSideEffectOutboxHandler(string type) => Type = type;
-
-    public string Type { get; }
-
-    public Task HandleAsync(string payloadJson, CancellationToken ct) => Task.CompletedTask;
-}
