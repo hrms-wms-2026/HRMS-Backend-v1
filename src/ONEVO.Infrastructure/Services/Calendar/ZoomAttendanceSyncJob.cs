@@ -9,6 +9,7 @@ using ONEVO.Application.Features.Calendar.Services;
 using ONEVO.Application.Features.DevPlatform.Tenancy.RepositoryInterfaces;
 using ONEVO.Domain.Features.Calendar.Entities;
 using ONEVO.Domain.Features.InfrastructureModule.Entities;
+using ONEVO.Infrastructure.Services.SharedPlatform.Jobs;
 
 namespace ONEVO.Infrastructure.Services.Calendar;
 
@@ -22,6 +23,7 @@ namespace ONEVO.Infrastructure.Services.Calendar;
 public sealed class ZoomAttendanceSyncJob(IServiceProvider services, ILogger<ZoomAttendanceSyncJob> logger) : BackgroundService
 {
     private static readonly TimeSpan Interval = TimeSpan.FromMinutes(15);
+    public static readonly JobSchedule Schedule = JobSchedule.Every("zoom-attendance-sync", Interval);
     private const int TenantPageSize = 100;
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
@@ -31,7 +33,7 @@ public sealed class ZoomAttendanceSyncJob(IServiceProvider services, ILogger<Zoo
         {
             while (await timer.WaitForNextTickAsync(stoppingToken))
             {
-                try { await RunOnceAsync(stoppingToken); }
+                try { await services.RunExclusiveAsync(Schedule, ct => RunOnceAsync(ct), stoppingToken); }
                 catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested) { break; }
                 catch (Exception ex) { logger.LogError(ex, "ZoomAttendanceSyncJob run failed."); }
             }

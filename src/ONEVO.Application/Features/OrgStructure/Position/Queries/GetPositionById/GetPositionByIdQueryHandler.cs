@@ -14,17 +14,20 @@ public class GetPositionByIdQueryHandler
     private readonly IDepartmentRepository _departments;
     private readonly ILegalEntityRepository _legalEntities;
     private readonly ICurrentUser _currentUser;
+    private readonly IRowVersionStore? _versions;
 
     public GetPositionByIdQueryHandler(
         IPositionRepository positions,
         IDepartmentRepository departments,
         ILegalEntityRepository legalEntities,
-        ICurrentUser currentUser)
+        ICurrentUser currentUser,
+        IRowVersionStore? versions = null)
     {
         _positions = positions;
         _departments = departments;
         _legalEntities = legalEntities;
         _currentUser = currentUser;
+        _versions = versions;
     }
 
     public async Task<Result<PositionResponse>> Handle(
@@ -62,6 +65,10 @@ public class GetPositionByIdQueryHandler
         var childCount = await _positions.CountActiveReportsToPositionAsync(tenantId, request.LegalEntityId, entity.Id, ct);
 
         return Result<PositionResponse>.Success(
-            PositionMapper.ToResponse(entity, departmentName, reportsToPositionName, childCount));
+            PositionMapper.ToResponse(entity, departmentName, reportsToPositionName, childCount) with
+            {
+                Version = _versions is null ? null
+                    : await _versions.GetVersionAsync<global::ONEVO.Domain.Features.OrgStructure.Entities.Position>(entity.Id, ct),
+            });
     }
 }

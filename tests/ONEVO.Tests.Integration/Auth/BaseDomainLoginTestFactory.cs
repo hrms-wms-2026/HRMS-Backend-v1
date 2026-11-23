@@ -7,6 +7,7 @@ using Microsoft.Extensions.DependencyInjection.Extensions;
 using ONEVO.Application.Features.Auth.Login.ServiceInterfaces;
 using ONEVO.Application.Features.DevPlatform.SystemConfig.PlatformOAuthApps.ServiceInterfaces;
 using ONEVO.Infrastructure.Persistence;
+using ONEVO.Infrastructure.SharedState;
 
 namespace ONEVO.Tests.Integration.Auth;
 
@@ -71,7 +72,23 @@ public sealed class BaseDomainLoginTestFactory : WebApplicationFactory<Program>
             services.AddSingleton<IGoogleIdTokenValidator, EmailAsGoogleTokenValidator>();
             services.RemoveAll<IPlatformOAuthAppResolver>();
             services.AddSingleton<IPlatformOAuthAppResolver, TestPlatformOAuthAppResolver>();
+            // AuthRateLimitingMiddleware counts through IAttemptCounter (task 21). The real
+            // in-process counter, behind a wrapper the fixture can empty between facts.
+            services.RemoveAll<IAttemptCounter>();
+            services.AddSingleton<ResettableAttemptCounter>();
+            services.AddSingleton<IAttemptCounter>(sp => sp.GetRequiredService<ResettableAttemptCounter>());
         });
+    }
+
+    /// <summary>The production <see cref="MemoryAttemptCounter"/>, swapped for a new one on <see cref="Reset"/>.</summary>
+    public sealed class ResettableAttemptCounter : IAttemptCounter
+    {
+        private MemoryAttemptCounter _inner = new();
+
+        public Task<long> IncrementAsync(string key, TimeSpan window, CancellationToken ct) =>
+            Volatile.Read(ref _inner).IncrementAsync(key, window, ct);
+
+        public void Reset() => Volatile.Write(ref _inner, new MemoryAttemptCounter());
     }
 
     private sealed class AlwaysValidTotpService : ITotpService

@@ -1,13 +1,13 @@
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
-using Microsoft.Extensions.Caching.Memory;
+using ONEVO.Infrastructure.SharedState;
 
 namespace ONEVO.Api.Middleware;
 
 /// <summary>
-/// Phase 1 process-local login limiter. This is valid only while deployment is restricted to one
-/// API instance; it must be replaced by an approved distributed limiter before horizontal scale.
+/// Sign-in, MFA and token-endpoint limits. Counts go through <see cref="IAttemptCounter"/> (task 21): shared in Redis
+/// across instances when Redis is configured, in process otherwise. Identities are hashed before they become keys.
 /// </summary>
 public sealed class AuthRateLimitingMiddleware
 {
@@ -75,16 +75,16 @@ public sealed class AuthRateLimitingMiddleware
     ];
 
     private readonly RequestDelegate _next;
-    private readonly IMemoryCache _cache;
+    private readonly IAttemptCounter _attempts;
     private readonly ILogger<AuthRateLimitingMiddleware> _logger;
 
     public AuthRateLimitingMiddleware(
         RequestDelegate next,
-        IMemoryCache cache,
+        IAttemptCounter attempts,
         ILogger<AuthRateLimitingMiddleware> logger)
     {
         _next = next;
-        _cache = cache;
+        _attempts = attempts;
         _logger = logger;
     }
 
@@ -112,18 +112,7 @@ public sealed class AuthRateLimitingMiddleware
                 continue;
 
             var key = BuildCacheKey(rule, identity);
-            var bucket = _cache.GetOrCreate(key, entry =>
-            {
-                entry.AbsoluteExpirationRelativeToNow = rule.Window;
-                return new RateLimitBucket();
-            })!;
-
-            int count;
-            lock (bucket)
-            {
-                bucket.Count++;
-                count = bucket.Count;
-            }
+            var count = await _attempts.IncrementAsync(key, rule.Window, context.RequestAborted);
 
             if (count <= rule.MaxRequests)
                 continue;
@@ -135,6 +124,7 @@ public sealed class AuthRateLimitingMiddleware
                 rule.MaxRequests,
                 (int)rule.Window.TotalSeconds);
 
+            ONEVO.Application.Common.Observability.CrownusMetrics.RecordRateLimitRejection("auth", rule.Scope);
             await WriteRateLimitExceededResponseAsync(context, rule);
             return;
         }
@@ -235,11 +225,6 @@ public sealed class AuthRateLimitingMiddleware
     {
         var hash = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(identity)));
         return $"rate-limit:auth:{rule.Path}:{rule.Scope}:{hash}";
-    }
-
-    private sealed class RateLimitBucket
-    {
-        public int Count { get; set; }
     }
 
     private sealed record AuthRateLimitRule(

@@ -19,6 +19,9 @@ public static class RlsTableRegistry
             ["support_tickets"] = RlsPredicate.Tenant,
             ["support_ticket_comments"] = RlsPredicate.Tenant,
             ["support_ticket_attachments"] = RlsPredicate.Tenant,
+            // 20261120141304_AddInboxItems (task 37)
+            ["inbox_items"] = RlsPredicate.Tenant,
+            ["inbox_item_assignees"] = RlsPredicate.Tenant,
             // 20261121144123_AddMonitoringSettings (Improvements task 36)
             ["monitoring_settings"] = RlsPredicate.Tenant,
         };

@@ -16,7 +16,7 @@ namespace ONEVO.Tests.Integration.SqlServerMigration;
 [Collection(SqlServerCollection.Name)]
 public sealed class MonitoringSettingsMigrationTests(SqlServerFixture fixture) : IAsyncLifetime
 {
-    private const string MigrationBefore = "20261120015440_AddReferenceForeignKeysAndStatusChecks39a";
+    private const string MigrationBefore = "20261120172929_AddRowVersionTokens";
 
     private TestDatabase _database = null!;
     private SqlConnection _admin = null!;

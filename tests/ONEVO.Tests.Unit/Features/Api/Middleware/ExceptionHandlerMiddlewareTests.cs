@@ -36,6 +36,26 @@ public class ExceptionHandlerMiddlewareTests
         return JsonDocument.Parse(json).RootElement;
     }
 
+    // Task 42: a save that lost an optimistic-concurrency check is a 409 with a stable problem type, never a 500.
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task InvokeAsync_WhenAConcurrencyConflictIsThrown_Returns409(bool efException)
+    {
+        Exception conflict = efException
+            ? new Microsoft.EntityFrameworkCore.DbUpdateConcurrencyException("stale")
+            : new ConcurrencyConflictException();
+        var middleware = BuildMiddleware(_ => throw conflict);
+        var context = CreateHttpContext("/api/v1/legal-entities/x/departments/y");
+
+        await middleware.InvokeAsync(context);
+
+        context.Response.StatusCode.Should().Be((int)HttpStatusCode.Conflict);
+        var body = await ReadResponseBodyAsync(context);
+        body.GetProperty("type").GetString().Should().Be("urn:crownus:error:concurrency-conflict");
+        body.GetProperty("status").GetInt32().Should().Be(409);
+    }
+
     [Fact]
     public async Task InvokeAsync_WhenValidationExceptionThrown_Returns400BadRequestWithProblemDetails()
     {

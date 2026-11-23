@@ -2,6 +2,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using ONEVO.Application.Features.Monitoring.ActivityMonitoring.ServiceInterfaces;
+using ONEVO.Infrastructure.Services.SharedPlatform.Jobs;
 
 namespace ONEVO.Infrastructure.Services.Monitoring.Retention;
 
@@ -9,6 +10,7 @@ namespace ONEVO.Infrastructure.Services.Monitoring.Retention;
 public sealed class MonitoringRetentionPurgeJob : BackgroundService
 {
     private static readonly TimeSpan CheckInterval = TimeSpan.FromHours(6);
+    public static readonly JobSchedule Schedule = JobSchedule.Every("monitoring-retention-purge", CheckInterval, TimeSpan.FromHours(1));
 
     private readonly IServiceProvider _services;
     private readonly ILogger<MonitoringRetentionPurgeJob> _logger;
@@ -29,7 +31,7 @@ public sealed class MonitoringRetentionPurgeJob : BackgroundService
             {
                 try
                 {
-                    await RunOnceAsync(stoppingToken);
+                    await _services.RunExclusiveAsync(Schedule, ct => RunOnceAsync(ct), stoppingToken);
                 }
                 catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
                 {

@@ -68,7 +68,8 @@ public sealed class CreateApproverBackdatedLeaveCommandTests
             policies.Setup(x => x.ListActiveLegalEntitiesByIdsAsync(Harness.TenantId, It.IsAny<IReadOnlyCollection<Guid>>(), It.IsAny<CancellationToken>()))
                 .ReturnsAsync([LeaveTestData.CreateLegalEntity(Harness.TenantId, Harness.LegalEntityId)]);
             return new(CurrentUser.Object, Harness.Clock.Object, Harness.Employees.Object, policies.Object, Harness.Sut,
-                Harness.Requests.Object, new LeaveRequestDayAllocationBuilder(), Approvals.Object, Outbox.Object, Notifications.Object, UnitOfWork);
+                Harness.Requests.Object, new LeaveRequestDayAllocationBuilder(), Approvals.Object, Outbox.Object, Notifications.Object, UnitOfWork,
+                new ONEVO.Application.Features.Leave.Inbox.LeaveInboxEntrySync(Moq.Mock.Of<ONEVO.Application.Features.Inbox.Contracts.IInboxEntryStore>(), Moq.Mock.Of<ONEVO.Application.Features.Leave.Approval.RepositoryInterfaces.ILeaveApprovalRepository>()));
         }
 
         public Task<ONEVO.Application.Common.Models.Result<Guid>> Run(DateOnly? day = null, Guid? employeeId = null)

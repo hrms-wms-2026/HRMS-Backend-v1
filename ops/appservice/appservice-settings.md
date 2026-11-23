@@ -8,6 +8,8 @@ Values written `<from user>` are secrets: copy them from the VM's `web.config` o
 
 `<host>` = `onexso-api-dthwhydjctg9bub8.uksouth-01.azurewebsites.net`
 
+> **Start-up check (task 05).** Outside Development the API refuses to start unless `Tenancy__RootDomain`, `Urls__AppBaseUrl`, `Urls__AdminConsoleBaseUrl`, `Email__FromAddress`, `Encryption__MasterKey` and the database connection are set to real values (https, no localhost or example host), and `Swagger__Enabled` is not `true`. `Email__FromAddress` below is therefore required, not optional. Full list: `docs/deployment/uat-configuration.md`.
+
 ## Single-host overrides (required)
 
 | Name | Value |

@@ -6,6 +6,7 @@ using ONEVO.Application.Features.DevPlatform.Tenancy.RepositoryInterfaces;
 using ONEVO.Application.Features.WorkManagement.Monitoring.Services;
 using ONEVO.Application.Features.WorkManagement.Projects.RepositoryInterfaces;
 using ONEVO.Infrastructure.Persistence;
+using ONEVO.Infrastructure.Services.SharedPlatform.Jobs;
 
 namespace ONEVO.Infrastructure.Services.WorkManagement;
 
@@ -18,6 +19,7 @@ namespace ONEVO.Infrastructure.Services.WorkManagement;
 public sealed class ProjectMonitorJob : BackgroundService
 {
     private static readonly TimeSpan CheckInterval = TimeSpan.FromHours(1);
+    public static readonly JobSchedule Schedule = JobSchedule.Every("project-monitor", CheckInterval, TimeSpan.FromMinutes(30));
     private static readonly TimeSpan StartupDelay = TimeSpan.FromMinutes(1);
 
     private readonly IServiceProvider _services;
@@ -47,7 +49,7 @@ public sealed class ProjectMonitorJob : BackgroundService
             {
                 try
                 {
-                    await RunOnceAsync(stoppingToken);
+                    await _services.RunExclusiveAsync(Schedule, ct => RunOnceAsync(ct), stoppingToken);
                 }
                 catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
                 {
