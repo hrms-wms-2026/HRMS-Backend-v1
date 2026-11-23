@@ -81,11 +81,14 @@ Then `http://localhost:8080/health` and `http://localhost:8080/health/ready` sho
 
 ## Known limits (other tasks)
 
-- **One instance only** until task 21: rate-limit counters, web and tray presence, SignalR and the
-  ASP.NET data-protection key ring live in process memory. The key ring is also lost on restart, which
-  only breaks OAuth sign-in flows that are in progress at that moment.
-- Background jobs run inside every API container until task 13 adds `BackgroundJobs:Enabled`.
-- Logs go to the console (stdout) only; the host collects them. Task 17 adds a log and metrics target.
+- **More than one instance needs Redis** (task 21a, [shared-state.md](shared-state.md)): with
+  `Redis__ConnectionString` set, the key ring, session evictions, presence, sign-in limits, MFA challenges and the
+  SignalR backplane are shared. Without it, run exactly one instance. Keep session affinity on either way, and
+  note the global API rate limiter still counts per instance (task 21b).
+- Without Redis the data-protection key ring is in the container and is lost on every restart (everyone signs in
+  again).
+- Background jobs: see [background-jobs.md](background-jobs.md) (`BackgroundJobs__Enabled`, task 13).
+- Logs, metrics and traces: see [observability.md](observability.md) (task 17).
 
 ## Measured
 

@@ -36,7 +36,7 @@ public sealed class AttendanceStatusLeaveAwarenessArchitectureTests
     [Fact]
     public void ApprovedLeaveRepository_IsRegisteredInInfrastructure()
     {
-        var source = File.ReadAllText(FindRepositoryPath("src", "ONEVO.Infrastructure", "DependencyInjection.cs"));
+        var source = ReadInfrastructureRegistrations(FindRepositoryPath("src", "ONEVO.Infrastructure", "DependencyInjection.cs"));
 
         Assert.Contains("ILeaveRequestReadRepository", source, StringComparison.Ordinal);
         Assert.Contains("EfLeaveRequestReadRepository", source, StringComparison.Ordinal);
@@ -55,5 +55,16 @@ public sealed class AttendanceStatusLeaveAwarenessArchitectureTests
         }
 
         throw new DirectoryNotFoundException("Could not locate the repository root.");
+    }
+
+    /// <summary>AddInfrastructure and every per-area registration file it calls (task 25 split them into Registration/).</summary>
+    private static string ReadInfrastructureRegistrations(string dependencyInjectionPath)
+    {
+        var registrationDirectory = Path.Combine(Path.GetDirectoryName(dependencyInjectionPath)!, "Registration");
+        var files = new[] { dependencyInjectionPath }
+            .Concat(Directory.Exists(registrationDirectory)
+                ? Directory.GetFiles(registrationDirectory, "*.cs").OrderBy(f => f, StringComparer.Ordinal)
+                : []);
+        return string.Join(Environment.NewLine, files.Select(File.ReadAllText));
     }
 }

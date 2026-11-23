@@ -58,6 +58,7 @@ with the readiness check.
 | `/health/ready` | SQL Server | **Unhealthy (503)** when unreachable: this instance cannot serve |
 | | object storage (a read-only "does this key exist" call, 5 s limit) | **Degraded (still 200)** on failure |
 | | outbox (oldest waiting message over 15 minutes, or unreadable) | **Degraded (still 200)** |
+| | Redis, only when configured (task 21, [shared-state.md](shared-state.md)) | **Degraded (still 200)** when disconnected or not answering a ping |
 
 Storage and outbox problems affect every instance alike. Failing readiness for them would take the whole site out
 of the load balancer for a problem that only affects file features or delays notifications, so they report

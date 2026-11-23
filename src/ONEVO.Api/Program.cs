@@ -111,33 +111,17 @@ builder.Services.AddControllers(options =>
 builder.Services.AddHttpContextAccessor();
 builder.Services.AddApiAuthentication(builder.Environment, builder.Configuration);
 builder.Services.AddApiAuthorization();
-builder.Services.AddSignalR();
-builder.Services.AddSingleton<
-    ONEVO.Application.Features.Monitoring.Settings.ServiceInterfaces.ITrayPolicyRefreshNotifier,
-    ONEVO.Api.Hubs.SignalRTrayPolicyRefreshNotifier>();
-// Inbox realtime: replaces Infrastructure's null publisher with the InboxHub-backed one.
-Microsoft.Extensions.DependencyInjection.Extensions.ServiceCollectionDescriptorExtensions.Replace(
-    builder.Services,
-    ServiceDescriptor.Scoped<
-        ONEVO.Application.Features.Conversations.Contracts.IInboxRealtimePublisher,
-        ONEVO.Api.Hubs.SignalRInboxRealtimePublisher>());
-builder.Services.AddSingleton<
-    ONEVO.Application.Features.Monitoring.TrayActivation.ServiceInterfaces.ITrayPushNotifier,
-    ONEVO.Api.Hubs.SignalRTrayPushNotifier>();
-builder.Services.AddSingleton<ONEVO.Api.Hubs.TrayConnectionTracker>();
-builder.Services.AddSingleton<
-    ONEVO.Application.Features.Monitoring.TrayActivation.ServiceInterfaces.ITrayConnectionPresence>(
-    sp => sp.GetRequiredService<ONEVO.Api.Hubs.TrayConnectionTracker>());
-builder.Services.AddSingleton<ONEVO.Api.Middleware.WebActivityTracker>();
-builder.Services.AddSingleton<
-    ONEVO.Application.Features.Monitoring.TrayActivation.ServiceInterfaces.IWebActivityPresence>(
-    sp => sp.GetRequiredService<ONEVO.Api.Middleware.WebActivityTracker>());
+// SignalR, hub-backed notifiers and presence trackers (Extensions/RealtimeExtensions.cs).
+var signalR = builder.Services.AddApiRealtime();
 // Task 23: no Swagger UI and no runtime /swagger or /openapi endpoint. The API description is generated
 // at build time only (docs/api/openapi); nothing here is ever mapped.
 builder.Services.AddApiOpenApiDocuments();
 builder.Services.AddApiCors(builder.Configuration);
 builder.Services.AddApiRateLimiting(builder.Configuration);
-builder.Services.AddHealthChecks()
+var healthChecks = builder.Services.AddHealthChecks();
+// Task 21: shared state for more than one instance (Redis when Redis:ConnectionString is set).
+builder.Services.AddApiSharedState(signalR, healthChecks, builder.Configuration);
+healthChecks
     .AddCheck("api", () => Microsoft.Extensions.Diagnostics.HealthChecks.HealthCheckResult.Healthy("API is running"))
     .AddAsyncCheck("sqlserver", async () =>
     {
@@ -172,6 +156,7 @@ if (generatingOpenApiDocuments)
 var app = builder.Build();
 // Creating the probe registers the crownus.outbox.* gauges, so they report without waiting for a readiness call.
 app.Services.GetRequiredService<ONEVO.Infrastructure.Observability.OutboxBacklogProbe>();
+SharedStateExtensions.WarnIfKeyRingUnencrypted(app);
 
 if (ONEVO.Application.Common.Tenancy.TenancyModeReader.Read(app.Configuration)
     == ONEVO.Application.Common.Tenancy.TenancyMode.SingleHost)

@@ -74,7 +74,9 @@ Not checked at start-up. Defaults come from `appsettings.json`.
 | `Planner__Enabled` | no | Turns the day planner on |
 | `APPLICATIONINSIGHTS_CONNECTION_STRING` | yes | Sends traces, metrics and logs to Application Insights. See [observability.md](observability.md) |
 | `OTEL_EXPORTER_OTLP_ENDPOINT`, `OTEL_EXPORTER_OTLP_HEADERS` | headers yes | Alternative: send telemetry to an OTLP backend |
-| `BackgroundJobs__Enabled` | no | Default `true`. `false` runs no recurring jobs (web-only instance). Keep `true` until task 21; see [background-jobs.md](background-jobs.md) |
+| `BackgroundJobs__Enabled` | no | Default `true`. `false` runs no recurring jobs (web-only instance). Keep `true` until Redis is configured; see [background-jobs.md](background-jobs.md) |
+| `Redis__ConnectionString` | yes | Needed for more than one instance: shared key ring, session evictions, presence, sign-in limits, MFA, SignalR backplane. See [shared-state.md](shared-state.md) |
+| `DataProtection__KeyEncryptionCertificate`, `DataProtection__KeyEncryptionCertificatePassword` | yes | Encrypts the key ring at rest in Redis (base64 PFX and its password) |
 | `RateLimiting__*` | no | See [rate-limits.md](rate-limits.md) |
 | `Serilog__MinimumLevel__Default` | no | `Information` by default |
 
