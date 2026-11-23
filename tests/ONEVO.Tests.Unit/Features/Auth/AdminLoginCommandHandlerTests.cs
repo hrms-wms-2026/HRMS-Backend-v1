@@ -124,7 +124,7 @@ public sealed class AdminLoginCommandHandlerTests
     }
 
     [Fact]
-    public async Task Handle_ActiveLockout_DoesNotVerifyPassword()
+    public async Task Handle_ActiveLockout_DoesNotVerifyTheRealPassword()
     {
         var setup = SetupActiveUserAndCredential();
         setup.Credential.LockedUntil = _now.AddMinutes(1);
@@ -134,7 +134,86 @@ public sealed class AdminLoginCommandHandlerTests
             CancellationToken.None);
 
         result.IsSuccess.Should().BeFalse();
-        _passwordHasher.Verify(value => value.Verify(It.IsAny<string>(), It.IsAny<string>()), Times.Never);
+        _passwordHasher.Verify(value => value.Verify(It.IsAny<string>(), "stored-hash"), Times.Never);
+        _passwordHasher.Verify(
+            value => value.Verify("correct", AdminLoginCommandHandler.DummyPasswordHash),
+            Times.Once);
+    }
+
+    // Task 15 follow-up: an unknown email must cost the same password hash as a wrong password,
+    // so response time does not reveal which admin emails exist. Checked by the call, not by timing.
+
+    [Fact]
+    public async Task Handle_UnknownEmail_VerifiesAgainstTheDummyHash()
+    {
+        _users.Setup(value => value.GetByEmailAsync("nobody@onevo.io", It.IsAny<CancellationToken>()))
+            .ReturnsAsync((PlatformUser?)null);
+
+        var result = await Handler().Handle(
+            new AdminLoginCommand("nobody@onevo.io", "guess"),
+            CancellationToken.None);
+
+        result.StatusCode.Should().Be(401);
+        result.Error.Should().Be("Invalid email or password.");
+        _passwordHasher.Verify(
+            value => value.Verify("guess", AdminLoginCommandHandler.DummyPasswordHash),
+            Times.Once);
+    }
+
+    [Fact]
+    public async Task Handle_MissingDatabaseCredential_VerifiesAgainstTheDummyHash()
+    {
+        var user = SetupActiveUser();
+        _credentials.Setup(value => value.GetActivePasswordCredentialAsync(user.Id, It.IsAny<CancellationToken>()))
+            .ReturnsAsync((PlatformUserCredential?)null);
+
+        await Handler().Handle(new AdminLoginCommand(user.Email, "guess"), CancellationToken.None);
+
+        _passwordHasher.Verify(
+            value => value.Verify("guess", AdminLoginCommandHandler.DummyPasswordHash),
+            Times.Once);
+    }
+
+    [Theory]
+    [InlineData("unknown_email")]
+    [InlineData("no_credential")]
+    [InlineData("locked")]
+    [InlineData("wrong_password")]
+    public async Task Handle_EveryFailedLogin_RunsExactlyOnePasswordVerify(string path)
+    {
+        var email = "admin@onevo.io";
+        switch (path)
+        {
+            case "unknown_email":
+                email = "nobody@onevo.io";
+                break;
+            case "no_credential":
+                var user = SetupActiveUser();
+                _credentials.Setup(value => value.GetActivePasswordCredentialAsync(user.Id, It.IsAny<CancellationToken>()))
+                    .ReturnsAsync((PlatformUserCredential?)null);
+                break;
+            case "locked":
+                SetupActiveUserAndCredential().Credential.LockedUntil = _now.AddMinutes(1);
+                break;
+            case "wrong_password":
+                SetupActiveUserAndCredential();
+                break;
+        }
+
+        var result = await Handler().Handle(new AdminLoginCommand(email, "guess"), CancellationToken.None);
+
+        result.StatusCode.Should().Be(401);
+        result.Error.Should().Be("Invalid email or password.");
+        _passwordHasher.Verify(value => value.Verify("guess", It.IsAny<string>()), Times.Once);
+    }
+
+    [Fact]
+    public void DummyPasswordHash_IsAWellFormedBCryptHashAtTheProductionWorkFactor()
+    {
+        AdminLoginCommandHandler.DummyPasswordHash.Should().MatchRegex(@"^\$2[aby]\$12\$[./A-Za-z0-9]{53}$");
+        // A real hash, so BCrypt does the full key derivation instead of failing fast on a bad format.
+        BCrypt.Net.BCrypt.Verify("onevo-admin-login-timing-dummy", AdminLoginCommandHandler.DummyPasswordHash)
+            .Should().BeTrue();
     }
 
     [Fact]

@@ -2,6 +2,7 @@ using System.Net;
 using System.Reflection;
 using System.Security.Cryptography;
 using System.Text;
+using System.Text.Json;
 using MediatR;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
@@ -9,11 +10,14 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.TestHost;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
 using ONEVO.Api.Controllers.Webhooks;
 using ONEVO.Application.Common.ServiceInterfaces;
 using ONEVO.Application.Features.DevPlatform.SystemConfig.PaymentGateway.RepositoryInterfaces;
 using ONEVO.Application.Features.DevPlatform.SystemConfig.PaymentGateway.ServiceInterfaces;
+using ONEVO.Application.Features.SharedPlatform.Webhooks.Stripe;
 using ONEVO.Domain.Features.SharedPlatform.PaymentGateway.Entities;
 using ONEVO.Infrastructure.Services.SystemConfig;
 using Stripe;
@@ -28,6 +32,7 @@ public sealed class StripeWebhookControllerTests
 
     private const string WebhookSecretA = "whsec_secret_for_config_a_1234567890";
     private const string WebhookSecretB = "whsec_secret_for_config_b_0987654321";
+    private const string CorrelationId = "corr-15b-test";
 
     // 1. ASP.NET Core Routing Infrastructure Disambiguation Tests
 
@@ -153,8 +158,7 @@ public sealed class StripeWebhookControllerTests
 
         var result = await controller.HandleByConfigId(ConfigIdA, CancellationToken.None);
 
-        var badRequest = Assert.IsType<BadRequestObjectResult>(result);
-        Assert.Equal("Stripe webhook is not configured.", badRequest.Value);
+        AssertGenericRejection(result, controller);
     }
 
     // 3. Multi-Config Isolation Tests
@@ -195,8 +199,7 @@ public sealed class StripeWebhookControllerTests
         var controller = BuildController(resolver.Object, payload, signatureB);
         var result = await controller.HandleByConfigId(ConfigIdA, CancellationToken.None);
 
-        var badRequest = Assert.IsType<BadRequestObjectResult>(result);
-        Assert.Equal("Invalid Stripe signature.", badRequest.Value);
+        AssertGenericRejection(result, controller);
     }
 
     // 4. Resolver Logic Tests
@@ -339,9 +342,159 @@ public sealed class StripeWebhookControllerTests
         var result = await controller.HandleByConfigId(ConfigIdA, CancellationToken.None);
         var badRequest = Assert.IsType<BadRequestObjectResult>(result);
 
-        var responseString = badRequest.Value?.ToString() ?? string.Empty;
+        var responseString = JsonSerializer.Serialize(badRequest.Value);
         Assert.DoesNotContain(WebhookSecretA, responseString);
         Assert.DoesNotContain("secret", responseString, StringComparison.OrdinalIgnoreCase);
+    }
+
+    // 6. Signature first, one generic rejection (task 15 follow-up)
+
+    [Fact]
+    public async Task MissingSignature_Returns400_BeforeSecretLookupOrDispatch()
+    {
+        var resolver = new Mock<IPaymentGatewayWebhookSecretResolver>(MockBehavior.Strict);
+        var mediator = new Mock<IMediator>(MockBehavior.Strict);
+        var controller = BuildController(resolver.Object, CheckoutCompletedPayload(), signature: null, mediator.Object);
+
+        var result = await controller.HandleByConfigId(ConfigIdA, CancellationToken.None);
+
+        AssertGenericRejection(result, controller);
+        resolver.VerifyNoOtherCalls();
+        mediator.VerifyNoOtherCalls();
+    }
+
+    [Fact]
+    public async Task BlankSignature_GatewayKeyRoute_Returns400_BeforeSecretLookupOrDispatch()
+    {
+        var resolver = new Mock<IPaymentGatewayWebhookSecretResolver>(MockBehavior.Strict);
+        var mediator = new Mock<IMediator>(MockBehavior.Strict);
+        var controller = BuildController(resolver.Object, CheckoutCompletedPayload(), signature: "  ", mediator.Object);
+
+        var result = await controller.Handle(GatewayKey, CancellationToken.None);
+
+        AssertGenericRejection(result, controller);
+        resolver.VerifyNoOtherCalls();
+        mediator.VerifyNoOtherCalls();
+    }
+
+    [Theory]
+    [InlineData("t=1,v1=0000")]
+    [InlineData("garbage")]
+    public async Task BadSignature_OnAHandledEventType_Returns400_AndDispatchesNothing(string signature)
+    {
+        var resolver = BuildMultiConfigResolver();
+        var mediator = new Mock<IMediator>(MockBehavior.Strict);
+        var controller = BuildController(resolver.Object, CheckoutCompletedPayload(), signature, mediator.Object);
+
+        var result = await controller.HandleByConfigId(ConfigIdA, CancellationToken.None);
+
+        AssertGenericRejection(result, controller);
+        mediator.VerifyNoOtherCalls();
+    }
+
+    [Fact]
+    public async Task SignatureForADifferentBody_Returns400_AndDispatchesNothing()
+    {
+        var resolver = BuildMultiConfigResolver();
+        var mediator = new Mock<IMediator>(MockBehavior.Strict);
+        var signed = CheckoutCompletedPayload();
+        var tampered = signed.Replace("cus_test_1", "cus_attacker");
+        var controller = BuildController(resolver.Object, tampered, Sign(signed, WebhookSecretA), mediator.Object);
+
+        var result = await controller.HandleByConfigId(ConfigIdA, CancellationToken.None);
+
+        AssertGenericRejection(result, controller);
+        mediator.VerifyNoOtherCalls();
+    }
+
+    [Fact]
+    public async Task ValidSignature_OnAHandledEventType_DispatchesOnce()
+    {
+        var resolver = BuildMultiConfigResolver();
+        var mediator = new Mock<IMediator>();
+        var payload = CheckoutCompletedPayload();
+        var controller = BuildController(resolver.Object, payload, Sign(payload, WebhookSecretA), mediator.Object);
+
+        var result = await controller.HandleByConfigId(ConfigIdA, CancellationToken.None);
+
+        Assert.IsType<OkResult>(result);
+        mediator.Verify(
+            m => m.Send(
+                It.Is<ProcessStripeEventCommand>(c => c.EventType == "checkout.session.completed" && c.StripeCustomerId == "cus_test_1"),
+                It.IsAny<CancellationToken>()),
+            Times.Once);
+    }
+
+    [Fact]
+    public async Task EveryRejection_HasTheSameBody_AndLogsTheReasonServerSide()
+    {
+        var logger = new CapturingLogger();
+        var unconfigured = new Mock<IPaymentGatewayWebhookSecretResolver>();
+        var configured = BuildMultiConfigResolver();
+        var payload = CheckoutCompletedPayload();
+
+        var cases = new (Func<Task<IActionResult>> Run, string Reason)[]
+        {
+            (() => BuildController(unconfigured.Object, payload, "sig", logger: logger).Handle("Bad Key!", CancellationToken.None), "invalid_gateway_key"),
+            (() => BuildController(unconfigured.Object, payload, null, logger: logger).HandleByConfigId(ConfigIdA, CancellationToken.None), "missing_signature"),
+            (() => BuildController(unconfigured.Object, payload, "sig", logger: logger).HandleByConfigId(ConfigIdA, CancellationToken.None), "not_configured"),
+            (() => BuildController(configured.Object, payload, Sign(payload, WebhookSecretB), logger: logger).HandleByConfigId(ConfigIdA, CancellationToken.None), "invalid_signature"),
+        };
+
+        var bodies = new List<string>();
+        foreach (var (run, reason) in cases)
+        {
+            var result = await run();
+            var badRequest = Assert.IsType<BadRequestObjectResult>(result);
+            bodies.Add(JsonSerializer.Serialize(badRequest.Value));
+            Assert.Contains(logger.Messages, m => m.Contains(reason) && m.Contains(CorrelationId));
+        }
+
+        Assert.Single(bodies.Distinct());
+        Assert.DoesNotContain("configured", bodies[0], StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("signature", bodies[0], StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("Stripe", bodies[0], StringComparison.Ordinal);
+        Assert.Contains(CorrelationId, bodies[0]);
+    }
+
+    private static void AssertGenericRejection(IActionResult result, ControllerBase controller)
+    {
+        var badRequest = Assert.IsType<BadRequestObjectResult>(result);
+        var rejection = Assert.IsType<WebhookRejection>(badRequest.Value);
+        Assert.Equal(400, rejection.Status);
+        Assert.Equal(WebhookRejection.GenericDetail, rejection.Detail);
+        Assert.Equal(CorrelationId, rejection.CorrelationId);
+        Assert.Equal(CorrelationId, controller.HttpContext.Items["X-Correlation-Id"]);
+    }
+
+    private static string CheckoutCompletedPayload()
+    {
+        var now = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+        return $$"""
+            {
+              "id": "evt_checkout_test",
+              "object": "event",
+              "api_version": "{{StripeConfiguration.ApiVersion}}",
+              "created": {{now}},
+              "data": { "object": { "id": "cs_test_1", "object": "checkout.session", "customer": "cus_test_1", "subscription": "sub_test_1", "metadata": {} } },
+              "livemode": false,
+              "pending_webhooks": 1,
+              "request": { "id": null, "idempotency_key": null },
+              "type": "checkout.session.completed"
+            }
+            """;
+    }
+
+    private sealed class CapturingLogger : ILogger<StripeWebhookController>
+    {
+        public List<string> Messages { get; } = [];
+
+        public IDisposable? BeginScope<TState>(TState state) where TState : notnull => null;
+
+        public bool IsEnabled(LogLevel logLevel) => true;
+
+        public void Log<TState>(LogLevel logLevel, EventId eventId, TState state, Exception? exception, Func<TState, Exception?, string> formatter)
+            => Messages.Add(formatter(state, exception));
     }
 
     // Helper Methods
@@ -357,6 +510,7 @@ public sealed class StripeWebhookControllerTests
                     .AddApplicationPart(typeof(StripeWebhookController).Assembly);
                 services.AddSingleton(Mock.Of<IMediator>());
                 services.AddSingleton(resolver);
+                services.AddLogging();
             })
             .Configure(app =>
             {
@@ -386,13 +540,22 @@ public sealed class StripeWebhookControllerTests
     private static StripeWebhookController BuildController(
         IPaymentGatewayWebhookSecretResolver resolver,
         string payload,
-        string signature)
+        string? signature,
+        IMediator? mediator = null,
+        ILogger<StripeWebhookController>? logger = null)
     {
         var httpContext = new DefaultHttpContext();
         httpContext.Request.Body = new MemoryStream(Encoding.UTF8.GetBytes(payload));
-        httpContext.Request.Headers["Stripe-Signature"] = signature;
+        if (signature is not null)
+        {
+            httpContext.Request.Headers["Stripe-Signature"] = signature;
+        }
+        httpContext.Items["X-Correlation-Id"] = CorrelationId;
 
-        return new StripeWebhookController(Mock.Of<IMediator>(), resolver)
+        return new StripeWebhookController(
+            mediator ?? Mock.Of<IMediator>(),
+            resolver,
+            logger ?? NullLogger<StripeWebhookController>.Instance)
         {
             ControllerContext = new ControllerContext
             {
