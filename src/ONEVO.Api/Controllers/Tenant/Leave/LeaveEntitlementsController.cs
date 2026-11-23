@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using ONEVO.Api.Contracts.Leave.Entitlements;
 using ONEVO.Api.Filters;
+using ONEVO.Application.Common.Authorization;
 using ONEVO.Application.Features.Leave.Entitlement.Commands.AdjustEntitlement;
 using ONEVO.Application.Features.Leave.Entitlement.Commands.CreateManualEntitlement;
 using ONEVO.Application.Features.Leave.Entitlement.Commands.GenerateEntitlements;
@@ -22,7 +23,7 @@ public class LeaveEntitlementsController : ControllerBase
     public LeaveEntitlementsController(IMediator mediator) => _mediator = mediator;
 
     [HttpGet]
-    [RequirePermission("leave:read")]
+    [RequirePermission(PermissionCatalog.Leave.Read)]
     public async Task<IActionResult> List(
         [FromQuery] int year,
         [FromQuery] Guid? legalEntityId,
@@ -37,7 +38,7 @@ public class LeaveEntitlementsController : ControllerBase
     }
 
     [HttpPost("generate/preview")]
-    [RequirePermission("leave:manage")]
+    [RequirePermission(PermissionCatalog.Leave.Manage)]
     public async Task<IActionResult> PreviewGenerate(
         [FromBody] GenerateEntitlementsRequest request, CancellationToken ct = default)
     {
@@ -47,7 +48,7 @@ public class LeaveEntitlementsController : ControllerBase
     }
 
     [HttpPost("generate/preview/export")]
-    [RequirePermission("leave:manage")]
+    [RequirePermission(PermissionCatalog.Leave.Manage)]
     public async Task<IActionResult> PreviewGenerateExport(
         [FromBody] GenerateEntitlementsRequest request, CancellationToken ct = default)
     {
@@ -60,7 +61,7 @@ public class LeaveEntitlementsController : ControllerBase
     }
 
     [HttpPost("generate")]
-    [RequirePermission("leave:manage")]
+    [RequirePermission(PermissionCatalog.Leave.Manage)]
     public async Task<IActionResult> Generate(
         [FromBody] GenerateEntitlementsRequest request, CancellationToken ct = default)
     {
@@ -70,7 +71,7 @@ public class LeaveEntitlementsController : ControllerBase
     }
 
     [HttpPost("manual")]
-    [RequirePermission("leave:manage")]
+    [RequirePermission(PermissionCatalog.Leave.Manage)]
     public async Task<IActionResult> CreateManual(
         [FromBody] CreateManualEntitlementRequest request, CancellationToken ct = default)
     {
@@ -85,7 +86,7 @@ public class LeaveEntitlementsController : ControllerBase
     }
 
     [HttpPut("{entitlementId:guid}/adjust")]
-    [RequirePermission("leave:manage")]
+    [RequirePermission(PermissionCatalog.Leave.Manage)]
     public async Task<IActionResult> Adjust(
         Guid entitlementId, [FromBody] AdjustEntitlementRequest request, CancellationToken ct = default)
     {
@@ -99,7 +100,7 @@ public class LeaveEntitlementsController : ControllerBase
     }
 
     [HttpPost("{entitlementId:guid}/recalculate")]
-    [RequirePermission("leave:manage")]
+    [RequirePermission(PermissionCatalog.Leave.Manage)]
     public async Task<IActionResult> Recalculate(
         Guid entitlementId, [FromBody] RecalculateEntitlementRequest request, CancellationToken ct = default)
     {

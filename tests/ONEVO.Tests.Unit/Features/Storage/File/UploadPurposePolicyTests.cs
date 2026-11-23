@@ -227,15 +227,16 @@ public class UploadPurposePolicyTests
     }
 
     [Fact]
-    public void ValidateSignature_UnrecognizedExtension_IsAcceptedWithoutGuessing()
+    public void ValidateSignature_UnrecognizedExtension_IsRejected()
     {
-        // No entry in the signature table for this extension - handled explicitly by doing
-        // nothing here, not by rejecting an ambiguous/unlisted format outright.
+        // Task 23: fail closed. Every allow-listed extension has a check, so an extension with none
+        // can only be something the allow-list never meant to accept.
         using var content = new MemoryStream(new byte[] { 1, 2, 3, 4 });
 
         var result = _policy.ValidateSignature("notes.unknownext", content);
 
-        Assert.True(result.IsSuccess);
+        Assert.False(result.IsSuccess);
+        Assert.Equal(400, result.StatusCode);
     }
 
     [Fact]
@@ -284,5 +285,75 @@ public class UploadPurposePolicyTests
         using var content = new MemoryStream(new byte[] { 1, 2, 3, 4 });
 
         Assert.Null(UploadPurposePolicy.DetectContentType("notes.unknownext", content));
+    }
+
+    // ── Task 23 ──────────────────────────────────────────────────────────────
+
+    private static readonly byte[] WindowsExe = { 0x4D, 0x5A, 0x90, 0x00, 0x03, 0x00, 0x00, 0x00, 0x04, 0x00, 0x00, 0x00, 0xFF, 0xFF, 0x00, 0x00 };
+
+    [Theory]
+    [InlineData("invoice.png")]
+    [InlineData("invoice.jpg")]
+    [InlineData("invoice.webp")]
+    [InlineData("invoice.pdf")]
+    [InlineData("invoice.docx")]
+    [InlineData("invoice.mp4")]
+    [InlineData("invoice.mp3")]
+    [InlineData("invoice.wav")]
+    [InlineData("invoice.ogg")]
+    [InlineData("invoice.webm")]
+    [InlineData("invoice.csv")]
+    public void ValidateSignature_ExeRenamedToAnAllowedExtension_IsRejected(string fileName)
+    {
+        using var content = new MemoryStream(WindowsExe);
+
+        var result = _policy.ValidateSignature(fileName, content);
+
+        Assert.False(result.IsSuccess);
+        Assert.Equal(400, result.StatusCode);
+    }
+
+    [Theory]
+    [InlineData("clip.mp4", new byte[] { 0, 0, 0, 0x18, 0x66, 0x74, 0x79, 0x70, 0x6D, 0x70, 0x34, 0x32 })]
+    [InlineData("clip.mov", new byte[] { 0, 0, 0, 0x14, 0x66, 0x74, 0x79, 0x70, 0x71, 0x74, 0x20, 0x20 })]
+    [InlineData("voice.m4a", new byte[] { 0, 0, 0, 0x20, 0x66, 0x74, 0x79, 0x70, 0x4D, 0x34, 0x41, 0x20 })]
+    [InlineData("clip.webm", new byte[] { 0x1A, 0x45, 0xDF, 0xA3, 0x9F, 0x42, 0x86, 0x81 })]
+    [InlineData("voice.ogg", new byte[] { 0x4F, 0x67, 0x67, 0x53, 0x00, 0x02, 0x00, 0x00 })]
+    [InlineData("voice.wav", new byte[] { 0x52, 0x49, 0x46, 0x46, 0x24, 0x08, 0, 0, 0x57, 0x41, 0x56, 0x45 })]
+    [InlineData("song.mp3", new byte[] { 0x49, 0x44, 0x33, 0x04, 0x00, 0x00, 0x00, 0x00 })]
+    [InlineData("song-no-tag.mp3", new byte[] { 0xFF, 0xFB, 0x90, 0x64, 0x00, 0x00, 0x00, 0x00 })]
+    public void ValidateSignature_RealMediaHeaders_AreAccepted(string fileName, byte[] header)
+    {
+        using var content = new MemoryStream(header);
+
+        Assert.True(_policy.ValidateSignature(fileName, content).IsSuccess);
+    }
+
+    [Fact]
+    public void ValidateSignature_CsvText_IsAccepted()
+    {
+        using var content = new MemoryStream(System.Text.Encoding.UTF8.GetBytes("\uFEFFfirst_name,last_name\nAda,Lovelace\n"));
+
+        Assert.True(_policy.ValidateSignature("employees.csv", content).IsSuccess);
+    }
+
+    [Fact]
+    public void ValidateSignature_XlsxRenamedToCsv_IsRejected()
+    {
+        using var content = new MemoryStream(new byte[] { 0x50, 0x4B, 0x03, 0x04, 0x14, 0x00, 0x06, 0x00 });
+
+        Assert.False(_policy.ValidateSignature("employees.csv", content).IsSuccess);
+    }
+
+    [Fact]
+    public void GenerateStorageKey_UsesAServerGeneratedObjectName()
+    {
+        var tenantId = Guid.NewGuid();
+        var reservationId = Guid.NewGuid();
+        var safeFileName = _policy.SanitizeFileName("Passport scan (Ada).pdf");
+
+        var key = _policy.GenerateStorageKey(tenantId, reservationId, "employee_document", safeFileName);
+
+        Assert.Equal($"tenants/{tenantId:N}/employee_document/{reservationId:N}/content.pdf", key);
     }
 }

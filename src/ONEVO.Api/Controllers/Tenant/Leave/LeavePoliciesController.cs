@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using ONEVO.Api.Contracts.Leave.Policies;
 using ONEVO.Api.Filters;
+using ONEVO.Application.Common.Authorization;
 using ONEVO.Application.Common.Models;
 using ONEVO.Application.Features.Leave.Policy.Commands.AddLeavePolicyVersion;
 using ONEVO.Application.Features.Leave.Policy.Commands.CloneLeavePolicy;
@@ -30,58 +31,58 @@ public class LeavePoliciesController : ControllerBase
     }
 
     [HttpGet]
-    [RequirePermission("leave:read")]
+    [RequirePermission(PermissionCatalog.Leave.Read)]
     public async Task<IActionResult> List([FromQuery] bool includeInactive = false, CancellationToken ct = default) =>
         ToResult(await _mediator.Send(new ListLeavePoliciesQuery(includeInactive), ct));
 
     [HttpGet("{leavePolicyId:guid}")]
-    [RequirePermission("leave:read")]
+    [RequirePermission(PermissionCatalog.Leave.Read)]
     public async Task<IActionResult> Get(Guid leavePolicyId, CancellationToken ct = default) =>
         ToResult(await _mediator.Send(new GetLeavePolicyQuery(leavePolicyId), ct));
 
     [HttpPost]
-    [RequirePermission("leave:manage")]
+    [RequirePermission(PermissionCatalog.Leave.Manage)]
     public async Task<IActionResult> Create([FromBody] CreateLeavePolicyRequest request, CancellationToken ct = default) =>
         ToWriteResult(await _mediator.Send(new CreateLeavePolicyCommand(
             request.LeaveTypeId, request.Name, request.Description, request.Rules.ToInput(),
             Targets(request.Assignments), request.ReplaceConflicts), ct));
 
     [HttpPut("{leavePolicyId:guid}")]
-    [RequirePermission("leave:manage")]
+    [RequirePermission(PermissionCatalog.Leave.Manage)]
     public async Task<IActionResult> UpdateDetails(
         Guid leavePolicyId, [FromBody] UpdateLeavePolicyDetailsRequest request, CancellationToken ct = default) =>
         ToResult(await _mediator.Send(new UpdateLeavePolicyDetailsCommand(leavePolicyId, request.Name, request.Description), ct));
 
     [HttpPost("{leavePolicyId:guid}/versions")]
-    [RequirePermission("leave:manage")]
+    [RequirePermission(PermissionCatalog.Leave.Manage)]
     public async Task<IActionResult> AddVersion(
         Guid leavePolicyId, [FromBody] AddLeavePolicyVersionRequest request, CancellationToken ct = default) =>
         ToResult(await _mediator.Send(new AddLeavePolicyVersionCommand(leavePolicyId, request.ApplyFrom, request.Rules.ToInput()), ct));
 
     [HttpDelete("{leavePolicyId:guid}/versions/{versionId:guid}")]
-    [RequirePermission("leave:manage")]
+    [RequirePermission(PermissionCatalog.Leave.Manage)]
     public async Task<IActionResult> DeleteVersion(Guid leavePolicyId, Guid versionId, CancellationToken ct = default) =>
         ToResult(await _mediator.Send(new DeleteLeavePolicyVersionCommand(leavePolicyId, versionId), ct));
 
     [HttpPut("{leavePolicyId:guid}/assignments")]
-    [RequirePermission("leave:manage")]
+    [RequirePermission(PermissionCatalog.Leave.Manage)]
     public async Task<IActionResult> SetAssignments(
         Guid leavePolicyId, [FromBody] SetLeavePolicyAssignmentsRequest request, CancellationToken ct = default) =>
         ToWriteResult(await _mediator.Send(new SetLeavePolicyAssignmentsCommand(
             leavePolicyId, Targets(request.Assignments), request.ReplaceConflicts), ct));
 
     [HttpPost("{leavePolicyId:guid}/activate")]
-    [RequirePermission("leave:manage")]
+    [RequirePermission(PermissionCatalog.Leave.Manage)]
     public async Task<IActionResult> Activate(Guid leavePolicyId, CancellationToken ct = default) =>
         ToResult(await _mediator.Send(new SetLeavePolicyActiveCommand(leavePolicyId, true), ct));
 
     [HttpPost("{leavePolicyId:guid}/deactivate")]
-    [RequirePermission("leave:manage")]
+    [RequirePermission(PermissionCatalog.Leave.Manage)]
     public async Task<IActionResult> Deactivate(Guid leavePolicyId, CancellationToken ct = default) =>
         ToResult(await _mediator.Send(new SetLeavePolicyActiveCommand(leavePolicyId, false), ct));
 
     [HttpPost("{leavePolicyId:guid}/clone")]
-    [RequirePermission("leave:manage")]
+    [RequirePermission(PermissionCatalog.Leave.Manage)]
     public async Task<IActionResult> Clone(
         Guid leavePolicyId, [FromBody] CloneLeavePolicyRequest request, CancellationToken ct = default) =>
         ToResult(await _mediator.Send(new CloneLeavePolicyCommand(leavePolicyId, request.Name), ct));

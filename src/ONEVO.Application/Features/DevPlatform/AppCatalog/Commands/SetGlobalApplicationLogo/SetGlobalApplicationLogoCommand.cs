@@ -3,6 +3,7 @@ using ONEVO.Application.Common.Models;
 using ONEVO.Application.Common.RepositoryInterfaces;
 using ONEVO.Application.Features.DevPlatform.AppCatalog.DTOs;
 using ONEVO.Application.Features.DevPlatform.AppCatalog.RepositoryInterfaces;
+using ONEVO.Application.Features.Storage.File.ServiceInterfaces;
 
 namespace ONEVO.Application.Features.DevPlatform.AppCatalog.Commands.SetGlobalApplicationLogo;
 
@@ -14,7 +15,8 @@ public sealed record SetGlobalApplicationLogoCommand(
 
 public sealed class SetGlobalApplicationLogoCommandHandler(
     IGlobalApplicationRepository applications,
-    IUnitOfWork unitOfWork)
+    IUnitOfWork unitOfWork,
+    IImageSanitizer imageSanitizer)
     : IRequestHandler<SetGlobalApplicationLogoCommand, Result<GlobalApplicationDto>>
 {
     private static readonly IReadOnlySet<string> AllowedTypes = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
@@ -34,8 +36,33 @@ public sealed class SetGlobalApplicationLogoCommandHandler(
         if (!HasExpectedSignature(request.Content, request.ContentType))
             return Result<GlobalApplicationDto>.Failure("Logo content does not match its declared image type.", 400);
 
-        app.Logo = request.Content;
-        app.LogoContentType = request.ContentType.ToLowerInvariant();
+        // Task 23: PNG, JPEG and WebP logos are re-encoded, which drops metadata and hidden bytes.
+        // GIF cannot be re-encoded without losing animation; it is kept as sent and, like every file
+        // the API returns, served as an attachment with nosniff (UserFileResponseFilter).
+        var logo = request.Content;
+        var logoContentType = request.ContentType.ToLowerInvariant();
+        var sanitizerName = logoContentType switch
+        {
+            "image/png" => "logo.png",
+            "image/jpeg" => "logo.jpg",
+            "image/webp" => "logo.webp",
+            _ => null
+        };
+        if (sanitizerName is not null)
+        {
+            using var source = new MemoryStream(request.Content, writable: false);
+            var sanitized = await imageSanitizer.SanitizeAsync(sanitizerName, source, ct);
+            if (!sanitized.IsSuccess)
+                return Result<GlobalApplicationDto>.Failure(sanitized.Error!, sanitized.StatusCode ?? 400);
+            await using var output = sanitized.Value!.Content;
+            using var buffer = new MemoryStream();
+            await output.CopyToAsync(buffer, ct);
+            logo = buffer.ToArray();
+            logoContentType = sanitized.Value.ContentType;
+        }
+
+        app.Logo = logo;
+        app.LogoContentType = logoContentType;
         app.CreatedById ??= request.ActorId;
         app.UpdatedAt = DateTimeOffset.UtcNow;
         await unitOfWork.SaveChangesAsync(ct);

@@ -18,6 +18,6 @@ public sealed class DailyWorkLocationConfirmationConfiguration
             .HasDatabaseName("ux_daily_work_location_confirmations_tenant_employee_date");
 
         builder.HasOne<ONEVO.Domain.Features.CoreHr.Entities.Employee>()
-            .WithMany().HasForeignKey(x => x.EmployeeId).OnDelete(DeleteBehavior.Cascade);
+            .WithMany().HasForeignKey(x => x.EmployeeId).OnDelete(DeleteBehavior.NoAction);
     }
 }

@@ -1,3 +1,4 @@
+using ONEVO.Application.Common.Authorization;
 using ONEVO.Application.Common.ServiceInterfaces;
 using ONEVO.Application.Features.CoreHr.OnboardingDrafts.RepositoryInterfaces;
 using ONEVO.Domain.Features.Auth.Entities;
@@ -22,7 +23,7 @@ public interface IEmployeeInvitationAccess
 /// </summary>
 public sealed class EmployeeInvitationAccess : IEmployeeInvitationAccess
 {
-    public const string ManagePermission = "users:manage";
+    public const string ManagePermission = PermissionCatalog.Users.Manage;
 
     private readonly IOnboardingDraftRepository _drafts;
     private readonly ICurrentUser _currentUser;

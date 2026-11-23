@@ -2,6 +2,7 @@ using MediatR;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using ONEVO.Api.Filters;
+using ONEVO.Application.Common.Authorization;
 using ONEVO.Application.Features.Monitoring.AppUsage.Queries.GetAppUsageSnapshots;
 
 namespace ONEVO.Api.Controllers.Tenant.Monitoring.AppUsage;
@@ -21,7 +22,8 @@ public class MonitoringAppUsageController : ControllerBase
     public MonitoringAppUsageController(IMediator mediator) => _mediator = mediator;
 
     [HttpGet("snapshots")]
-    [RequirePermission("monitoring:read")]
+    [RequirePermission(PermissionCatalog.Monitoring.Read)]
+    [RequireVisibleEmployee("employeeId")]
     public async Task<IActionResult> GetSnapshots(
         [FromQuery] Guid employeeId,
         [FromQuery] DateOnly date,

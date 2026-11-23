@@ -1,3 +1,4 @@
+using ONEVO.Application.Common.Authorization;
 using ONEVO.Application.Common.ServiceInterfaces;
 using ONEVO.Application.Features.Auth.Login.RepositoryInterfaces;
 using ONEVO.Application.Features.Auth.Permission.RepositoryInterfaces;
@@ -15,8 +16,8 @@ public sealed record OnboardingApprover(Guid UserId, Guid? EmployeeId, string Na
 /// </summary>
 public sealed class OnboardingApprovers
 {
-    public const string PositionApprovalPermission = "roles:manage";
-    public const string SeatIncreasePermission = "billing:manage";
+    public const string PositionApprovalPermission = PermissionCatalog.Roles.Manage;
+    public const string SeatIncreasePermission = PermissionCatalog.Billing.Manage;
 
     private readonly IPermissionRepository _permissions;
     private readonly IUserRepository _users;

@@ -1,3 +1,5 @@
+using ONEVO.Application.Common.Authorization;
+
 namespace ONEVO.Application.Features.Monitoring.Exceptions.Services;
 
 /// <summary>
@@ -10,11 +12,11 @@ namespace ONEVO.Application.Features.Monitoring.Exceptions.Services;
 /// </summary>
 public static class ExceptionPermissions
 {
-    public const string ManagerReview = "attendance:approve";
-    public const string HrReview = "employees:write";
-    public const string HrManage = "exceptions:manage";
-    public const string View = "exceptions:view";
-    public const string Acknowledge = "exceptions:acknowledge";
+    public const string ManagerReview = PermissionCatalog.Attendance.Approve;
+    public const string HrReview = PermissionCatalog.Employees.Write;
+    public const string HrManage = PermissionCatalog.Exceptions.Manage;
+    public const string View = PermissionCatalog.Exceptions.View;
+    public const string Acknowledge = PermissionCatalog.Exceptions.Acknowledge;
 
     public const string DetectedTemplate = "exception_alert_detected";
     public const string EscalatedTemplate = "exception_alert_escalated";
