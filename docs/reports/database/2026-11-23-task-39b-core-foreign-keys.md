@@ -10,7 +10,7 @@ Task file: `docs/Improvements/person-1-security-and-auth/task-39b Remaining core
 | Foreign keys from `ReferenceForeignKeys` | 59 | 98 (39 new) |
 | Allow-list lines in `missing-foreign-keys.txt` | 418 | 379 |
 
-- **Migration**: `20261123045150_AddCoreForeignKeys39b`, generated with `dotnet ef migrations add`. It adds 39 foreign keys and the 37 indexes they need (two columns already had one). It changes no table or column and has no hand-written SQL.
+- **Migration**: `20261123045150_AddCoreForeignKeys39b`, generated with `dotnet ef migrations add`. It adds 39 foreign keys and the 37 indexes they need (two columns already had one). It changes no table or column. Its only hand-written part is the `task_assignments.assigned_by_id` data repair that runs first (see "Bad data").
 - **Keys**: `src/ONEVO.Infrastructure/Persistence/Integrity/ReferenceForeignKeys.cs`, the sections marked "Task 39b".
 
 ### The 39 keys
@@ -60,11 +60,48 @@ Parents that the application hard-deletes were checked one by one (`.Remove(`, `
 
 ## Bad data in the local database
 
-**Not checked.** The orphan count against the local `CrownusDb` (localhost) was blocked: the auto-mode classifier refused the database connection, which needs the `sa` password from the repo-root `.env`. For the same reason the migration has **not** been applied to the local database. The UAT database was not touched.
+The agent could not connect: the auto-mode classifier refused the connection, which needs the `sa` password from the repo-root `.env`. The user ran the read-only query below on the local `CrownusDb` (localhost). The UAT database was not touched.
 
-Expect orphans in a local database seeded before this task: the demo seeders wrote user ids into `task_assignments.assigned_by_id`. The seeder fix only changes new rows, because the seeders skip rows that already exist. If orphans exist, the migration fails as a whole and changes nothing; no data is deleted.
+| Result | Columns |
+|---|---|
+| **417 orphans out of 417 non-null rows** | `task_assignments.assigned_by_id` → `employees`. Samples: `CD49A0C2-E978-4055-B8BE-7D46A3727E94`, `E877629A-4E75-4A6D-C8C6-3AE7043681F8`, `CCACF259-DFC0-FE2A-142B-BAC4AE110F3C` |
+| Table missing locally | `work_modes`, which both work-mode columns point at. The local database is behind on migrations. `dotnet ef database update` applies the earlier migration that creates `work_modes` before this one. 39b only adds keys on nullable columns and needs no `work_modes` rows. |
+| 0 orphans | every other column |
 
-To count them, run this read-only query as `sa` on the local database. It prints, for each column, the non-null rows, the orphans and up to 3 sample ids.
+### Repair of `task_assignments.assigned_by_id`
+
+The demo seeders wrote the assigner's user id where the application writes an employee id. The column is `NOT NULL`, so `SET NULL` is not possible. The migration now runs a hand-written repair (`AddCoreForeignKeys39b.RepairTaskAssignmentAssignedBySql`) before it adds any key:
+
+- A value that matches `users.id` is replaced with that user's employee in the task's tenant: an active employee first, then the one in the project's owning legal entity, then the oldest.
+- A value that is already an employee id is not touched. No row is deleted.
+- If a value is still unmatched (neither an employee id nor a user with an employee in that tenant), the repair stops with error 50039 and a count. The migration runs in one transaction, so nothing changes. Those rows then need a decision; they are never guessed.
+
+`TaskAssignmentAssignedByRepairTests` (integration) covers both paths: a user id is mapped and the key's `WITH CHECK` succeeds, and an unknown id stops the repair and stays as it is.
+
+Before applying the migration, this read-only preview shows how the 417 local rows would come out (`maps to employee`, `user without employee in tenant`, `unknown id`). Only `maps to employee` lets the migration through:
+
+```sql
+SET NOCOUNT ON;
+EXEC sp_set_session_context N'app.tenant_context_mode', N'admin';
+WITH bad AS (
+    SELECT ta.id, ta.assigned_by_id, t.tenant_id
+    FROM dbo.task_assignments ta JOIN dbo.tasks t ON t.id = ta.task_id
+    WHERE NOT EXISTS (SELECT 1 FROM dbo.employees e WHERE e.id = ta.assigned_by_id))
+SELECT CASE
+         WHEN EXISTS (SELECT 1 FROM dbo.employees e WHERE e.user_id = b.assigned_by_id AND e.tenant_id = b.tenant_id) THEN 'maps to employee'
+         WHEN EXISTS (SELECT 1 FROM dbo.users u WHERE u.id = b.assigned_by_id) THEN 'user without employee in tenant'
+         ELSE 'unknown id' END AS outcome,
+       COUNT(*) AS rows_
+FROM bad b GROUP BY CASE
+         WHEN EXISTS (SELECT 1 FROM dbo.employees e WHERE e.user_id = b.assigned_by_id AND e.tenant_id = b.tenant_id) THEN 'maps to employee'
+         WHEN EXISTS (SELECT 1 FROM dbo.users u WHERE u.id = b.assigned_by_id) THEN 'user without employee in tenant'
+         ELSE 'unknown id' END;
+EXEC sp_set_session_context N'app.tenant_context_mode', NULL;
+```
+
+The migration has **not** been applied to the local database yet.
+
+The orphan count query, read-only, run as `sa`. It prints, for each column, the non-null rows, the orphans and up to 3 sample ids.
 
 ```sql
 SET NOCOUNT ON;

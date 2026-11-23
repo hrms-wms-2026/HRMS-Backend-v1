@@ -46,9 +46,9 @@ The integration suite showed that these keys are right for the application but b
 
 Done on branch `claude/improve-task-39b-core-fks` (from origin/development b6fabb74f). Report: `docs/reports/database/2026-11-23-task-39b-core-foreign-keys.md`.
 
-- Migration: `20261123045150_AddCoreForeignKeys39b`, generated with `dotnet ef migrations add`. 39 foreign keys and 37 indexes; no table or column change, no hand-written SQL. Not applied to any shared database.
+- Migration: `20261123045150_AddCoreForeignKeys39b`, generated with `dotnet ef migrations add`. 39 foreign keys and 37 indexes; no table or column change. One hand-written step runs first: the `task_assignments.assigned_by_id` data repair (user id to employee id, stops with error 50039 if a value cannot be mapped; never deletes). Not applied to any shared database.
 - All 43 `task-39b` lines are gone from `missing-foreign-keys.txt` (418 → 379 lines). 39 columns have a key. Four have a reason instead: `attendance_alert_deductions.alert_id` (needs a product decision to soft-delete alerts), `employees.nationality_id` and `reporting_manager_changes.batch_id` (`external`), and `task_statuses.approver_id` (`unused`, a dead field).
 - Every key is NO ACTION (Restrict on `position_reporting_history`, like its other keys). `DeleteLeavePolicyVersion` and `AddLeavePolicyVersion` now refuse to delete a version that leave rows use. Roles are soft-deleted, so `positions.default_role_id` is safe.
 - The demo seeders wrote the owner's user id into `task_assignments.assigned_by_id`. They now write the employee id, as the application does.
 - Test fixtures fixed: shared `TestUsers` helper, real closure source assignments, real assignment user ids, real draft owners and project.
-- Local `CrownusDb` orphan check and migration apply: not done. The session was not allowed to connect to the database. The report has the read-only orphan query.
+- Local `CrownusDb` orphan check (run by the user): 417 of 417 `task_assignments.assigned_by_id` rows are orphans (old seeder user ids), all other columns 0. `work_modes` is missing locally because the database is behind on migrations. The migration repairs `assigned_by_id` first (`TaskAssignmentAssignedByRepairTests`). Not applied to the local database yet; the report has a read-only preview query.
