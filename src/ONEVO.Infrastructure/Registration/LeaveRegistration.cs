@@ -89,6 +89,9 @@ internal static class LeaveRegistration
             ONEVO.Application.Features.Leave.Approval.RepositoryInterfaces.ILeaveApprovalRepository,
             ONEVO.Infrastructure.Persistence.Repositories.Leave.Approval.EfLeaveApprovalRepository>();
         services.AddScoped<ONEVO.Application.Features.Leave.Approval.Commands.LeaveApprovalDecisionService>();
+        // Task 37: leave writes its inbox_items header; leave badge counts read it.
+        services.AddScoped<ONEVO.Application.Features.Leave.Inbox.LeaveInboxEntrySync>();
+        services.AddScoped<ONEVO.Application.Features.Inbox.Contracts.IInboxHeaderCountSource, ONEVO.Application.Features.Leave.Inbox.LeaveInboxCountSource>();
         services.AddScoped<ONEVO.Application.Features.Leave.Approval.Services.LeaveRequestRangeEditor>();
 
         services.AddOptions<ONEVO.Application.Features.Leave.Cancellation.Options.LeaveCancellationOptions>()

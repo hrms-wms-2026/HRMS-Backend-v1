@@ -57,6 +57,7 @@ internal static class RecurringJobsRegistration
         services.AddBackgroundJob<ActivityDailySummaryJob>(configuration);
         services.AddBackgroundJob<ONEVO.Infrastructure.Services.Monitoring.Exceptions.ExceptionDetectionJob>(configuration);
         services.AddBackgroundJob<ONEVO.Infrastructure.Services.Inbox.InboxEscalationSweepJob>(configuration);
+        services.AddBackgroundJob<ONEVO.Infrastructure.Services.Inbox.InboxEntryConsistencyJob>(configuration);
         services.AddBackgroundJob<ONEVO.Infrastructure.Services.TimeAttendance.AttendanceAlertMaterializerJob>(configuration);
 
         services.AddBackgroundJob<
