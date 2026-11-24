@@ -125,4 +125,18 @@ The integration fixtures wrote creator ids that point at nothing. They were fixe
 
 ## Gate
 
-To be filled in after the full run.
+`verify.ps1 -Full`, folder `dev-env/reports/improve-task-39c-audit-fks/verify-20261124-171316`:
+
+| Step | Result |
+|---|---|
+| build | PASS |
+| unit | 8371 passed, 0 failed |
+| architecture | 841 passed, 0 failed |
+| integration | 1405 passed, 0 failed, 1 skipped |
+
+Earlier runs on this branch:
+
+- Integration run 1: 900 failures. 880 came from `wm_refresh_module_hour_summary` inserting `Guid.Empty` (fixed in the migration). The rest came from fixtures with random creators and from `clock_in_policies` (made nullable).
+- Integration run 4: 31 Meetings failures, all real (they failed again when run alone): random or employee ids used as creators. Fixtures fixed; the Meetings folder then passed 236 of 236.
+- `verify-20261124-170708`: architecture failed on `PaymentGatewayRules_StayInApplicationLayerExceptForProviderCatalogForeignKey` (real, failed again when run alone). The repair now leaves the payment gateway tables out (see "Hand-written SQL").
+- Two other runs did not count: one was cut off by a shell fork error, and one ran while Docker Desktop was stopped.
