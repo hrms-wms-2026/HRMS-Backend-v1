@@ -276,6 +276,10 @@ public sealed class ListEmployeesQueryHandlerAuthorityResolverIntegrationTests
         public Task<EmployeeEntity?> GetDefaultForUserAsync(Guid tenantId, Guid userId, CancellationToken ct = default)
             => Task.FromResult(DefaultEmployeeByUser.TryGetValue(userId, out var e) ? e : null);
 
+        public Task<IReadOnlyDictionary<Guid, EmployeeEntity>> ListDefaultForUsersAsync(Guid tenantId, IReadOnlyCollection<Guid> userIds, CancellationToken ct = default)
+            => Task.FromResult<IReadOnlyDictionary<Guid, EmployeeEntity>>(userIds
+                .Where(DefaultEmployeeByUser.ContainsKey).Distinct().ToDictionary(id => id, id => DefaultEmployeeByUser[id]));
+
         public Task<(IReadOnlyList<EmployeeListItemResponse> Items, int TotalCount)> ListVisibleAsync(
             Guid tenantId, EmployeeVisibilityScope scope, EmployeeListFilter filter, int page, int pageSize,
             CancellationToken ct = default, EmployeeListAttendanceOptions? attendanceOptions = null)

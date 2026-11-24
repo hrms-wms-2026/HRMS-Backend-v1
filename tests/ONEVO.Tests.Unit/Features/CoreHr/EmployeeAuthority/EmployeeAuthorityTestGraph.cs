@@ -314,6 +314,8 @@ internal sealed class EmployeeAuthorityTestGraph
             Guid tenantId, Guid inviterUserId, CancellationToken ct = default) => throw new NotImplementedException();
         public Task<DomainEmployee?> GetDefaultForUserAsync(Guid tenantId, Guid userId, CancellationToken ct = default)
             => throw new NotImplementedException();
+        public Task<IReadOnlyDictionary<Guid, DomainEmployee>> ListDefaultForUsersAsync(Guid tenantId, IReadOnlyCollection<Guid> userIds, CancellationToken ct = default)
+            => throw new NotImplementedException();
         public Task<DomainEmployee?> GetTrackedByIdAsync(Guid tenantId, Guid employeeId, CancellationToken ct = default)
             => throw new NotImplementedException();
         public Task<ulong?> GetVersionTokenAsync(Guid tenantId, Guid employeeId, CancellationToken ct = default)

@@ -899,6 +899,47 @@ public class EfEmployeeRepository : IEmployeeRepository
         return employees[0];
     }
 
+    public async Task<IReadOnlyDictionary<Guid, EmployeeEntity>> ListDefaultForUsersAsync(
+        Guid tenantId, IReadOnlyCollection<Guid> userIds, CancellationToken ct = default)
+    {
+        if (userIds.Count == 0)
+            return new Dictionary<Guid, EmployeeEntity>();
+
+        var ids = userIds.Distinct().ToList();
+        var employees = await _db.Employees.AsNoTracking()
+            .Where(e => e.TenantId == tenantId && ids.Contains(e.UserId))
+            .ToListAsync(ct);
+        var byUser = employees.GroupBy(e => e.UserId).ToDictionary(g => g.Key, g => g.ToList());
+
+        // Same rule as GetDefaultForUserAsync: a user with several Employee rows defaults to the one with the
+        // most recent active primary-employment assignment, else the first row.
+        var multiRowEmployeeIds = byUser.Values.Where(rows => rows.Count > 1).SelectMany(rows => rows).Select(e => e.Id).ToList();
+        var latestFromByEmployee = new Dictionary<Guid, DateOnly>();
+        if (multiRowEmployeeIds.Count > 0)
+        {
+            latestFromByEmployee = (await _db.PositionAssignments.AsNoTracking()
+                    .Where(pa => pa.TenantId == tenantId
+                        && multiRowEmployeeIds.Contains(pa.EmployeeId)
+                        && pa.AssignmentKind == PositionAssignmentKind.PrimaryEmployment
+                        && pa.AssignmentStatus == PositionAssignmentStatus.Active)
+                    .Select(pa => new { pa.EmployeeId, pa.EffectiveFrom })
+                    .ToListAsync(ct))
+                .GroupBy(pa => pa.EmployeeId)
+                .ToDictionary(g => g.Key, g => g.Max(pa => pa.EffectiveFrom));
+        }
+
+        return byUser.ToDictionary(pair => pair.Key, pair =>
+        {
+            var rows = pair.Value;
+            if (rows.Count == 1)
+                return rows[0];
+            var latest = rows.Where(e => latestFromByEmployee.ContainsKey(e.Id))
+                .OrderByDescending(e => latestFromByEmployee[e.Id])
+                .FirstOrDefault();
+            return latest ?? rows[0];
+        });
+    }
+
     public async Task<EmployeeEntity?> GetByUserAndLegalEntityAsync(
         Guid tenantId, Guid userId, Guid legalEntityId, CancellationToken ct = default)
         => await (

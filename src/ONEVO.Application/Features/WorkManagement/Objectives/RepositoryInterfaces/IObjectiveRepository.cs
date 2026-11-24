@@ -42,6 +42,10 @@ public interface IObjectiveRepository
     /// Head-scoped subtree in memory. Unlike GetTreeByProjectIdAsync, does not filter to active-only.</summary>
     Task<IReadOnlyList<Objective>> GetAllByProjectIdAsync(Guid tenantId, Guid projectId, CancellationToken ct = default);
 
+    /// <summary>Batch form of <see cref="GetAllByProjectIdAsync"/>: every Objective (active or not) of the given
+    /// projects in one query, unordered.</summary>
+    Task<IReadOnlyList<Objective>> GetAllByProjectIdsAsync(Guid tenantId, IReadOnlyCollection<Guid> projectIds, CancellationToken ct = default);
+
     /// <summary>
     /// Every active Objective whose ParentObjectiveId is exactly this one (one level, not
     /// recursive) — tracked, for the Reporting Manager cascade on Transfer (design §4): the

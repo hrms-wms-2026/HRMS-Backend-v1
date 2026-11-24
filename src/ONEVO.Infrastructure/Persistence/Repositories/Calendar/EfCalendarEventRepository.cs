@@ -51,6 +51,20 @@ public class EfCalendarEventRepository : ICalendarEventRepository
             .Where(e => e.TenantId == tenantId && e.RecurrenceParentId == masterId)
             .ToListAsync(ct);
 
+    public async Task<IReadOnlyDictionary<Guid, IReadOnlyList<CalendarEvent>>> GetChildrenForMastersAsync(
+        Guid tenantId, IReadOnlyCollection<Guid> masterIds, CancellationToken ct = default)
+    {
+        if (masterIds.Count == 0)
+            return new Dictionary<Guid, IReadOnlyList<CalendarEvent>>();
+
+        var ids = masterIds.ToList();
+        var rows = await _db.PersonalCalendarEvents.AsNoTracking()
+            .Where(e => e.TenantId == tenantId && e.RecurrenceParentId != null && ids.Contains(e.RecurrenceParentId.Value))
+            .ToListAsync(ct);
+        return rows.GroupBy(e => e.RecurrenceParentId!.Value)
+            .ToDictionary(g => g.Key, g => (IReadOnlyList<CalendarEvent>)g.ToList());
+    }
+
     public async Task<CalendarEvent?> GetTrackedChildByOriginalStartAsync(
         Guid tenantId, Guid masterId, DateTimeOffset originalStart, CancellationToken ct = default)
         => await _db.PersonalCalendarEvents.FirstOrDefaultAsync(

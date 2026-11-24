@@ -79,6 +79,11 @@ public interface IEmployeeRepository
     Task<ONEVO.Domain.Features.CoreHr.Entities.Employee?> GetDefaultForUserAsync(
         Guid tenantId, Guid userId, CancellationToken ct = default);
 
+    /// <summary>Batch form of <see cref="GetDefaultForUserAsync"/>: each user's default Employee row by the same
+    /// rule, in at most two queries. Users with no Employee row are absent from the result.</summary>
+    Task<IReadOnlyDictionary<Guid, ONEVO.Domain.Features.CoreHr.Entities.Employee>> ListDefaultForUsersAsync(
+        Guid tenantId, IReadOnlyCollection<Guid> userIds, CancellationToken ct = default);
+
     /// <summary>The caller's Employee row in a given legal entity, used when the company
     /// switcher posts a legal-entity id rather than an employee id.</summary>
     Task<ONEVO.Domain.Features.CoreHr.Entities.Employee?> GetByUserAndLegalEntityAsync(

@@ -17,6 +17,13 @@ public sealed class WorkHierarchyService : IWorkHierarchyService
     public async Task<ProjectModuleTree> LoadTreeAsync(Guid tenantId, Guid projectId, CancellationToken ct = default)
         => new(await _objectives.GetAllByProjectIdAsync(tenantId, projectId, ct));
 
+    public async Task<IReadOnlyDictionary<Guid, ProjectModuleTree>> LoadTreesAsync(
+        Guid tenantId, IReadOnlyCollection<Guid> projectIds, CancellationToken ct = default)
+    {
+        var modulesByProject = (await _objectives.GetAllByProjectIdsAsync(tenantId, projectIds, ct)).ToLookup(m => m.ProjectId);
+        return projectIds.Distinct().ToDictionary(id => id, id => new ProjectModuleTree(modulesByProject[id]));
+    }
+
     public async Task<Guid?> FindActiveHolderAsync(
         Guid tenantId, ProjectModuleTree tree, Guid positionModuleId, Guid excludingEmployeeId, CancellationToken ct = default)
     {

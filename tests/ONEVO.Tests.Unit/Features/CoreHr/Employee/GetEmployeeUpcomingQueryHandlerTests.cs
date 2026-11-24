@@ -51,6 +51,10 @@ public sealed class GetEmployeeUpcomingQueryHandlerTests
             .ReturnsAsync(Array.Empty<UpcomingReleaseRow>());
         _events.Setup(e => e.GetParticipantsForEventsAsync(_tenantId, It.IsAny<IReadOnlyList<Guid>>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(new Dictionary<Guid, IReadOnlyList<CalendarEventParticipant>>());
+        _events.Setup(e => e.GetChildrenForMastersAsync(_tenantId, It.IsAny<IReadOnlyCollection<Guid>>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new Dictionary<Guid, IReadOnlyList<CalendarEvent>>());
+        _employees.Setup(e => e.ListByIdsAsync(_tenantId, It.IsAny<IReadOnlyCollection<Guid>>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new Dictionary<Guid, EmployeeEntity>());
     }
 
     private GetEmployeeUpcomingQueryHandler CreateHandler() =>
@@ -113,8 +117,11 @@ public sealed class GetEmployeeUpcomingQueryHandlerTests
             .ReturnsAsync(new[] { master, privateMaster });
 
         var overridden = DateTimeOffset.Parse("2026-10-02T09:00:00+00:00");
-        _events.Setup(e => e.GetChildrenForMasterAsync(_tenantId, master.Id, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new[] { new CalendarEvent { Id = Guid.NewGuid(), RecurrenceOriginalStart = overridden } });
+        _events.Setup(e => e.GetChildrenForMastersAsync(_tenantId, It.Is<IReadOnlyCollection<Guid>>(ids => ids.Contains(master.Id)), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new Dictionary<Guid, IReadOnlyList<CalendarEvent>>
+            {
+                [master.Id] = new[] { new CalendarEvent { Id = Guid.NewGuid(), RecurrenceOriginalStart = overridden } }
+            });
         _expander.Setup(x => x.Expand("FREQ=DAILY", master.StartDate, It.IsAny<DateTimeOffset>(), It.IsAny<DateTimeOffset>()))
             .Returns(new[] { DateTimeOffset.Parse("2026-10-01T09:00:00+00:00"), overridden, DateTimeOffset.Parse("2026-10-03T09:00:00+00:00") });
 
@@ -123,7 +130,8 @@ public sealed class GetEmployeeUpcomingQueryHandlerTests
         result.Value!.Items.Select(i => i.Start).Should().Equal(
             DateTimeOffset.Parse("2026-10-01T09:00:00+00:00"), DateTimeOffset.Parse("2026-10-03T09:00:00+00:00"));
         result.Value.Items.Should().OnlyContain(i => i.Title == "Standup" && i.End == i.Start + TimeSpan.FromMinutes(15));
-        _events.Verify(e => e.GetChildrenForMasterAsync(_tenantId, privateMaster.Id, It.IsAny<CancellationToken>()), Times.Never);
+        _events.Verify(e => e.GetChildrenForMastersAsync(_tenantId,
+            It.Is<IReadOnlyCollection<Guid>>(ids => ids.SequenceEqual(new[] { master.Id })), It.IsAny<CancellationToken>()), Times.Once);
     }
 
     [Fact]
@@ -185,8 +193,11 @@ public sealed class GetEmployeeUpcomingQueryHandlerTests
             {
                 [meeting.Id] = new[] { new CalendarEventParticipant { EventId = meeting.Id, EmployeeId = aliceId } }
             });
-        _employees.Setup(e => e.GetByIdAsync(_tenantId, aliceId, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new EmployeeEntity { Id = aliceId, TenantId = _tenantId, FirstName = "Alice", LastName = "Smith" });
+        _employees.Setup(e => e.ListByIdsAsync(_tenantId, It.Is<IReadOnlyCollection<Guid>>(ids => ids.Contains(aliceId)), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new Dictionary<Guid, EmployeeEntity>
+            {
+                [aliceId] = new EmployeeEntity { Id = aliceId, TenantId = _tenantId, FirstName = "Alice", LastName = "Smith" }
+            });
 
         var result = await CreateHandler().Handle(new GetEmployeeUpcomingQuery(_employeeId), CancellationToken.None);
 
@@ -232,6 +243,34 @@ public sealed class GetEmployeeUpcomingQueryHandlerTests
         result.Value.Total.Should().Be(5);
         _events.Verify(e => e.GetParticipantsForEventsAsync(_tenantId,
             It.Is<IReadOnlyList<Guid>>(ids => ids.Count == 3), It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    /// <summary>Improvements task 14: series children and participant names are one batched call each, however
+    /// many series and participants there are.</summary>
+    [Fact]
+    public async Task Handle_UsesOneBatchedCallForChildrenAndNames_HoweverManySeriesAndParticipants()
+    {
+        var masters = Enumerable.Range(1, 4).Select(i =>
+        {
+            var m = Event($"Series {i}", "2026-09-01T09:00:00+00:00", "2026-09-01T09:30:00+00:00");
+            m.RecurrenceRule = "FREQ=WEEKLY";
+            return m;
+        }).ToArray();
+        _events.Setup(e => e.GetRecurringMastersForEmployeeAsync(_tenantId, _employeeId, It.IsAny<DateTimeOffset>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(masters);
+        _expander.Setup(x => x.Expand("FREQ=WEEKLY", It.IsAny<DateTimeOffset>(), It.IsAny<DateTimeOffset>(), It.IsAny<DateTimeOffset>()))
+            .Returns(new[] { DateTimeOffset.Parse("2026-10-01T09:00:00+00:00") });
+        _events.Setup(e => e.GetParticipantsForEventsAsync(_tenantId, It.IsAny<IReadOnlyList<Guid>>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(masters.ToDictionary(m => m.Id, m => (IReadOnlyList<CalendarEventParticipant>)Enumerable.Range(0, 3)
+                .Select(_ => new CalendarEventParticipant { EventId = m.Id, EmployeeId = Guid.NewGuid() }).ToList()));
+
+        var result = await CreateHandler().Handle(new GetEmployeeUpcomingQuery(_employeeId), CancellationToken.None);
+
+        result.Value!.Items.Should().HaveCount(4).And.OnlyContain(i => i.Participants!.SequenceEqual(new[] { "Unknown", "Unknown", "Unknown" }));
+        _events.Verify(e => e.GetChildrenForMastersAsync(_tenantId, It.Is<IReadOnlyCollection<Guid>>(ids => ids.Count == 4), It.IsAny<CancellationToken>()), Times.Once);
+        _events.Verify(e => e.GetChildrenForMasterAsync(It.IsAny<Guid>(), It.IsAny<Guid>(), It.IsAny<CancellationToken>()), Times.Never);
+        _employees.Verify(e => e.ListByIdsAsync(_tenantId, It.Is<IReadOnlyCollection<Guid>>(ids => ids.Count == 12), It.IsAny<CancellationToken>()), Times.Once);
+        _employees.Verify(e => e.GetByIdAsync(_tenantId, It.Is<Guid>(id => id != _employeeId), It.IsAny<CancellationToken>()), Times.Never);
     }
 
     [Theory]

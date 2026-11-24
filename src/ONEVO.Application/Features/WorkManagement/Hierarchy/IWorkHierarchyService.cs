@@ -9,6 +9,11 @@ public interface IWorkHierarchyService
 {
     Task<ProjectModuleTree> LoadTreeAsync(Guid tenantId, Guid projectId, CancellationToken ct = default);
 
+    /// <summary>The Module trees of several projects in one query, keyed by project id. A project with no
+    /// Modules gets an empty tree.</summary>
+    Task<IReadOnlyDictionary<Guid, ProjectModuleTree>> LoadTreesAsync(
+        Guid tenantId, IReadOnlyCollection<Guid> projectIds, CancellationToken ct = default);
+
     /// <summary>Walks the position Module and then its ancestors, and returns the first owner who is
     /// an active employee and is not excludingEmployeeId. Null if nobody qualifies.</summary>
     Task<Guid?> FindActiveHolderAsync(

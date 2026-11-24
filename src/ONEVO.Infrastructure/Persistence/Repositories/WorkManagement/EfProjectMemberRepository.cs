@@ -63,6 +63,35 @@ public class EfProjectMemberRepository : IProjectMemberRepository
         return ObjectiveTreeExpander.ExpandWithDescendants(membershipObjectiveIds, objectiveTree).ToList();
     }
 
+    public async Task<IReadOnlyDictionary<Guid, IReadOnlyList<Guid>>> GetActiveObjectiveIdsForEmployeeInProjectsAsync(
+        Guid tenantId, IReadOnlyCollection<Guid> projectIds, Guid employeeId, CancellationToken ct = default)
+    {
+        if (projectIds.Count == 0)
+            return new Dictionary<Guid, IReadOnlyList<Guid>>();
+
+        var ids = projectIds.ToList();
+        var memberships = await _db.ProjectMembers.AsNoTracking()
+            .Where(m => m.TenantId == tenantId && ids.Contains(m.ProjectId) && m.EmployeeId == employeeId && m.IsActive)
+            .Select(m => new { m.ProjectId, m.ObjectiveId })
+            .ToListAsync(ct);
+        if (memberships.Count == 0)
+            return new Dictionary<Guid, IReadOnlyList<Guid>>();
+
+        var memberProjectIds = memberships.Select(m => m.ProjectId).Distinct().ToList();
+        var activeNodesByProject = (await _db.Objectives.AsNoTracking()
+                .Where(o => o.TenantId == tenantId && memberProjectIds.Contains(o.ProjectId) && o.IsActive)
+                .Select(o => new { o.ProjectId, o.Id, o.ParentObjectiveId })
+                .ToListAsync(ct))
+            .GroupBy(o => o.ProjectId)
+            .ToDictionary(g => g.Key, g => g.Select(o => new ObjectiveTreeNode(o.Id, o.ParentObjectiveId)).ToList());
+
+        return memberships.GroupBy(m => m.ProjectId).ToDictionary(
+            g => g.Key,
+            g => (IReadOnlyList<Guid>)ObjectiveTreeExpander.ExpandWithDescendants(
+                g.Select(m => m.ObjectiveId).ToList(),
+                activeNodesByProject.GetValueOrDefault(g.Key) ?? []).ToList());
+    }
+
     public async Task<IReadOnlyList<Guid>> ListActiveMembershipObjectiveIdsAsync(Guid tenantId, Guid employeeId, IReadOnlyCollection<Guid> projectIds, CancellationToken ct = default)
     {
         if (projectIds.Count == 0)

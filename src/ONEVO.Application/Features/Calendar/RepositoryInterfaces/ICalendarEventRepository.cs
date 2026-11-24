@@ -26,6 +26,11 @@ public interface ICalendarEventRepository
     /// call sites use it.</summary>
     Task<IReadOnlyList<CalendarEvent>> GetChildrenForMasterAsync(Guid tenantId, Guid masterId, CancellationToken ct = default);
 
+    /// <summary>The detached-occurrence and cancellation-marker rows of several masters in one query, keyed by
+    /// master id (no-tracking; read paths only). A master with no children is absent from the result.</summary>
+    Task<IReadOnlyDictionary<Guid, IReadOnlyList<CalendarEvent>>> GetChildrenForMastersAsync(
+        Guid tenantId, IReadOnlyCollection<Guid> masterIds, CancellationToken ct = default);
+
     /// <summary>The tracked child row (detached or cancellation-marker) for one exact occurrence,
     /// or null if that occurrence has never been edited/cancelled before.</summary>
     Task<CalendarEvent?> GetTrackedChildByOriginalStartAsync(
