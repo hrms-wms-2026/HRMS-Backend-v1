@@ -39,7 +39,7 @@ public sealed class MeetingSplitEdgeIntegrationTests
     {
         await using var db = w.H.NewContext();
         return await new MeetingTestServices(db, new MeetingTestClock(Now)).Edits.EditAsync(
-            w.H.TenantId, w.Organizer, Guid.NewGuid(), seriesId, at, edit, CancellationToken.None);
+            w.H.TenantId, w.Organizer, w.H.UserIdOf(w.Organizer), seriesId, at, edit, CancellationToken.None);
     }
 
     private static EditMeetingRequest Following(string? title = null, DateTimeOffset? start = null, string? rule = null)
@@ -136,7 +136,7 @@ public sealed class MeetingSplitEdgeIntegrationTests
         await using (var db = w.H.NewContext())
         {
             var cancelled = await new MeetingTestServices(db, new MeetingTestClock(Now)).Cancels.CancelAsync(
-                w.H.TenantId, w.Organizer, Guid.NewGuid(), w.Series.Id, First.AddDays(7), MeetingScopes.All, CancellationToken.None);
+                w.H.TenantId, w.Organizer, w.H.UserIdOf(w.Organizer), w.Series.Id, First.AddDays(7), MeetingScopes.All, CancellationToken.None);
             Assert.True(cancelled.IsSuccess, cancelled.Error);
         }
 

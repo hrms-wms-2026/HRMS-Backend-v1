@@ -378,4 +378,12 @@ public sealed class MyTeamDb
     public static Guid UserIdOf(ApplicationDbContext db, Guid employeeId) =>
         db.Employees.Local.FirstOrDefault(e => e.Id == employeeId)?.UserId
         ?? db.Employees.IgnoreQueryFilters().Where(e => e.Id == employeeId).Select(e => e.UserId).First();
+
+    /// <summary>The user id of a saved fixture employee, for a caller's user id (an audit column's key to users,
+    /// task 39c, rejects a made-up one).</summary>
+    public Guid UserIdOf(Guid employeeId)
+    {
+        using var db = NewContext();
+        return UserIdOf(db, employeeId);
+    }
 }

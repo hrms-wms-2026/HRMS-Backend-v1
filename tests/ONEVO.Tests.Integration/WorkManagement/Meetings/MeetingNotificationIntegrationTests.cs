@@ -57,7 +57,7 @@ public sealed class MeetingNotificationIntegrationTests
     private static async Task EditAsync(World w, DateTimeOffset at, EditMeetingRequest edit)
     {
         await using var db = w.H.NewContext();
-        var result = await Services(db).Edits.EditAsync(w.H.TenantId, w.Organizer, Guid.NewGuid(), w.Series.Id, at, edit, CancellationToken.None);
+        var result = await Services(db).Edits.EditAsync(w.H.TenantId, w.Organizer, w.H.UserIdOf(w.Organizer), w.Series.Id, at, edit, CancellationToken.None);
         Assert.True(result.IsSuccess, result.Error);
     }
 
@@ -78,7 +78,7 @@ public sealed class MeetingNotificationIntegrationTests
         await using (var db = h.NewContext())
         {
             var s = Services(db);
-            var created = await s.UnitOfWork.ExecuteInTransactionAsync(ct => s.Factory.CreateDirectAsync(h.TenantId, organizer, Guid.NewGuid(),
+            var created = await s.UnitOfWork.ExecuteInTransactionAsync(ct => s.Factory.CreateDirectAsync(h.TenantId, organizer, h.UserIdOf(organizer),
                 new ONEVO.Application.Features.WorkManagement.Meetings.Services.MeetingPlacement(at.ProjectId, at.ObjectiveId, IsOffice: false, Direct: true),
                 new CreateMeetingRequest(at.ProjectId, at.ObjectiveId, "Kickoff", null, null, false,
                     Now.AddDays(2), 30, false, "UTC", "FREQ=WEEKLY", [attendee], ["client@example.com"], null),
@@ -153,7 +153,7 @@ public sealed class MeetingNotificationIntegrationTests
         async Task CancelAsync(string scope)
         {
             await using var db = w.H.NewContext();
-            var result = await Services(db).Cancels.CancelAsync(w.H.TenantId, w.Organizer, Guid.NewGuid(), w.Series.Id, First.AddDays(7), scope, CancellationToken.None);
+            var result = await Services(db).Cancels.CancelAsync(w.H.TenantId, w.Organizer, w.H.UserIdOf(w.Organizer), w.Series.Id, First.AddDays(7), scope, CancellationToken.None);
             Assert.True(result.IsSuccess, result.Error);
         }
 
@@ -227,13 +227,13 @@ public sealed class MeetingNotificationIntegrationTests
         // Taken off next week's occurrence, then put back on it: they attend it again and get its invite.
         var w = await SeedAsync();
         await using (var db = w.H.NewContext())
-            Assert.True((await Services(db).Attendees.RemoveOccurrenceEmployeeAsync(w.H.TenantId, w.Organizer, Guid.NewGuid(),
+            Assert.True((await Services(db).Attendees.RemoveOccurrenceEmployeeAsync(w.H.TenantId, w.Organizer, w.H.UserIdOf(w.Organizer),
                 w.Series.Id, First.AddDays(7), w.Attendee, CancellationToken.None)).IsSuccess);
         var before = EmailKeys(await OutboxAsync(w.H), CalendarEventEmailKinds.Invite).Count;
 
         await using (var db = w.H.NewContext())
         {
-            var added = await Services(db).Attendees.AddOccurrenceAttendeesAsync(w.H.TenantId, w.Organizer, Guid.NewGuid(),
+            var added = await Services(db).Attendees.AddOccurrenceAttendeesAsync(w.H.TenantId, w.Organizer, w.H.UserIdOf(w.Organizer),
                 w.Series.Id, First.AddDays(7), new MeetingAttendeesRequest([w.Attendee], []), CancellationToken.None);
             Assert.True(added.IsSuccess, added.Error);
             Assert.Equal(1, added.Value!.Added);

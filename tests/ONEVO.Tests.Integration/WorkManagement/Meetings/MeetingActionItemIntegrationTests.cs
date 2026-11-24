@@ -458,7 +458,7 @@ public sealed class MeetingActionItemIntegrationTests
 
             var services = new MeetingTestServices(db, new MeetingTestClock(First.AddDays(6)));
             var edited = await services.Edits.EditAsync(
-                h.TenantId, organizer.Id, Guid.NewGuid(), series.Id, First.AddDays(7),
+                h.TenantId, organizer.Id, organizer.UserId, series.Id, First.AddDays(7),
                 new EditMeetingRequest(MeetingScopes.Following, 0, null, null, null, null, null, null, null, null,
                     "FREQ=WEEKLY;COUNT=1"),
                 CancellationToken.None);

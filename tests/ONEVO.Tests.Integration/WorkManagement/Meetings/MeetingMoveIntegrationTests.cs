@@ -69,7 +69,7 @@ public sealed class MeetingMoveIntegrationTests
         var w = await SeedAsync();
         await using (var db = w.H.NewContext())
         {
-            var moved = await Moves(db).MoveAsync(w.H.TenantId, w.Organizer, Guid.NewGuid(), w.Series.Id, First.AddDays(7),
+            var moved = await Moves(db).MoveAsync(w.H.TenantId, w.Organizer, w.H.UserIdOf(w.Organizer), w.Series.Id, First.AddDays(7),
                 new MoveMeetingRequest(MeetingScopes.Following, w.At.ProjectId, w.Destination), CancellationToken.None);
             Assert.True(moved.IsSuccess, moved.Error);
             Assert.Equal("moved", moved.Value!.Outcome);
@@ -87,7 +87,7 @@ public sealed class MeetingMoveIntegrationTests
     {
         var w = await SeedAsync();
         await using (var db = w.H.NewContext())
-            Assert.True((await Moves(db).MoveAsync(w.H.TenantId, w.Organizer, Guid.NewGuid(), w.Series.Id, First.AddDays(14),
+            Assert.True((await Moves(db).MoveAsync(w.H.TenantId, w.Organizer, w.H.UserIdOf(w.Organizer), w.Series.Id, First.AddDays(14),
                 new MoveMeetingRequest(MeetingScopes.This, w.At.ProjectId, w.Destination), CancellationToken.None)).IsSuccess);
 
         await using var check = w.H.NewContext();
@@ -97,7 +97,7 @@ public sealed class MeetingMoveIntegrationTests
         var suppression = await check.MeetingOccurrenceSuppressions.SingleAsync(s => s.SeriesId == w.Series.Id);
         Assert.Equal((First.AddDays(14), w.Week2), (suppression.OriginalStart, suppression.MovedToTaskId));
         var materialize = await new MeetingTestServices(check, new MeetingTestClock(Now)).Materializer.EnsureAsync(
-            w.H.TenantId, await check.MeetingSeries.SingleAsync(s => s.Id == w.Series.Id), First.AddDays(14), Guid.NewGuid(), CancellationToken.None);
+            w.H.TenantId, await check.MeetingSeries.SingleAsync(s => s.Id == w.Series.Id), First.AddDays(14), w.H.UserIdOf(w.Organizer), CancellationToken.None);
         Assert.Equal(404, materialize.StatusCode);   // the slot never comes back
     }
 
@@ -108,7 +108,7 @@ public sealed class MeetingMoveIntegrationTests
         var approvals = new ApprovalsStub();
         await using (var db = w.H.NewContext())
         {
-            var result = await Moves(db, direct: false, approvals).MoveAsync(w.H.TenantId, w.Organizer, Guid.NewGuid(), w.Series.Id,
+            var result = await Moves(db, direct: false, approvals).MoveAsync(w.H.TenantId, w.Organizer, w.H.UserIdOf(w.Organizer), w.Series.Id,
                 First.AddDays(7), new MoveMeetingRequest(MeetingScopes.Following, w.At.ProjectId, w.Destination), CancellationToken.None);
             Assert.Equal(("requested", approvals.RequestId), (result.Value!.Outcome, result.Value.ApprovalRequestId));
         }
@@ -124,9 +124,9 @@ public sealed class MeetingMoveIntegrationTests
         var w = await SeedAsync();
         await using var db = w.H.NewContext();
 
-        var same = await Moves(db).MoveAsync(w.H.TenantId, w.Organizer, Guid.NewGuid(), w.Series.Id, First.AddDays(7),
+        var same = await Moves(db).MoveAsync(w.H.TenantId, w.Organizer, w.H.UserIdOf(w.Organizer), w.Series.Id, First.AddDays(7),
             new MoveMeetingRequest(MeetingScopes.Following, w.At.ProjectId, w.At.ObjectiveId), CancellationToken.None);
-        var past = await Moves(db).MoveAsync(w.H.TenantId, w.Organizer, Guid.NewGuid(), w.Series.Id, First,
+        var past = await Moves(db).MoveAsync(w.H.TenantId, w.Organizer, w.H.UserIdOf(w.Organizer), w.Series.Id, First,
             new MoveMeetingRequest(MeetingScopes.This, w.At.ProjectId, w.Destination), CancellationToken.None);
 
         Assert.Equal((400, MeetingErrorCodes.SameModule), (same.StatusCode, same.ErrorCode));

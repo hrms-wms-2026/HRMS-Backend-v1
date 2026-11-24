@@ -343,7 +343,7 @@ public sealed class MeetingBulkPreviewIntegrationTests
         // The create re-validates: a leaver who slipped through is skipped, not invited.
         var factory = new MeetingTestServices(db, new MeetingTestClock(First.AddDays(-1))).Factory;
         var created = await new UnitOfWork(db).ExecuteInTransactionAsync(ct => factory.CreateDirectAsync(
-            w.H.TenantId, w.Organizer, Guid.NewGuid(),
+            w.H.TenantId, w.Organizer, w.H.UserIdOf(w.Organizer),
             new ProductionPlacement(w.ProjectId, w.RootModuleId, false, true),
             new CreateMeetingRequest(w.ProjectId, w.RootModuleId, "Delivery sync", null, null, false,
                 First.AddDays(1), 30, false, "UTC", null, [w.DepartmentMember, w.Leaver], [], null),
