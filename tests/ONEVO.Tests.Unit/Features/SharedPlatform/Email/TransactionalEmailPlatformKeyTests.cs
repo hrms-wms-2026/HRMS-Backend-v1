@@ -466,6 +466,35 @@ public class TransactionalEmailPlatformKeyTests
     }
 
     [Fact]
+    public async Task InviteOutboxHandler_Passes_The_Tenant_Slug_To_The_Template()
+    {
+        var sender = new FakeSender();
+        var renderer = new Mock<IEmailTemplateRenderer>();
+        object? captured = null;
+        renderer.Setup(r => r.Render("tenant_owner_invite", It.IsAny<object>()))
+            .Callback<string, object>((_, data) => captured = data)
+            .Returns(new RenderedEmail("s", "<p>h</p>", "t"));
+        var service = new TransactionalEmailService(
+            sender, renderer.Object, NullLogger<TransactionalEmailService>.Instance);
+        var tenantId = Guid.NewGuid();
+        var tenants = new Mock<ITenantRepository>();
+        tenants.Setup(t => t.GetByIdAsync(tenantId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new ONEVO.Domain.Features.InfrastructureModule.Entities.Tenant
+            {
+                Id = tenantId, Name = "Acme Corp", Slug = "acme"
+            });
+        var handler = new TenantOwnerInviteEmailOutboxHandler(service, tenants.Object);
+
+        var payload = new TenantOwnerInviteEmailPayload(
+            tenantId, "Acme Corp", "owner@acme.test", "Ada",
+            "invite-token-1", DateTimeOffset.UtcNow.AddDays(3));
+        await handler.HandleAsync(JsonSerializer.Serialize(payload), CancellationToken.None);
+
+        Assert.NotNull(captured);
+        Assert.Equal("acme", captured!.GetType().GetProperty("tenant_slug")!.GetValue(captured));
+    }
+
+    [Fact]
     public async Task InviteOutboxHandler_Failed_Send_Propagates_Safe_Error_Only()
     {
         var sender = new FakeSender
