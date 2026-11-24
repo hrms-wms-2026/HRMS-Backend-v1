@@ -30,6 +30,24 @@ public sealed class PlatformAccessMapperTests
     }
 
     [Fact]
+    public void Map_RevokedInviteUser_ReturnsInviteStatus()
+    {
+        var user = new PlatformUser
+        {
+            Id = Guid.NewGuid(),
+            Email = "revoked@onevo.io",
+            FullName = "Revoked Invite",
+            Status = PlatformUser.StatusInactive,
+            InviteStatus = PlatformUser.InviteRevoked,
+        };
+
+        var result = PlatformAccessMapper.Map(user, "Platform Manager");
+
+        result.Status.Should().Be(PlatformUser.StatusInactive);
+        result.InviteStatus.Should().Be(PlatformUser.InviteRevoked);
+    }
+
+    [Fact]
     public void Map_UserWithNoRoleAssigned_ReturnsEmptyRoleString()
     {
         var user = new PlatformUser

@@ -15,7 +15,8 @@ public static class PlatformAccessMapper
             role,
             user.Status,
             user.CreatedAt,
-            user.LastLoginAt);
+            user.LastLoginAt,
+            user.InviteStatus);
     }
 
     public static PlatformUserDetailResponse MapDetail(PlatformUser user, IEnumerable<PlatformRole> roles)
