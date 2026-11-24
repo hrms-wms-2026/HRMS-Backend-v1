@@ -517,6 +517,8 @@ internal sealed class EmployeeAuthorityTestGraph
             => throw new NotImplementedException();
         public Task<int> CountActiveByDepartmentAsync(Guid tenantId, Guid legalEntityId, Guid departmentId, CancellationToken ct = default)
             => throw new NotImplementedException();
+        public Task<bool> AnyActiveWithDepartmentAsync(Guid tenantId, CancellationToken ct = default)
+            => throw new NotImplementedException();
         public Task<IReadOnlyDictionary<Guid, int>> CountActiveByDepartmentIdsAsync(
             Guid tenantId, Guid legalEntityId, IReadOnlyCollection<Guid> departmentIds, CancellationToken ct = default)
             => throw new NotImplementedException();
