@@ -15,4 +15,7 @@ public sealed record InvitationDetailDto(
     [property: JsonPropertyName("google_sign_in_enabled")] bool GoogleSignInEnabled,
     [property: JsonPropertyName("allow_google_email_mismatch")] bool AllowGoogleEmailMismatch,
     [property: JsonPropertyName("allowed_email_domains")] IReadOnlyList<string> AllowedEmailDomains,
-    [property: JsonPropertyName("requires_password")] bool RequiresPassword);
+    [property: JsonPropertyName("requires_password")] bool RequiresPassword,
+    // "employee_onboarding" invitations are accepted through accept-employee; every other purpose
+    // (tenant owner, general) through accept-password.
+    [property: JsonPropertyName("purpose")] string Purpose);
