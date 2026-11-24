@@ -21,11 +21,18 @@ public class DomainEventDispatchInterceptor : SaveChangesInterceptor
         return await base.SavedChangesAsync(eventData, result, cancellationToken);
     }
 
-    public override int SavedChanges(SaveChangesCompletedEventData eventData, int result)
-    {
-        DispatchDomainEventsAsync(eventData.Context, CancellationToken.None).GetAwaiter().GetResult();
-        return base.SavedChanges(eventData, result);
-    }
+    /// <summary>
+    /// Improvements task 26: synchronous SaveChanges is not supported. Dispatching the events here
+    /// would block a thread-pool thread on async handlers (sync-over-async), which under load
+    /// starves the pool. Nothing in the app calls it; this keeps it that way.
+    /// </summary>
+    public override int SavedChanges(SaveChangesCompletedEventData eventData, int result) =>
+        throw SyncDatabaseCalls.NotSupported("SaveChanges", "SaveChangesAsync");
+
+    // Refused before anything is written, so a synchronous call cannot leave saved rows behind
+    // with their domain events never published.
+    public override InterceptionResult<int> SavingChanges(DbContextEventData eventData, InterceptionResult<int> result) =>
+        throw SyncDatabaseCalls.NotSupported("SaveChanges", "SaveChangesAsync");
 
     private async Task DispatchDomainEventsAsync(DbContext? context, CancellationToken ct)
     {

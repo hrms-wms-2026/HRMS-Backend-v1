@@ -35,10 +35,20 @@ public sealed class MeetingIntegrityInterceptor : SaveChangesInterceptor, IDbTra
         return ValueTask.FromResult(result);
     }
 
+    /// <summary>
+    /// Improvements task 26: a synchronous commit with meeting rows to check is refused, because the
+    /// check would have to block on its async query (sync-over-async). A synchronous commit with
+    /// nothing to check (EnsureCreated, for example) has no async work and passes through.
+    /// </summary>
     public InterceptionResult TransactionCommitting(
         DbTransaction transaction, TransactionEventData eventData, InterceptionResult result)
     {
-        CheckAsync(transaction, eventData.Context, CancellationToken.None).GetAwaiter().GetResult();
+        if (eventData.Context is ApplicationDbContext db
+            && (db.PendingMeetingTaskIds.Count > 0 || db.PendingMeetingSeriesIds.Count > 0))
+        {
+            throw SyncDatabaseCalls.NotSupported("Commit", "CommitAsync");
+        }
+
         return result;
     }
 

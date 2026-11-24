@@ -13,12 +13,11 @@ public sealed class EfOffboardingTaskBypassRequestRepository(ApplicationDbContex
         => db.OffboardingTaskBypassRequests.AnyAsync(x =>
             x.TenantId == tenantId && x.EmployeeChecklistTaskId == employeeChecklistTaskId && x.Status == BypassRequestStatuses.Pending, ct);
 
-    public Task<IReadOnlyList<OffboardingTaskBypassRequest>> ListPendingByApproverAsync(Guid tenantId, Guid approverId, CancellationToken ct = default)
-        => db.OffboardingTaskBypassRequests.AsNoTracking()
+    public async Task<IReadOnlyList<OffboardingTaskBypassRequest>> ListPendingByApproverAsync(Guid tenantId, Guid approverId, CancellationToken ct = default)
+        => await db.OffboardingTaskBypassRequests.AsNoTracking()
             .Where(x => x.TenantId == tenantId && x.ApproverId == approverId && x.Status == BypassRequestStatuses.Pending)
             .OrderBy(x => x.RequestedAt)
-            .ToListAsync(ct)
-            .ContinueWith(t => (IReadOnlyList<OffboardingTaskBypassRequest>)t.Result, ct);
+            .ToListAsync(ct);
 
     public Task AddAsync(OffboardingTaskBypassRequest request, CancellationToken ct = default)
         => db.OffboardingTaskBypassRequests.AddAsync(request, ct).AsTask();
