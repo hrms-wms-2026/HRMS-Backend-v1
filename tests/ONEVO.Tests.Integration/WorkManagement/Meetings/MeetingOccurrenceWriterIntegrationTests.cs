@@ -29,7 +29,7 @@ public sealed class MeetingOccurrenceWriterIntegrationTests
     private static MeetingOccurrenceDraft Draft(Fixture f, DateTimeOffset originalStart, string? shortId = null, Guid? seriesId = null)
         => new(f.H.TenantId, seriesId ?? f.Series.Id, f.Series.ProjectId, f.Series.ObjectiveId,
             f.H.CategoryIdFor(f.Series.ProjectId), f.At.StatusId,
-            shortId ?? $"M-{Guid.NewGuid():N}"[..12], f.Series.Title, "Agenda", f.At.OrganizerEmployeeId,
+            shortId ?? $"M-{Guid.NewGuid():N}"[..12], f.Series.Title, "Agenda", f.Series.CreatedById ?? Guid.Empty,
             originalStart, originalStart, originalStart.AddMinutes(30), IsAllDay: false,
             Location: null, IsPrivate: false, CalendarEventMeetingId: null);
 

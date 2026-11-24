@@ -77,7 +77,7 @@ public sealed class EmployeeViewAccess : IEmployeeViewAccess
 
         var subject = await _employees.GetByIdAsync(tenantId, employeeId, ct);
         return subject is not null
-            && await _invitationAccess.ResolveInviterUserIdAsync(invitation, subject.CreatedById, ct) == _currentUser.UserId;
+            && await _invitationAccess.ResolveInviterUserIdAsync(invitation, (subject.CreatedById ?? Guid.Empty), ct) == _currentUser.UserId;
     }
 
     public async Task<IReadOnlyCollection<Guid>?> ListViewableEmployeeIdsAsync(CancellationToken ct = default)

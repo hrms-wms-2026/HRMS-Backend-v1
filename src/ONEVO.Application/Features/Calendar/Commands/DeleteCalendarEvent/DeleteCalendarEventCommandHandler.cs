@@ -49,7 +49,7 @@ public sealed class DeleteCalendarEventCommandHandler(
                         OutboxMessageTypes.CalendarMeetingCancel,
                         new CalendarMeetingCancelPayload(
                             tenantId, meeting.Provider, meeting.ExternalMeetingId, meeting.ExternalCalendarConnectionId,
-                            existing.CreatedById, organizerEmployee?.Id ?? Guid.Empty, existing.Title),
+                            (existing.CreatedById ?? Guid.Empty), organizerEmployee?.Id ?? Guid.Empty, existing.Title),
                         $"meeting-cancel:{meeting.Id}:{meeting.LinkGeneration}", tenantId, innerCt);
                     var tracked = (await meetings.GetTrackedByCalendarEventAsync(tenantId, existing.Id, innerCt))!;
                     tracked.Status = CalendarEventMeetingStatuses.Cancelled;
@@ -60,7 +60,7 @@ public sealed class DeleteCalendarEventCommandHandler(
                 {
                     // We don't know the remote meeting's ID: the organizer has to check by hand.
                     await notifications.NotifyOrganizerAboutMeetingAsync(
-                        tenantId, existing.CreatedById, CalendarMeetingNoticeCodes.Unresolved, existing.Title, providerName, innerCt);
+                        tenantId, (existing.CreatedById ?? Guid.Empty), CalendarMeetingNoticeCodes.Unresolved, existing.Title, providerName, innerCt);
                 }
             }
 

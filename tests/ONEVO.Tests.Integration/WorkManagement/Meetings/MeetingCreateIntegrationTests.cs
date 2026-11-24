@@ -33,7 +33,7 @@ public sealed class MeetingCreateIntegrationTests
         await using var db = h.NewContext();
         var factory = Factory(db);
         var result = await new UnitOfWork(db).ExecuteInTransactionAsync(ct => factory.CreateDirectAsync(
-            h.TenantId, at.OrganizerEmployeeId, Guid.NewGuid(), new ProductionPlacement(at.ProjectId, at.ObjectiveId, false, true),
+            h.TenantId, at.OrganizerEmployeeId, h.UserIdOf(at.OrganizerEmployeeId), new ProductionPlacement(at.ProjectId, at.ObjectiveId, false, true),
             request, MeetingCreationPaths.Direct, approvalRequestId: null, ct));
         Assert.True(result.IsSuccess, result.Error);
         return result.Value!;

@@ -87,7 +87,7 @@ public sealed class MeetingOccurrenceGenerator
             {
                 if (await _meetings.GetDetailsAsync(tenantId, series.Id, key, innerCt) is not null)
                     continue;
-                if ((await _materializer.EnsureAsync(tenantId, series, key, series.CreatedById, innerCt)).IsSuccess)
+                if ((await _materializer.EnsureAsync(tenantId, series, key, (series.CreatedById ?? Guid.Empty), innerCt)).IsSuccess)
                     created++;
             }
             return created;

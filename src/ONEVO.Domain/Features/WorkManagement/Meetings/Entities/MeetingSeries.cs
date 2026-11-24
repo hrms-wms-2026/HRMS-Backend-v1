@@ -48,6 +48,6 @@ public class MeetingSeries : ITenantOwnedEntity
     /// <summary>Optimistic concurrency token; bumped on every series write.</summary>
     public int Revision { get; set; }
     public DateTimeOffset CreatedAt { get; set; } = DateTimeOffset.UtcNow;
-    public Guid CreatedById { get; set; }
+    public Guid? CreatedById { get; set; }
     public DateTimeOffset? UpdatedAt { get; set; }
 }

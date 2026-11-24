@@ -776,7 +776,7 @@ namespace ONEVO.Infrastructure.Migrations
                         .HasColumnType("datetimeoffset")
                         .HasColumnName("created_at");
 
-                    b.Property<Guid>("CreatedById")
+                    b.Property<Guid?>("CreatedById")
                         .HasColumnType("uniqueidentifier")
                         .HasColumnName("created_by_id");
 
@@ -818,6 +818,9 @@ namespace ONEVO.Infrastructure.Migrations
 
                     b.HasKey("Id")
                         .HasName("pk_roles");
+
+                    b.HasIndex("CreatedById")
+                        .HasDatabaseName("ix_roles_created_by_id");
 
                     b.HasIndex("SourceTemplateId")
                         .HasDatabaseName("ix_roles_source_template_id");
@@ -1340,7 +1343,7 @@ namespace ONEVO.Infrastructure.Migrations
                         .HasColumnType("datetimeoffset")
                         .HasColumnName("created_at");
 
-                    b.Property<Guid>("CreatedById")
+                    b.Property<Guid?>("CreatedById")
                         .HasColumnType("uniqueidentifier")
                         .HasColumnName("created_by_id");
 
@@ -1471,6 +1474,9 @@ namespace ONEVO.Infrastructure.Migrations
 
                     b.HasKey("Id")
                         .HasName("pk_personal_calendar_events");
+
+                    b.HasIndex("CreatedById")
+                        .HasDatabaseName("ix_personal_calendar_events_created_by_id");
 
                     b.HasIndex("RecurrenceParentId")
                         .HasDatabaseName("ix_personal_calendar_events_recurrence_parent_id");
@@ -1746,7 +1752,7 @@ namespace ONEVO.Infrastructure.Migrations
                         .HasColumnType("datetimeoffset")
                         .HasColumnName("created_at");
 
-                    b.Property<Guid>("CreatedById")
+                    b.Property<Guid?>("CreatedById")
                         .HasColumnType("uniqueidentifier")
                         .HasColumnName("created_by_id");
 
@@ -1797,6 +1803,9 @@ namespace ONEVO.Infrastructure.Migrations
                     b.HasKey("Id")
                         .HasName("pk_calendar_event_participants");
 
+                    b.HasIndex("CreatedById")
+                        .HasDatabaseName("ix_calendar_event_participants_created_by_id");
+
                     b.HasIndex("MeetingSeriesId")
                         .HasDatabaseName("ix_calendar_event_participants_meeting_series_id");
 
@@ -1831,7 +1840,7 @@ namespace ONEVO.Infrastructure.Migrations
                         .HasColumnType("datetimeoffset")
                         .HasColumnName("created_at");
 
-                    b.Property<Guid>("CreatedById")
+                    b.Property<Guid?>("CreatedById")
                         .HasColumnType("uniqueidentifier")
                         .HasColumnName("created_by_id");
 
@@ -1883,6 +1892,9 @@ namespace ONEVO.Infrastructure.Migrations
                     b.HasKey("Id")
                         .HasName("pk_calendar_event_participant_rsvp_history");
 
+                    b.HasIndex("CreatedById")
+                        .HasDatabaseName("ix_calendar_event_participant_rsvp_history_created_by_id");
+
                     b.HasIndex("TenantId", "ParticipantId", "ChangedAt")
                         .HasDatabaseName("ix_calendar_event_participant_rsvp_history_participant");
 
@@ -1900,7 +1912,7 @@ namespace ONEVO.Infrastructure.Migrations
                         .HasColumnType("datetimeoffset")
                         .HasColumnName("created_at");
 
-                    b.Property<Guid>("CreatedById")
+                    b.Property<Guid?>("CreatedById")
                         .HasColumnType("uniqueidentifier")
                         .HasColumnName("created_by_id");
 
@@ -1939,6 +1951,9 @@ namespace ONEVO.Infrastructure.Migrations
                     b.HasKey("Id")
                         .HasName("pk_calendar_event_reminders_sent");
 
+                    b.HasIndex("CreatedById")
+                        .HasDatabaseName("ix_calendar_event_reminders_sent_created_by_id");
+
                     b.HasIndex("TenantId", "EventId", "OccurrenceStart", "EmployeeId")
                         .IsUnique()
                         .HasDatabaseName("ux_calendar_event_reminders_sent_once");
@@ -1963,7 +1978,7 @@ namespace ONEVO.Infrastructure.Migrations
                         .HasColumnType("datetimeoffset")
                         .HasColumnName("created_at");
 
-                    b.Property<Guid>("CreatedById")
+                    b.Property<Guid?>("CreatedById")
                         .HasColumnType("uniqueidentifier")
                         .HasColumnName("created_by_id");
 
@@ -2017,6 +2032,9 @@ namespace ONEVO.Infrastructure.Migrations
 
                     b.HasKey("Id")
                         .HasName("pk_calendar_meeting_incidents");
+
+                    b.HasIndex("CreatedById")
+                        .HasDatabaseName("ix_calendar_meeting_incidents_created_by_id");
 
                     b.HasIndex("TenantId", "ExceptionId")
                         .HasDatabaseName("ix_calendar_meeting_incidents_exception");
@@ -2259,7 +2277,7 @@ namespace ONEVO.Infrastructure.Migrations
                         .HasColumnType("datetimeoffset")
                         .HasColumnName("created_at");
 
-                    b.Property<Guid>("CreatedById")
+                    b.Property<Guid?>("CreatedById")
                         .HasColumnType("uniqueidentifier")
                         .HasColumnName("created_by_id");
 
@@ -2321,6 +2339,9 @@ namespace ONEVO.Infrastructure.Migrations
                     b.HasKey("Id")
                         .HasName("pk_holiday_calendar_settings");
 
+                    b.HasIndex("CreatedById")
+                        .HasDatabaseName("ix_holiday_calendar_settings_created_by_id");
+
                     b.HasIndex("TenantId", "LegalEntityId")
                         .IsUnique()
                         .HasDatabaseName("ix_holiday_calendar_settings_one_per_legal_entity");
@@ -2344,7 +2365,7 @@ namespace ONEVO.Infrastructure.Migrations
                         .HasColumnType("datetimeoffset")
                         .HasColumnName("created_at");
 
-                    b.Property<Guid>("CreatedById")
+                    b.Property<Guid?>("CreatedById")
                         .HasColumnType("uniqueidentifier")
                         .HasColumnName("created_by_id");
 
@@ -2397,6 +2418,9 @@ namespace ONEVO.Infrastructure.Migrations
                     b.HasKey("Id")
                         .HasName("pk_conversations");
 
+                    b.HasIndex("CreatedById")
+                        .HasDatabaseName("ix_conversations_created_by_id");
+
                     b.HasIndex("TenantId", "SubjectSource", "SubjectKind", "SubjectId")
                         .IsUnique()
                         .HasDatabaseName("ux_conversations_tenant_id_subject_source_subject_kind_subject_id");
@@ -2419,7 +2443,7 @@ namespace ONEVO.Infrastructure.Migrations
                         .HasColumnType("datetimeoffset")
                         .HasColumnName("created_at");
 
-                    b.Property<Guid>("CreatedById")
+                    b.Property<Guid?>("CreatedById")
                         .HasColumnType("uniqueidentifier")
                         .HasColumnName("created_by_id");
 
@@ -2448,6 +2472,9 @@ namespace ONEVO.Infrastructure.Migrations
 
                     b.HasIndex("ConversationId")
                         .HasDatabaseName("ix_conversation_favorites_conversation_id");
+
+                    b.HasIndex("CreatedById")
+                        .HasDatabaseName("ix_conversation_favorites_created_by_id");
 
                     b.HasIndex("EmployeeId", "ConversationId")
                         .IsUnique()
@@ -2484,7 +2511,7 @@ namespace ONEVO.Infrastructure.Migrations
                         .HasColumnType("datetimeoffset")
                         .HasColumnName("created_at");
 
-                    b.Property<Guid>("CreatedById")
+                    b.Property<Guid?>("CreatedById")
                         .HasColumnType("uniqueidentifier")
                         .HasColumnName("created_by_id");
 
@@ -2535,6 +2562,9 @@ namespace ONEVO.Infrastructure.Migrations
                     b.HasKey("Id")
                         .HasName("pk_conversation_messages");
 
+                    b.HasIndex("CreatedById")
+                        .HasDatabaseName("ix_conversation_messages_created_by_id");
+
                     b.HasIndex("ConversationId", "CreatedAt")
                         .HasDatabaseName("ix_conversation_messages_conversation_id_created_at");
 
@@ -2558,7 +2588,7 @@ namespace ONEVO.Infrastructure.Migrations
                         .HasColumnType("datetimeoffset")
                         .HasColumnName("created_at");
 
-                    b.Property<Guid>("CreatedById")
+                    b.Property<Guid?>("CreatedById")
                         .HasColumnType("uniqueidentifier")
                         .HasColumnName("created_by_id");
 
@@ -2599,6 +2629,9 @@ namespace ONEVO.Infrastructure.Migrations
                     b.HasKey("Id")
                         .HasName("pk_conversation_message_attachments");
 
+                    b.HasIndex("CreatedById")
+                        .HasDatabaseName("ix_conversation_message_attachments_created_by_id");
+
                     b.HasIndex("MessageId")
                         .HasDatabaseName("ix_conversation_message_attachments_message_id");
 
@@ -2616,7 +2649,7 @@ namespace ONEVO.Infrastructure.Migrations
                         .HasColumnType("datetimeoffset")
                         .HasColumnName("created_at");
 
-                    b.Property<Guid>("CreatedById")
+                    b.Property<Guid?>("CreatedById")
                         .HasColumnType("uniqueidentifier")
                         .HasColumnName("created_by_id");
 
@@ -2647,6 +2680,9 @@ namespace ONEVO.Infrastructure.Migrations
                     b.HasKey("Id")
                         .HasName("pk_conversation_message_hides");
 
+                    b.HasIndex("CreatedById")
+                        .HasDatabaseName("ix_conversation_message_hides_created_by_id");
+
                     b.HasIndex("MessageId", "EmployeeId")
                         .IsUnique()
                         .HasDatabaseName("ux_conversation_message_hides_message_id_employee_id");
@@ -2668,7 +2704,7 @@ namespace ONEVO.Infrastructure.Migrations
                         .HasColumnType("datetimeoffset")
                         .HasColumnName("created_at");
 
-                    b.Property<Guid>("CreatedById")
+                    b.Property<Guid?>("CreatedById")
                         .HasColumnType("uniqueidentifier")
                         .HasColumnName("created_by_id");
 
@@ -2699,6 +2735,9 @@ namespace ONEVO.Infrastructure.Migrations
                     b.HasKey("Id")
                         .HasName("pk_conversation_message_mentions");
 
+                    b.HasIndex("CreatedById")
+                        .HasDatabaseName("ix_conversation_message_mentions_created_by_id");
+
                     b.HasIndex("MessageId", "EmployeeId")
                         .IsUnique()
                         .HasDatabaseName("ux_conversation_message_mentions_message_id_employee_id");
@@ -2717,7 +2756,7 @@ namespace ONEVO.Infrastructure.Migrations
                         .HasColumnType("datetimeoffset")
                         .HasColumnName("created_at");
 
-                    b.Property<Guid>("CreatedById")
+                    b.Property<Guid?>("CreatedById")
                         .HasColumnType("uniqueidentifier")
                         .HasColumnName("created_by_id");
 
@@ -2754,6 +2793,9 @@ namespace ONEVO.Infrastructure.Migrations
                     b.HasKey("Id")
                         .HasName("pk_conversation_message_reactions");
 
+                    b.HasIndex("CreatedById")
+                        .HasDatabaseName("ix_conversation_message_reactions_created_by_id");
+
                     b.HasIndex("MessageId", "EmployeeId")
                         .IsUnique()
                         .HasDatabaseName("ux_conversation_message_reactions_message_id_employee_id");
@@ -2778,7 +2820,7 @@ namespace ONEVO.Infrastructure.Migrations
                         .HasColumnType("datetimeoffset")
                         .HasColumnName("created_at");
 
-                    b.Property<Guid>("CreatedById")
+                    b.Property<Guid?>("CreatedById")
                         .HasColumnType("uniqueidentifier")
                         .HasColumnName("created_by_id");
 
@@ -2819,6 +2861,9 @@ namespace ONEVO.Infrastructure.Migrations
                     b.HasKey("Id")
                         .HasName("pk_conversation_message_revisions");
 
+                    b.HasIndex("CreatedById")
+                        .HasDatabaseName("ix_conversation_message_revisions_created_by_id");
+
                     b.HasIndex("MessageId", "RevisedAt")
                         .HasDatabaseName("ix_conversation_message_revisions_message_id_revised_at");
 
@@ -2840,7 +2885,7 @@ namespace ONEVO.Infrastructure.Migrations
                         .HasColumnType("datetimeoffset")
                         .HasColumnName("created_at");
 
-                    b.Property<Guid>("CreatedById")
+                    b.Property<Guid?>("CreatedById")
                         .HasColumnType("uniqueidentifier")
                         .HasColumnName("created_by_id");
 
@@ -2869,6 +2914,9 @@ namespace ONEVO.Infrastructure.Migrations
 
                     b.HasIndex("ConversationId")
                         .HasDatabaseName("ix_conversation_mutes_conversation_id");
+
+                    b.HasIndex("CreatedById")
+                        .HasDatabaseName("ix_conversation_mutes_created_by_id");
 
                     b.HasIndex("EmployeeId", "ConversationId")
                         .IsUnique()
@@ -2903,7 +2951,7 @@ namespace ONEVO.Infrastructure.Migrations
                         .HasColumnType("datetimeoffset")
                         .HasColumnName("created_at");
 
-                    b.Property<Guid>("CreatedById")
+                    b.Property<Guid?>("CreatedById")
                         .HasColumnType("uniqueidentifier")
                         .HasColumnName("created_by_id");
 
@@ -2951,6 +2999,9 @@ namespace ONEVO.Infrastructure.Migrations
 
                     b.HasKey("Id")
                         .HasName("pk_conversation_participants");
+
+                    b.HasIndex("CreatedById")
+                        .HasDatabaseName("ix_conversation_participants_created_by_id");
 
                     b.HasIndex("ConversationId", "EmployeeId")
                         .IsUnique()
@@ -3117,7 +3168,7 @@ namespace ONEVO.Infrastructure.Migrations
                         .HasColumnType("datetimeoffset")
                         .HasColumnName("created_at");
 
-                    b.Property<Guid>("CreatedById")
+                    b.Property<Guid?>("CreatedById")
                         .HasColumnType("uniqueidentifier")
                         .HasColumnName("created_by_id");
 
@@ -3202,6 +3253,9 @@ namespace ONEVO.Infrastructure.Migrations
                     b.HasKey("Id")
                         .HasName("pk_bulk_onboarding_batches");
 
+                    b.HasIndex("CreatedById")
+                        .HasDatabaseName("ix_bulk_onboarding_batches_created_by_id");
+
                     b.HasIndex("CreatedByUserId")
                         .HasDatabaseName("ix_bulk_onboarding_batches_created_by_user_id");
 
@@ -3244,7 +3298,7 @@ namespace ONEVO.Infrastructure.Migrations
                         .HasColumnType("datetimeoffset")
                         .HasColumnName("created_at");
 
-                    b.Property<Guid>("CreatedById")
+                    b.Property<Guid?>("CreatedById")
                         .HasColumnType("uniqueidentifier")
                         .HasColumnName("created_by_id");
 
@@ -3320,6 +3374,9 @@ namespace ONEVO.Infrastructure.Migrations
 
                     b.HasIndex("BatchId")
                         .HasDatabaseName("ix_bulk_onboarding_batch_rows_batch_id");
+
+                    b.HasIndex("CreatedById")
+                        .HasDatabaseName("ix_bulk_onboarding_batch_rows_created_by_id");
 
                     b.HasIndex("OnboardingDraftId")
                         .HasDatabaseName("ix_bulk_onboarding_batch_rows_onboarding_draft_id");
@@ -3442,7 +3499,7 @@ namespace ONEVO.Infrastructure.Migrations
                         .HasColumnType("datetimeoffset")
                         .HasColumnName("created_at");
 
-                    b.Property<Guid>("CreatedById")
+                    b.Property<Guid?>("CreatedById")
                         .HasColumnType("uniqueidentifier")
                         .HasColumnName("created_by_id");
 
@@ -3554,6 +3611,9 @@ namespace ONEVO.Infrastructure.Migrations
                     b.HasKey("Id")
                         .HasName("pk_employees");
 
+                    b.HasIndex("CreatedById")
+                        .HasDatabaseName("ix_employees_created_by_id");
+
                     b.HasIndex("DepartmentId")
                         .HasDatabaseName("ix_employees_department_id");
 
@@ -3601,7 +3661,7 @@ namespace ONEVO.Infrastructure.Migrations
                         .HasColumnType("datetimeoffset")
                         .HasColumnName("created_at");
 
-                    b.Property<Guid>("CreatedById")
+                    b.Property<Guid?>("CreatedById")
                         .HasColumnType("uniqueidentifier")
                         .HasColumnName("created_by_id");
 
@@ -3631,6 +3691,9 @@ namespace ONEVO.Infrastructure.Migrations
 
                     b.HasKey("Id")
                         .HasName("pk_employee_addresses");
+
+                    b.HasIndex("CreatedById")
+                        .HasDatabaseName("ix_employee_addresses_created_by_id");
 
                     b.HasIndex("EmployeeId")
                         .HasDatabaseName("ix_employee_addresses_employee_id");
@@ -3685,7 +3748,7 @@ namespace ONEVO.Infrastructure.Migrations
                         .HasColumnType("datetimeoffset")
                         .HasColumnName("created_at");
 
-                    b.Property<Guid>("CreatedById")
+                    b.Property<Guid?>("CreatedById")
                         .HasColumnType("uniqueidentifier")
                         .HasColumnName("created_by_id");
 
@@ -3720,6 +3783,9 @@ namespace ONEVO.Infrastructure.Migrations
 
                     b.HasKey("Id")
                         .HasName("pk_employee_bank_details");
+
+                    b.HasIndex("CreatedById")
+                        .HasDatabaseName("ix_employee_bank_details_created_by_id");
 
                     b.HasIndex("EmployeeId")
                         .HasDatabaseName("ix_employee_bank_details_employee_id");
@@ -3876,7 +3942,7 @@ namespace ONEVO.Infrastructure.Migrations
                         .HasColumnType("datetimeoffset")
                         .HasColumnName("created_at");
 
-                    b.Property<Guid>("CreatedById")
+                    b.Property<Guid?>("CreatedById")
                         .HasColumnType("uniqueidentifier")
                         .HasColumnName("created_by_id");
 
@@ -3928,6 +3994,9 @@ namespace ONEVO.Infrastructure.Migrations
                     b.HasKey("Id")
                         .HasName("pk_employee_dependents");
 
+                    b.HasIndex("CreatedById")
+                        .HasDatabaseName("ix_employee_dependents_created_by_id");
+
                     b.HasIndex("EmployeeId")
                         .HasDatabaseName("ix_employee_dependents_employee_id");
 
@@ -3948,7 +4017,7 @@ namespace ONEVO.Infrastructure.Migrations
                         .HasColumnType("datetimeoffset")
                         .HasColumnName("created_at");
 
-                    b.Property<Guid>("CreatedById")
+                    b.Property<Guid?>("CreatedById")
                         .HasColumnType("uniqueidentifier")
                         .HasColumnName("created_by_id");
 
@@ -4001,6 +4070,9 @@ namespace ONEVO.Infrastructure.Migrations
 
                     b.HasKey("Id")
                         .HasName("pk_employee_emergency_contacts");
+
+                    b.HasIndex("CreatedById")
+                        .HasDatabaseName("ix_employee_emergency_contacts_created_by_id");
 
                     b.HasIndex("EmployeeId")
                         .HasDatabaseName("ix_employee_emergency_contacts_employee_id");
@@ -4267,7 +4339,7 @@ namespace ONEVO.Infrastructure.Migrations
                         .HasColumnType("datetimeoffset")
                         .HasColumnName("created_at");
 
-                    b.Property<Guid>("CreatedById")
+                    b.Property<Guid?>("CreatedById")
                         .HasColumnType("uniqueidentifier")
                         .HasColumnName("created_by_id");
 
@@ -4395,6 +4467,9 @@ namespace ONEVO.Infrastructure.Migrations
                     b.HasIndex("AvatarFileId")
                         .HasDatabaseName("ix_onboarding_drafts_avatar_file_id");
 
+                    b.HasIndex("CreatedById")
+                        .HasDatabaseName("ix_onboarding_drafts_created_by_id");
+
                     b.HasIndex("DepartmentId")
                         .HasDatabaseName("ix_onboarding_drafts_department_id");
 
@@ -4457,7 +4532,7 @@ namespace ONEVO.Infrastructure.Migrations
                         .HasColumnType("datetimeoffset")
                         .HasColumnName("created_at");
 
-                    b.Property<Guid>("CreatedById")
+                    b.Property<Guid?>("CreatedById")
                         .HasColumnType("uniqueidentifier")
                         .HasColumnName("created_by_id");
 
@@ -4499,6 +4574,9 @@ namespace ONEVO.Infrastructure.Migrations
 
                     b.HasKey("Id")
                         .HasName("pk_position_assignments");
+
+                    b.HasIndex("CreatedById")
+                        .HasDatabaseName("ix_position_assignments_created_by_id");
 
                     b.HasIndex("EmployeeId")
                         .IsUnique()
@@ -4543,7 +4621,7 @@ namespace ONEVO.Infrastructure.Migrations
                         .HasColumnType("datetimeoffset")
                         .HasColumnName("created_at");
 
-                    b.Property<Guid>("CreatedById")
+                    b.Property<Guid?>("CreatedById")
                         .HasColumnType("uniqueidentifier")
                         .HasColumnName("created_by_id");
 
@@ -4585,6 +4663,9 @@ namespace ONEVO.Infrastructure.Migrations
 
                     b.HasKey("Id")
                         .HasName("pk_reporting_manager_changes");
+
+                    b.HasIndex("CreatedById")
+                        .HasDatabaseName("ix_reporting_manager_changes_created_by_id");
 
                     b.HasIndex("EmployeeId")
                         .HasDatabaseName("ix_reporting_manager_changes_employee_id");
@@ -4695,7 +4776,7 @@ namespace ONEVO.Infrastructure.Migrations
                         .HasColumnType("datetimeoffset")
                         .HasColumnName("created_at");
 
-                    b.Property<Guid>("CreatedById")
+                    b.Property<Guid?>("CreatedById")
                         .HasColumnType("uniqueidentifier")
                         .HasColumnName("created_by_id");
 
@@ -4748,6 +4829,9 @@ namespace ONEVO.Infrastructure.Migrations
                     b.HasKey("Id")
                         .HasName("pk_dashboard_templates");
 
+                    b.HasIndex("CreatedById")
+                        .HasDatabaseName("ix_dashboard_templates_created_by_id");
+
                     b.HasIndex("RoleId")
                         .HasDatabaseName("ix_dashboard_templates_role_id");
 
@@ -4777,7 +4861,7 @@ namespace ONEVO.Infrastructure.Migrations
                         .HasColumnType("datetimeoffset")
                         .HasColumnName("created_at");
 
-                    b.Property<Guid>("CreatedById")
+                    b.Property<Guid?>("CreatedById")
                         .HasColumnType("uniqueidentifier")
                         .HasColumnName("created_by_id");
 
@@ -4818,6 +4902,9 @@ namespace ONEVO.Infrastructure.Migrations
                     b.HasKey("Id")
                         .HasName("pk_dashboard_template_widgets");
 
+                    b.HasIndex("CreatedById")
+                        .HasDatabaseName("ix_dashboard_template_widgets_created_by_id");
+
                     b.HasIndex("TemplateId", "WidgetKey")
                         .IsUnique()
                         .HasDatabaseName("ux_dashboard_template_widgets_template_id_widget_key")
@@ -4845,7 +4932,7 @@ namespace ONEVO.Infrastructure.Migrations
                         .HasColumnType("datetimeoffset")
                         .HasColumnName("created_at");
 
-                    b.Property<Guid>("CreatedById")
+                    b.Property<Guid?>("CreatedById")
                         .HasColumnType("uniqueidentifier")
                         .HasColumnName("created_by_id");
 
@@ -4888,6 +4975,9 @@ namespace ONEVO.Infrastructure.Migrations
                     b.HasKey("Id")
                         .HasName("pk_dashboard_template_widget_layouts");
 
+                    b.HasIndex("CreatedById")
+                        .HasDatabaseName("ix_dashboard_template_widget_layouts_created_by_id");
+
                     b.HasIndex("TemplateWidgetId", "Breakpoint")
                         .IsUnique()
                         .HasDatabaseName("ux_dashboard_template_widget_layouts_template_widget_id_breakpoint")
@@ -4917,7 +5007,7 @@ namespace ONEVO.Infrastructure.Migrations
                         .HasColumnType("datetimeoffset")
                         .HasColumnName("created_at");
 
-                    b.Property<Guid>("CreatedById")
+                    b.Property<Guid?>("CreatedById")
                         .HasColumnType("uniqueidentifier")
                         .HasColumnName("created_by_id");
 
@@ -4956,6 +5046,9 @@ namespace ONEVO.Infrastructure.Migrations
                     b.HasKey("Id")
                         .HasName("pk_dashboard_widgets");
 
+                    b.HasIndex("CreatedById")
+                        .HasDatabaseName("ix_dashboard_widgets_created_by_id");
+
                     b.HasIndex("DashboardId", "WidgetKey")
                         .IsUnique()
                         .HasDatabaseName("ux_dashboard_widgets_dashboard_id_widget_key")
@@ -4983,7 +5076,7 @@ namespace ONEVO.Infrastructure.Migrations
                         .HasColumnType("datetimeoffset")
                         .HasColumnName("created_at");
 
-                    b.Property<Guid>("CreatedById")
+                    b.Property<Guid?>("CreatedById")
                         .HasColumnType("uniqueidentifier")
                         .HasColumnName("created_by_id");
 
@@ -5025,6 +5118,9 @@ namespace ONEVO.Infrastructure.Migrations
 
                     b.HasKey("Id")
                         .HasName("pk_dashboard_widget_layouts");
+
+                    b.HasIndex("CreatedById")
+                        .HasDatabaseName("ix_dashboard_widget_layouts_created_by_id");
 
                     b.HasIndex("WidgetId", "Breakpoint")
                         .IsUnique()
@@ -5069,7 +5165,7 @@ namespace ONEVO.Infrastructure.Migrations
                         .HasColumnType("datetimeoffset")
                         .HasColumnName("created_at");
 
-                    b.Property<Guid>("CreatedById")
+                    b.Property<Guid?>("CreatedById")
                         .HasColumnType("uniqueidentifier")
                         .HasColumnName("created_by_id");
 
@@ -5106,6 +5202,9 @@ namespace ONEVO.Infrastructure.Migrations
 
                     b.HasKey("Id")
                         .HasName("pk_user_dashboards");
+
+                    b.HasIndex("CreatedById")
+                        .HasDatabaseName("ix_user_dashboards_created_by_id");
 
                     b.HasIndex("TenantId", "UserId", "DashboardKey")
                         .IsUnique()
@@ -5186,6 +5285,9 @@ namespace ONEVO.Infrastructure.Migrations
 
                     b.HasKey("Id")
                         .HasName("pk_global_app_catalog");
+
+                    b.HasIndex("CreatedById")
+                        .HasDatabaseName("ix_global_app_catalog_created_by_id");
 
                     b.HasIndex("ProcessName")
                         .IsUnique()
@@ -6860,6 +6962,9 @@ namespace ONEVO.Infrastructure.Migrations
                     b.HasKey("Id")
                         .HasName("pk_tray_app_releases");
 
+                    b.HasIndex("CreatedById")
+                        .HasDatabaseName("ix_tray_app_releases_created_by_id");
+
                     b.HasIndex("Channel", "IsActive")
                         .HasDatabaseName("ix_tray_app_releases_channel_is_active");
 
@@ -6906,7 +7011,7 @@ namespace ONEVO.Infrastructure.Migrations
                         .HasColumnType("datetimeoffset")
                         .HasColumnName("created_at");
 
-                    b.Property<Guid>("CreatedById")
+                    b.Property<Guid?>("CreatedById")
                         .HasColumnType("uniqueidentifier")
                         .HasColumnName("created_by_id");
 
@@ -6952,6 +7057,9 @@ namespace ONEVO.Infrastructure.Migrations
 
                     b.HasKey("Id")
                         .HasName("pk_inbox_decision_journal");
+
+                    b.HasIndex("CreatedById")
+                        .HasDatabaseName("ix_inbox_decision_journal_created_by_id");
 
                     b.HasIndex("TenantId", "ActorEmployeeId", "DecidedAt")
                         .IsDescending(false, false, true)
@@ -7104,7 +7212,7 @@ namespace ONEVO.Infrastructure.Migrations
                         .HasColumnType("datetimeoffset")
                         .HasColumnName("created_at");
 
-                    b.Property<Guid>("CreatedById")
+                    b.Property<Guid?>("CreatedById")
                         .HasColumnType("uniqueidentifier")
                         .HasColumnName("created_by_id");
 
@@ -7199,6 +7307,9 @@ namespace ONEVO.Infrastructure.Migrations
 
                     b.HasKey("Id")
                         .HasName("pk_users");
+
+                    b.HasIndex("CreatedById")
+                        .HasDatabaseName("ix_users_created_by_id");
 
                     b.HasIndex("TenantId", "Email")
                         .IsUnique()
@@ -10432,7 +10543,7 @@ namespace ONEVO.Infrastructure.Migrations
                         .HasColumnType("datetimeoffset")
                         .HasColumnName("created_at");
 
-                    b.Property<Guid>("CreatedById")
+                    b.Property<Guid?>("CreatedById")
                         .HasColumnType("uniqueidentifier")
                         .HasColumnName("created_by_id");
 
@@ -10496,6 +10607,9 @@ namespace ONEVO.Infrastructure.Migrations
 
                     b.HasKey("Id")
                         .HasName("pk_positions");
+
+                    b.HasIndex("CreatedById")
+                        .HasDatabaseName("ix_positions_created_by_id");
 
                     b.HasIndex("DefaultRoleId")
                         .HasDatabaseName("ix_positions_default_role_id");
@@ -11379,7 +11493,7 @@ namespace ONEVO.Infrastructure.Migrations
                         .HasColumnType("datetimeoffset")
                         .HasColumnName("created_at");
 
-                    b.Property<Guid>("CreatedById")
+                    b.Property<Guid?>("CreatedById")
                         .HasColumnType("uniqueidentifier")
                         .HasColumnName("created_by_id");
 
@@ -11425,6 +11539,9 @@ namespace ONEVO.Infrastructure.Migrations
 
                     b.HasKey("Id")
                         .HasName("pk_tenant_one_time_charges");
+
+                    b.HasIndex("CreatedById")
+                        .HasDatabaseName("ix_tenant_one_time_charges_created_by_id");
 
                     b.HasIndex("TenantId", "SetupOptionKey")
                         .HasDatabaseName("ix_tenant_one_time_charges_tenant_id_setup_option_key");
@@ -11743,6 +11860,9 @@ namespace ONEVO.Infrastructure.Migrations
 
                     b.HasKey("Id")
                         .HasName("pk_tenant_subscriptions");
+
+                    b.HasIndex("CreatedById")
+                        .HasDatabaseName("ix_tenant_subscriptions_created_by_id");
 
                     b.HasIndex("TenantId")
                         .HasDatabaseName("ix_tenant_subscriptions_tenant_id");
@@ -12284,6 +12404,9 @@ namespace ONEVO.Infrastructure.Migrations
                     b.HasKey("Id")
                         .HasName("pk_payment_gateway_configs");
 
+                    b.HasIndex("CreatedById")
+                        .HasDatabaseName("ix_payment_gateway_configs_created_by_id");
+
                     b.HasIndex("GatewayKey")
                         .IsUnique()
                         .HasDatabaseName("ix_payment_gateway_configs_gateway_key");
@@ -12340,6 +12463,9 @@ namespace ONEVO.Infrastructure.Migrations
 
                     b.HasKey("Id")
                         .HasName("pk_payment_gateway_country_routes");
+
+                    b.HasIndex("CreatedById")
+                        .HasDatabaseName("ix_payment_gateway_country_routes_created_by_id");
 
                     b.HasIndex("GatewayConfigId")
                         .HasDatabaseName("ix_payment_gateway_country_routes_gateway_config_id");
@@ -12633,7 +12759,7 @@ namespace ONEVO.Infrastructure.Migrations
                         .HasColumnType("datetimeoffset")
                         .HasColumnName("created_at");
 
-                    b.Property<Guid>("CreatedById")
+                    b.Property<Guid?>("CreatedById")
                         .HasColumnType("uniqueidentifier")
                         .HasColumnName("created_by_id");
 
@@ -12688,6 +12814,9 @@ namespace ONEVO.Infrastructure.Migrations
 
                     b.HasKey("Id")
                         .HasName("pk_entity_assets");
+
+                    b.HasIndex("CreatedById")
+                        .HasDatabaseName("ix_entity_assets_created_by_id");
 
                     b.HasIndex("FileRecordId")
                         .HasDatabaseName("ix_entity_assets_file_record_id");
@@ -12904,7 +13033,7 @@ namespace ONEVO.Infrastructure.Migrations
                         .HasColumnType("datetimeoffset")
                         .HasColumnName("created_at");
 
-                    b.Property<Guid>("CreatedById")
+                    b.Property<Guid?>("CreatedById")
                         .HasColumnType("uniqueidentifier")
                         .HasColumnName("created_by_id");
 
@@ -12991,6 +13120,9 @@ namespace ONEVO.Infrastructure.Migrations
                     b.HasIndex("ConvertedLeaveRequestId")
                         .HasDatabaseName("ix_attendance_alerts_converted_leave_request_id");
 
+                    b.HasIndex("CreatedById")
+                        .HasDatabaseName("ix_attendance_alerts_created_by_id");
+
                     b.HasIndex("EmployeeId")
                         .HasDatabaseName("ix_attendance_alerts_employee_id");
 
@@ -13039,7 +13171,7 @@ namespace ONEVO.Infrastructure.Migrations
                         .HasColumnType("datetimeoffset")
                         .HasColumnName("created_at");
 
-                    b.Property<Guid>("CreatedById")
+                    b.Property<Guid?>("CreatedById")
                         .HasColumnType("uniqueidentifier")
                         .HasColumnName("created_by_id");
 
@@ -13111,6 +13243,9 @@ namespace ONEVO.Infrastructure.Migrations
 
                     b.HasIndex("ChargeAuditId")
                         .HasDatabaseName("ix_attendance_alert_deductions_charge_audit_id");
+
+                    b.HasIndex("CreatedById")
+                        .HasDatabaseName("ix_attendance_alert_deductions_created_by_id");
 
                     b.HasIndex("EmployeeId")
                         .HasDatabaseName("ix_attendance_alert_deductions_employee_id");
@@ -13553,7 +13688,7 @@ namespace ONEVO.Infrastructure.Migrations
                         .HasColumnType("datetimeoffset")
                         .HasColumnName("created_at");
 
-                    b.Property<Guid>("CreatedById")
+                    b.Property<Guid?>("CreatedById")
                         .HasColumnType("uniqueidentifier")
                         .HasColumnName("created_by_id");
 
@@ -13617,6 +13752,9 @@ namespace ONEVO.Infrastructure.Migrations
 
                     b.HasKey("Id")
                         .HasName("pk_clock_in_policies");
+
+                    b.HasIndex("CreatedById")
+                        .HasDatabaseName("ix_clock_in_policies_created_by_id");
 
                     b.HasIndex("LegalEntityId")
                         .HasDatabaseName("ix_clock_in_policies_legal_entity_id");
@@ -14123,7 +14261,7 @@ namespace ONEVO.Infrastructure.Migrations
                         .HasColumnType("datetimeoffset")
                         .HasColumnName("created_at");
 
-                    b.Property<Guid>("CreatedById")
+                    b.Property<Guid?>("CreatedById")
                         .HasColumnType("uniqueidentifier")
                         .HasColumnName("created_by_id");
 
@@ -14218,6 +14356,9 @@ namespace ONEVO.Infrastructure.Migrations
                     b.HasIndex("ApproverEmployeeId")
                         .HasDatabaseName("ix_wm_approval_requests_approver_employee_id");
 
+                    b.HasIndex("CreatedById")
+                        .HasDatabaseName("ix_wm_approval_requests_created_by_id");
+
                     b.HasIndex("DecidedByEmployeeId")
                         .HasDatabaseName("ix_wm_approval_requests_decided_by_employee_id");
 
@@ -14279,7 +14420,7 @@ namespace ONEVO.Infrastructure.Migrations
                         .HasColumnType("datetimeoffset")
                         .HasColumnName("created_at");
 
-                    b.Property<Guid>("CreatedById")
+                    b.Property<Guid?>("CreatedById")
                         .HasColumnType("uniqueidentifier")
                         .HasColumnName("created_by_id");
 
@@ -14320,6 +14461,9 @@ namespace ONEVO.Infrastructure.Migrations
 
                     b.HasIndex("ArchivedById")
                         .HasDatabaseName("ix_calendar_events_archived_by_id");
+
+                    b.HasIndex("CreatedById")
+                        .HasDatabaseName("ix_calendar_events_created_by_id");
 
                     b.HasIndex("ProjectId")
                         .HasDatabaseName("ix_calendar_events_project_id");
@@ -14463,7 +14607,7 @@ namespace ONEVO.Infrastructure.Migrations
                         .HasColumnType("datetimeoffset")
                         .HasColumnName("created_at");
 
-                    b.Property<Guid>("CreatedById")
+                    b.Property<Guid?>("CreatedById")
                         .HasColumnType("uniqueidentifier")
                         .HasColumnName("created_by_id");
 
@@ -14495,6 +14639,9 @@ namespace ONEVO.Infrastructure.Migrations
 
                     b.HasKey("Id")
                         .HasName("pk_labels");
+
+                    b.HasIndex("CreatedById")
+                        .HasDatabaseName("ix_labels_created_by_id");
 
                     b.HasIndex("ProjectId")
                         .HasDatabaseName("ix_labels_project_id");
@@ -14846,7 +14993,7 @@ namespace ONEVO.Infrastructure.Migrations
                         .HasColumnType("datetimeoffset")
                         .HasColumnName("created_at");
 
-                    b.Property<Guid>("CreatedById")
+                    b.Property<Guid?>("CreatedById")
                         .HasColumnType("uniqueidentifier")
                         .HasColumnName("created_by_id");
 
@@ -14944,6 +15091,9 @@ namespace ONEVO.Infrastructure.Migrations
                         .HasDatabaseName("ux_meeting_series_approval_request_id")
                         .HasFilter("approval_request_id IS NOT NULL");
 
+                    b.HasIndex("CreatedById")
+                        .HasDatabaseName("ix_meeting_series_created_by_id");
+
                     b.HasIndex("ObjectiveId")
                         .HasDatabaseName("ix_meeting_series_objective_id");
 
@@ -15034,7 +15184,7 @@ namespace ONEVO.Infrastructure.Migrations
                         .HasColumnType("datetimeoffset")
                         .HasColumnName("created_at");
 
-                    b.Property<Guid>("CreatedById")
+                    b.Property<Guid?>("CreatedById")
                         .HasColumnType("uniqueidentifier")
                         .HasColumnName("created_by_id");
 
@@ -15115,6 +15265,9 @@ namespace ONEVO.Infrastructure.Migrations
                     b.HasKey("Id")
                         .HasName("pk_wm_monitor_alerts");
 
+                    b.HasIndex("CreatedById")
+                        .HasDatabaseName("ix_wm_monitor_alerts_created_by_id");
+
                     b.HasIndex("ProjectId")
                         .HasDatabaseName("ix_wm_monitor_alerts_project_id");
 
@@ -15146,7 +15299,7 @@ namespace ONEVO.Infrastructure.Migrations
                         .HasColumnType("datetimeoffset")
                         .HasColumnName("created_at");
 
-                    b.Property<Guid>("CreatedById")
+                    b.Property<Guid?>("CreatedById")
                         .HasColumnType("uniqueidentifier")
                         .HasColumnName("created_by_id");
 
@@ -15180,6 +15333,9 @@ namespace ONEVO.Infrastructure.Migrations
 
                     b.HasKey("Id")
                         .HasName("pk_wm_task_rate_settings");
+
+                    b.HasIndex("CreatedById")
+                        .HasDatabaseName("ix_wm_task_rate_settings_created_by_id");
 
                     b.HasIndex("LegalEntityId")
                         .HasDatabaseName("ix_wm_task_rate_settings_legal_entity_id");
@@ -15219,7 +15375,7 @@ namespace ONEVO.Infrastructure.Migrations
                         .HasColumnType("datetimeoffset")
                         .HasColumnName("created_at");
 
-                    b.Property<Guid>("CreatedById")
+                    b.Property<Guid?>("CreatedById")
                         .HasColumnType("uniqueidentifier")
                         .HasColumnName("created_by_id");
 
@@ -15278,6 +15434,9 @@ namespace ONEVO.Infrastructure.Migrations
                     b.HasIndex("ApprovalRequestId")
                         .HasDatabaseName("ix_wm_notification_log_approval_request_id");
 
+                    b.HasIndex("CreatedById")
+                        .HasDatabaseName("ix_wm_notification_log_created_by_id");
+
                     b.HasIndex("ProjectId")
                         .HasDatabaseName("ix_wm_notification_log_project_id");
 
@@ -15305,7 +15464,7 @@ namespace ONEVO.Infrastructure.Migrations
                         .HasColumnType("datetimeoffset")
                         .HasColumnName("created_at");
 
-                    b.Property<Guid>("CreatedById")
+                    b.Property<Guid?>("CreatedById")
                         .HasColumnType("uniqueidentifier")
                         .HasColumnName("created_by_id");
 
@@ -15352,6 +15511,9 @@ namespace ONEVO.Infrastructure.Migrations
                     b.HasKey("Id")
                         .HasName("pk_wm_module_hour_summaries");
 
+                    b.HasIndex("CreatedById")
+                        .HasDatabaseName("ix_wm_module_hour_summaries_created_by_id");
+
                     b.HasIndex("ProjectId")
                         .HasDatabaseName("ix_wm_module_hour_summaries_project_id");
 
@@ -15392,7 +15554,7 @@ namespace ONEVO.Infrastructure.Migrations
                         .HasColumnType("datetimeoffset")
                         .HasColumnName("created_at");
 
-                    b.Property<Guid>("CreatedById")
+                    b.Property<Guid?>("CreatedById")
                         .HasColumnType("uniqueidentifier")
                         .HasColumnName("created_by_id");
 
@@ -15471,6 +15633,9 @@ namespace ONEVO.Infrastructure.Migrations
                     b.HasKey("Id")
                         .HasName("pk_objectives");
 
+                    b.HasIndex("CreatedById")
+                        .HasDatabaseName("ix_objectives_created_by_id");
+
                     b.HasIndex("CreatorPositionObjectiveId")
                         .HasDatabaseName("ix_objectives_creator_position_objective_id");
 
@@ -15522,7 +15687,7 @@ namespace ONEVO.Infrastructure.Migrations
                         .HasColumnType("datetimeoffset")
                         .HasColumnName("created_at");
 
-                    b.Property<Guid>("CreatedById")
+                    b.Property<Guid?>("CreatedById")
                         .HasColumnType("uniqueidentifier")
                         .HasColumnName("created_by_id");
 
@@ -15561,6 +15726,9 @@ namespace ONEVO.Infrastructure.Migrations
                     b.HasKey("Id")
                         .HasName("pk_planned_task_blocks");
 
+                    b.HasIndex("CreatedById")
+                        .HasDatabaseName("ix_planned_task_blocks_created_by_id");
+
                     b.HasIndex("EmployeeId")
                         .HasDatabaseName("ix_planned_task_blocks_employee_id");
 
@@ -15587,7 +15755,7 @@ namespace ONEVO.Infrastructure.Migrations
                         .HasColumnType("datetimeoffset")
                         .HasColumnName("created_at");
 
-                    b.Property<Guid>("CreatedById")
+                    b.Property<Guid?>("CreatedById")
                         .HasColumnType("uniqueidentifier")
                         .HasColumnName("created_by_id");
 
@@ -15648,6 +15816,9 @@ namespace ONEVO.Infrastructure.Migrations
                     b.HasKey("Id")
                         .HasName("pk_project_member_invitations");
 
+                    b.HasIndex("CreatedById")
+                        .HasDatabaseName("ix_project_member_invitations_created_by_id");
+
                     b.HasIndex("InvitedById")
                         .HasDatabaseName("ix_project_member_invitations_invited_by_id");
 
@@ -15687,7 +15858,7 @@ namespace ONEVO.Infrastructure.Migrations
                         .HasColumnType("datetimeoffset")
                         .HasColumnName("created_at");
 
-                    b.Property<Guid>("CreatedById")
+                    b.Property<Guid?>("CreatedById")
                         .HasColumnType("uniqueidentifier")
                         .HasColumnName("created_by_id");
 
@@ -15739,6 +15910,9 @@ namespace ONEVO.Infrastructure.Migrations
 
                     b.HasKey("Id")
                         .HasName("pk_project_members");
+
+                    b.HasIndex("CreatedById")
+                        .HasDatabaseName("ix_project_members_created_by_id");
 
                     b.HasIndex("EmployeeId")
                         .HasDatabaseName("ix_project_members_employee_id");
@@ -15802,7 +15976,7 @@ namespace ONEVO.Infrastructure.Migrations
                         .HasColumnType("datetimeoffset")
                         .HasColumnName("created_at");
 
-                    b.Property<Guid>("CreatedById")
+                    b.Property<Guid?>("CreatedById")
                         .HasColumnType("uniqueidentifier")
                         .HasColumnName("created_by_id");
 
@@ -15888,6 +16062,9 @@ namespace ONEVO.Infrastructure.Migrations
                     b.HasIndex("CategoryId")
                         .HasDatabaseName("ix_projects_category_id");
 
+                    b.HasIndex("CreatedById")
+                        .HasDatabaseName("ix_projects_created_by_id");
+
                     b.HasIndex("LeadId")
                         .HasDatabaseName("ix_projects_lead_id");
 
@@ -15926,7 +16103,7 @@ namespace ONEVO.Infrastructure.Migrations
                         .HasColumnType("datetimeoffset")
                         .HasColumnName("created_at");
 
-                    b.Property<Guid>("CreatedById")
+                    b.Property<Guid?>("CreatedById")
                         .HasColumnType("uniqueidentifier")
                         .HasColumnName("created_by_id");
 
@@ -15959,6 +16136,9 @@ namespace ONEVO.Infrastructure.Migrations
                     b.HasKey("Id")
                         .HasName("pk_project_categories");
 
+                    b.HasIndex("CreatedById")
+                        .HasDatabaseName("ix_project_categories_created_by_id");
+
                     b.HasIndex("TenantId", "Name")
                         .IsUnique()
                         .HasDatabaseName("ix_project_categories_tenant_id_name");
@@ -15977,7 +16157,7 @@ namespace ONEVO.Infrastructure.Migrations
                         .HasColumnType("datetimeoffset")
                         .HasColumnName("created_at");
 
-                    b.Property<Guid>("CreatedById")
+                    b.Property<Guid?>("CreatedById")
                         .HasColumnType("uniqueidentifier")
                         .HasColumnName("created_by_id");
 
@@ -16030,6 +16210,9 @@ namespace ONEVO.Infrastructure.Migrations
                     b.HasKey("Id")
                         .HasName("pk_release_calendar");
 
+                    b.HasIndex("CreatedById")
+                        .HasDatabaseName("ix_release_calendar_created_by_id");
+
                     b.HasIndex("ProjectId")
                         .HasDatabaseName("ix_release_calendar_project_id");
 
@@ -16066,7 +16249,7 @@ namespace ONEVO.Infrastructure.Migrations
                         .HasColumnType("datetimeoffset")
                         .HasColumnName("created_at");
 
-                    b.Property<Guid>("CreatedById")
+                    b.Property<Guid?>("CreatedById")
                         .HasColumnType("uniqueidentifier")
                         .HasColumnName("created_by_id");
 
@@ -16122,6 +16305,9 @@ namespace ONEVO.Infrastructure.Migrations
                     b.HasKey("Id")
                         .HasName("pk_sprints");
 
+                    b.HasIndex("CreatedById")
+                        .HasDatabaseName("ix_sprints_created_by_id");
+
                     b.HasIndex("CreatorPositionObjectiveId")
                         .HasDatabaseName("ix_sprints_creator_position_objective_id");
 
@@ -16154,7 +16340,7 @@ namespace ONEVO.Infrastructure.Migrations
                         .HasColumnType("datetimeoffset")
                         .HasColumnName("created_at");
 
-                    b.Property<Guid>("CreatedById")
+                    b.Property<Guid?>("CreatedById")
                         .HasColumnType("uniqueidentifier")
                         .HasColumnName("created_by_id");
 
@@ -16202,6 +16388,9 @@ namespace ONEVO.Infrastructure.Migrations
 
                     b.HasKey("Id")
                         .HasName("pk_sprint_activity_logs");
+
+                    b.HasIndex("CreatedById")
+                        .HasDatabaseName("ix_sprint_activity_logs_created_by_id");
 
                     b.HasIndex("EmployeeId")
                         .HasDatabaseName("ix_sprint_activity_logs_employee_id");
@@ -16272,7 +16461,7 @@ namespace ONEVO.Infrastructure.Migrations
                         .HasColumnType("datetimeoffset")
                         .HasColumnName("created_at");
 
-                    b.Property<Guid>("CreatedById")
+                    b.Property<Guid?>("CreatedById")
                         .HasColumnType("uniqueidentifier")
                         .HasColumnName("created_by_id");
 
@@ -16327,6 +16516,9 @@ namespace ONEVO.Infrastructure.Migrations
                     b.HasKey("Id")
                         .HasName("pk_task_categories");
 
+                    b.HasIndex("CreatedById")
+                        .HasDatabaseName("ix_task_categories_created_by_id");
+
                     b.HasIndex("ProjectId")
                         .HasDatabaseName("ix_task_categories_project_id");
 
@@ -16364,7 +16556,7 @@ namespace ONEVO.Infrastructure.Migrations
                         .HasColumnType("datetimeoffset")
                         .HasColumnName("created_at");
 
-                    b.Property<Guid>("CreatedById")
+                    b.Property<Guid?>("CreatedById")
                         .HasColumnType("uniqueidentifier")
                         .HasColumnName("created_by_id");
 
@@ -16403,6 +16595,9 @@ namespace ONEVO.Infrastructure.Migrations
                     b.HasKey("Id")
                         .HasName("pk_task_clocking_sessions");
 
+                    b.HasIndex("CreatedById")
+                        .HasDatabaseName("ix_task_clocking_sessions_created_by_id");
+
                     b.HasIndex("EmployeeId")
                         .HasDatabaseName("ix_task_clocking_sessions_employee_id");
 
@@ -16439,7 +16634,7 @@ namespace ONEVO.Infrastructure.Migrations
                         .HasColumnType("datetimeoffset")
                         .HasColumnName("created_at");
 
-                    b.Property<Guid>("CreatedById")
+                    b.Property<Guid?>("CreatedById")
                         .HasColumnType("uniqueidentifier")
                         .HasColumnName("created_by_id");
 
@@ -16478,6 +16673,9 @@ namespace ONEVO.Infrastructure.Migrations
                     b.HasKey("Id")
                         .HasName("pk_task_comments");
 
+                    b.HasIndex("CreatedById")
+                        .HasDatabaseName("ix_task_comments_created_by_id");
+
                     b.HasIndex("EmployeeId")
                         .HasDatabaseName("ix_task_comments_employee_id");
 
@@ -16514,7 +16712,7 @@ namespace ONEVO.Infrastructure.Migrations
                         .HasColumnType("datetimeoffset")
                         .HasColumnName("created_at");
 
-                    b.Property<Guid>("CreatedById")
+                    b.Property<Guid?>("CreatedById")
                         .HasColumnType("uniqueidentifier")
                         .HasColumnName("created_by_id");
 
@@ -16552,6 +16750,9 @@ namespace ONEVO.Infrastructure.Migrations
                     b.HasIndex("CommentId")
                         .HasDatabaseName("ix_task_comment_logs_comment_id");
 
+                    b.HasIndex("CreatedById")
+                        .HasDatabaseName("ix_task_comment_logs_created_by_id");
+
                     b.HasIndex("EmployeeId")
                         .HasDatabaseName("ix_task_comment_logs_employee_id");
 
@@ -16579,7 +16780,7 @@ namespace ONEVO.Infrastructure.Migrations
                         .HasColumnType("datetimeoffset")
                         .HasColumnName("created_at");
 
-                    b.Property<Guid>("CreatedById")
+                    b.Property<Guid?>("CreatedById")
                         .HasColumnType("uniqueidentifier")
                         .HasColumnName("created_by_id");
 
@@ -16612,6 +16813,9 @@ namespace ONEVO.Infrastructure.Migrations
                     b.HasKey("Id")
                         .HasName("pk_task_comment_reactions");
 
+                    b.HasIndex("CreatedById")
+                        .HasDatabaseName("ix_task_comment_reactions_created_by_id");
+
                     b.HasIndex("EmployeeId")
                         .HasDatabaseName("ix_task_comment_reactions_employee_id");
 
@@ -16633,7 +16837,7 @@ namespace ONEVO.Infrastructure.Migrations
                         .HasColumnType("datetimeoffset")
                         .HasColumnName("created_at");
 
-                    b.Property<Guid>("CreatedById")
+                    b.Property<Guid?>("CreatedById")
                         .HasColumnType("uniqueidentifier")
                         .HasColumnName("created_by_id");
 
@@ -16676,6 +16880,9 @@ namespace ONEVO.Infrastructure.Migrations
                     b.HasKey("Id")
                         .HasName("pk_task_drafts");
 
+                    b.HasIndex("CreatedById")
+                        .HasDatabaseName("ix_task_drafts_created_by_id");
+
                     b.HasIndex("OwnerUserId")
                         .HasDatabaseName("ix_task_drafts_owner_user_id");
 
@@ -16706,7 +16913,7 @@ namespace ONEVO.Infrastructure.Migrations
                         .HasColumnType("datetimeoffset")
                         .HasColumnName("created_at");
 
-                    b.Property<Guid>("CreatedById")
+                    b.Property<Guid?>("CreatedById")
                         .HasColumnType("uniqueidentifier")
                         .HasColumnName("created_by_id");
 
@@ -16763,6 +16970,9 @@ namespace ONEVO.Infrastructure.Migrations
                     b.HasKey("Id")
                         .HasName("pk_task_edit_logs");
 
+                    b.HasIndex("CreatedById")
+                        .HasDatabaseName("ix_task_edit_logs_created_by_id");
+
                     b.HasIndex("EditRequestId")
                         .HasDatabaseName("ix_task_edit_logs_edit_request_id");
 
@@ -16802,7 +17012,7 @@ namespace ONEVO.Infrastructure.Migrations
                         .HasColumnType("datetimeoffset")
                         .HasColumnName("created_at");
 
-                    b.Property<Guid>("CreatedById")
+                    b.Property<Guid?>("CreatedById")
                         .HasColumnType("uniqueidentifier")
                         .HasColumnName("created_by_id");
 
@@ -16854,6 +17064,9 @@ namespace ONEVO.Infrastructure.Migrations
                     b.HasIndex("ClockingSessionId")
                         .HasDatabaseName("ix_task_percentage_logs_clocking_session_id");
 
+                    b.HasIndex("CreatedById")
+                        .HasDatabaseName("ix_task_percentage_logs_created_by_id");
+
                     b.HasIndex("EmployeeId")
                         .HasDatabaseName("ix_task_percentage_logs_employee_id");
 
@@ -16897,7 +17110,7 @@ namespace ONEVO.Infrastructure.Migrations
                         .HasColumnType("datetimeoffset")
                         .HasColumnName("created_at");
 
-                    b.Property<Guid>("CreatedById")
+                    b.Property<Guid?>("CreatedById")
                         .HasColumnType("uniqueidentifier")
                         .HasColumnName("created_by_id");
 
@@ -16954,6 +17167,9 @@ namespace ONEVO.Infrastructure.Migrations
                     b.HasKey("Id")
                         .HasName("pk_task_statuses");
 
+                    b.HasIndex("CreatedById")
+                        .HasDatabaseName("ix_task_statuses_created_by_id");
+
                     b.HasIndex("ObjectiveId")
                         .HasDatabaseName("ix_task_statuses_objective_id");
 
@@ -16991,7 +17207,7 @@ namespace ONEVO.Infrastructure.Migrations
                         .HasColumnType("datetimeoffset")
                         .HasColumnName("created_at");
 
-                    b.Property<Guid>("CreatedById")
+                    b.Property<Guid?>("CreatedById")
                         .HasColumnType("uniqueidentifier")
                         .HasColumnName("created_by_id");
 
@@ -17029,6 +17245,9 @@ namespace ONEVO.Infrastructure.Migrations
 
                     b.HasKey("Id")
                         .HasName("pk_task_status_change_logs");
+
+                    b.HasIndex("CreatedById")
+                        .HasDatabaseName("ix_task_status_change_logs_created_by_id");
 
                     b.HasIndex("EmployeeId")
                         .HasDatabaseName("ix_task_status_change_logs_employee_id");
@@ -17071,7 +17290,7 @@ namespace ONEVO.Infrastructure.Migrations
                         .HasColumnType("datetimeoffset")
                         .HasColumnName("created_at");
 
-                    b.Property<Guid>("CreatedById")
+                    b.Property<Guid?>("CreatedById")
                         .HasColumnType("uniqueidentifier")
                         .HasColumnName("created_by_id");
 
@@ -17179,6 +17398,9 @@ namespace ONEVO.Infrastructure.Migrations
                     b.HasIndex("CategoryId")
                         .HasDatabaseName("ix_tasks_category_id");
 
+                    b.HasIndex("CreatedById")
+                        .HasDatabaseName("ix_tasks_created_by_id");
+
                     b.HasIndex("CreatorPositionObjectiveId")
                         .HasDatabaseName("ix_tasks_creator_position_objective_id");
 
@@ -17232,7 +17454,7 @@ namespace ONEVO.Infrastructure.Migrations
                         .HasColumnType("datetimeoffset")
                         .HasColumnName("created_at");
 
-                    b.Property<Guid>("CreatedById")
+                    b.Property<Guid?>("CreatedById")
                         .HasColumnType("uniqueidentifier")
                         .HasColumnName("created_by_id");
 
@@ -17272,6 +17494,9 @@ namespace ONEVO.Infrastructure.Migrations
 
                     b.HasKey("Id")
                         .HasName("pk_versions");
+
+                    b.HasIndex("CreatedById")
+                        .HasDatabaseName("ix_versions_created_by_id");
 
                     b.HasIndex("ProjectId")
                         .HasDatabaseName("ix_versions_project_id");
@@ -17476,6 +17701,12 @@ namespace ONEVO.Infrastructure.Migrations
 
             modelBuilder.Entity("ONEVO.Domain.Features.Auth.Entities.Role", b =>
                 {
+                    b.HasOne("ONEVO.Domain.Features.InfrastructureModule.Entities.User", null)
+                        .WithMany()
+                        .HasForeignKey("CreatedById")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .HasConstraintName("fk_roles_users_created_by_id");
+
                     b.HasOne("ONEVO.Domain.Features.Auth.Entities.RoleTemplate", null)
                         .WithMany()
                         .HasForeignKey("SourceTemplateId")
@@ -17547,6 +17778,12 @@ namespace ONEVO.Infrastructure.Migrations
 
             modelBuilder.Entity("ONEVO.Domain.Features.Calendar.Entities.CalendarEvent", b =>
                 {
+                    b.HasOne("ONEVO.Domain.Features.InfrastructureModule.Entities.User", null)
+                        .WithMany()
+                        .HasForeignKey("CreatedById")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .HasConstraintName("fk_personal_calendar_events_users_created_by_id");
+
                     b.HasOne("ONEVO.Domain.Features.Calendar.Entities.CalendarEvent", null)
                         .WithMany()
                         .HasForeignKey("RecurrenceParentId")
@@ -17580,11 +17817,44 @@ namespace ONEVO.Infrastructure.Migrations
 
             modelBuilder.Entity("ONEVO.Domain.Features.Calendar.Entities.CalendarEventParticipant", b =>
                 {
+                    b.HasOne("ONEVO.Domain.Features.InfrastructureModule.Entities.User", null)
+                        .WithMany()
+                        .HasForeignKey("CreatedById")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .HasConstraintName("fk_calendar_event_participants_users_created_by_id");
+
                     b.HasOne("ONEVO.Domain.Features.WorkManagement.Meetings.Entities.MeetingSeries", null)
                         .WithMany()
                         .HasForeignKey("MeetingSeriesId")
                         .OnDelete(DeleteBehavior.Restrict)
                         .HasConstraintName("fk_calendar_event_participants_meeting_series_meeting_series_id");
+                });
+
+            modelBuilder.Entity("ONEVO.Domain.Features.Calendar.Entities.CalendarEventParticipantRsvpHistory", b =>
+                {
+                    b.HasOne("ONEVO.Domain.Features.InfrastructureModule.Entities.User", null)
+                        .WithMany()
+                        .HasForeignKey("CreatedById")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .HasConstraintName("fk_calendar_event_participant_rsvp_history_users_created_by_id");
+                });
+
+            modelBuilder.Entity("ONEVO.Domain.Features.Calendar.Entities.CalendarEventReminderLog", b =>
+                {
+                    b.HasOne("ONEVO.Domain.Features.InfrastructureModule.Entities.User", null)
+                        .WithMany()
+                        .HasForeignKey("CreatedById")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .HasConstraintName("fk_calendar_event_reminders_sent_users_created_by_id");
+                });
+
+            modelBuilder.Entity("ONEVO.Domain.Features.Calendar.Entities.CalendarMeetingIncident", b =>
+                {
+                    b.HasOne("ONEVO.Domain.Features.InfrastructureModule.Entities.User", null)
+                        .WithMany()
+                        .HasForeignKey("CreatedById")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .HasConstraintName("fk_calendar_meeting_incidents_users_created_by_id");
                 });
 
             modelBuilder.Entity("ONEVO.Domain.Features.Calendar.Entities.ExternalCalendarEventLink", b =>
@@ -17596,6 +17866,24 @@ namespace ONEVO.Infrastructure.Migrations
                         .HasConstraintName("fk_external_calendar_event_links_meeting_details_meeting_task_id");
                 });
 
+            modelBuilder.Entity("ONEVO.Domain.Features.Calendar.Entities.HolidayCalendarSettings", b =>
+                {
+                    b.HasOne("ONEVO.Domain.Features.InfrastructureModule.Entities.User", null)
+                        .WithMany()
+                        .HasForeignKey("CreatedById")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .HasConstraintName("fk_holiday_calendar_settings_users_created_by_id");
+                });
+
+            modelBuilder.Entity("ONEVO.Domain.Features.Conversations.Entities.Conversation", b =>
+                {
+                    b.HasOne("ONEVO.Domain.Features.InfrastructureModule.Entities.User", null)
+                        .WithMany()
+                        .HasForeignKey("CreatedById")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .HasConstraintName("fk_conversations_users_created_by_id");
+                });
+
             modelBuilder.Entity("ONEVO.Domain.Features.Conversations.Entities.ConversationFavorite", b =>
                 {
                     b.HasOne("ONEVO.Domain.Features.Conversations.Entities.Conversation", null)
@@ -17604,6 +17892,12 @@ namespace ONEVO.Infrastructure.Migrations
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired()
                         .HasConstraintName("fk_conversation_favorites_conversations_conversation_id");
+
+                    b.HasOne("ONEVO.Domain.Features.InfrastructureModule.Entities.User", null)
+                        .WithMany()
+                        .HasForeignKey("CreatedById")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .HasConstraintName("fk_conversation_favorites_users_created_by_id");
                 });
 
             modelBuilder.Entity("ONEVO.Domain.Features.Conversations.Entities.ConversationMessage", b =>
@@ -17614,10 +17908,22 @@ namespace ONEVO.Infrastructure.Migrations
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired()
                         .HasConstraintName("fk_conversation_messages_conversations_conversation_id");
+
+                    b.HasOne("ONEVO.Domain.Features.InfrastructureModule.Entities.User", null)
+                        .WithMany()
+                        .HasForeignKey("CreatedById")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .HasConstraintName("fk_conversation_messages_users_created_by_id");
                 });
 
             modelBuilder.Entity("ONEVO.Domain.Features.Conversations.Entities.ConversationMessageAttachment", b =>
                 {
+                    b.HasOne("ONEVO.Domain.Features.InfrastructureModule.Entities.User", null)
+                        .WithMany()
+                        .HasForeignKey("CreatedById")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .HasConstraintName("fk_conversation_message_attachments_users_created_by_id");
+
                     b.HasOne("ONEVO.Domain.Features.Conversations.Entities.ConversationMessage", null)
                         .WithMany()
                         .HasForeignKey("MessageId")
@@ -17628,6 +17934,12 @@ namespace ONEVO.Infrastructure.Migrations
 
             modelBuilder.Entity("ONEVO.Domain.Features.Conversations.Entities.ConversationMessageHide", b =>
                 {
+                    b.HasOne("ONEVO.Domain.Features.InfrastructureModule.Entities.User", null)
+                        .WithMany()
+                        .HasForeignKey("CreatedById")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .HasConstraintName("fk_conversation_message_hides_users_created_by_id");
+
                     b.HasOne("ONEVO.Domain.Features.Conversations.Entities.ConversationMessage", null)
                         .WithMany()
                         .HasForeignKey("MessageId")
@@ -17638,6 +17950,12 @@ namespace ONEVO.Infrastructure.Migrations
 
             modelBuilder.Entity("ONEVO.Domain.Features.Conversations.Entities.ConversationMessageMention", b =>
                 {
+                    b.HasOne("ONEVO.Domain.Features.InfrastructureModule.Entities.User", null)
+                        .WithMany()
+                        .HasForeignKey("CreatedById")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .HasConstraintName("fk_conversation_message_mentions_users_created_by_id");
+
                     b.HasOne("ONEVO.Domain.Features.Conversations.Entities.ConversationMessage", null)
                         .WithMany()
                         .HasForeignKey("MessageId")
@@ -17648,6 +17966,12 @@ namespace ONEVO.Infrastructure.Migrations
 
             modelBuilder.Entity("ONEVO.Domain.Features.Conversations.Entities.ConversationMessageReaction", b =>
                 {
+                    b.HasOne("ONEVO.Domain.Features.InfrastructureModule.Entities.User", null)
+                        .WithMany()
+                        .HasForeignKey("CreatedById")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .HasConstraintName("fk_conversation_message_reactions_users_created_by_id");
+
                     b.HasOne("ONEVO.Domain.Features.Conversations.Entities.ConversationMessage", null)
                         .WithMany()
                         .HasForeignKey("MessageId")
@@ -17658,6 +17982,12 @@ namespace ONEVO.Infrastructure.Migrations
 
             modelBuilder.Entity("ONEVO.Domain.Features.Conversations.Entities.ConversationMessageRevision", b =>
                 {
+                    b.HasOne("ONEVO.Domain.Features.InfrastructureModule.Entities.User", null)
+                        .WithMany()
+                        .HasForeignKey("CreatedById")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .HasConstraintName("fk_conversation_message_revisions_users_created_by_id");
+
                     b.HasOne("ONEVO.Domain.Features.Conversations.Entities.ConversationMessage", null)
                         .WithMany()
                         .HasForeignKey("MessageId")
@@ -17674,6 +18004,12 @@ namespace ONEVO.Infrastructure.Migrations
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired()
                         .HasConstraintName("fk_conversation_mutes_conversations_conversation_id");
+
+                    b.HasOne("ONEVO.Domain.Features.InfrastructureModule.Entities.User", null)
+                        .WithMany()
+                        .HasForeignKey("CreatedById")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .HasConstraintName("fk_conversation_mutes_users_created_by_id");
                 });
 
             modelBuilder.Entity("ONEVO.Domain.Features.Conversations.Entities.ConversationParticipant", b =>
@@ -17684,6 +18020,12 @@ namespace ONEVO.Infrastructure.Migrations
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired()
                         .HasConstraintName("fk_conversation_participants_conversations_conversation_id");
+
+                    b.HasOne("ONEVO.Domain.Features.InfrastructureModule.Entities.User", null)
+                        .WithMany()
+                        .HasForeignKey("CreatedById")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .HasConstraintName("fk_conversation_participants_users_created_by_id");
                 });
 
             modelBuilder.Entity("ONEVO.Domain.Features.CoreHr.Entities.AccessGrantRequest", b =>
@@ -17758,6 +18100,12 @@ namespace ONEVO.Infrastructure.Migrations
                 {
                     b.HasOne("ONEVO.Domain.Features.InfrastructureModule.Entities.User", null)
                         .WithMany()
+                        .HasForeignKey("CreatedById")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .HasConstraintName("fk_bulk_onboarding_batches_users_created_by_id");
+
+                    b.HasOne("ONEVO.Domain.Features.InfrastructureModule.Entities.User", null)
+                        .WithMany()
                         .HasForeignKey("CreatedByUserId")
                         .OnDelete(DeleteBehavior.NoAction)
                         .IsRequired()
@@ -17791,6 +18139,12 @@ namespace ONEVO.Infrastructure.Migrations
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired()
                         .HasConstraintName("fk_bulk_onboarding_batch_rows_bulk_onboarding_batches_batch_id");
+
+                    b.HasOne("ONEVO.Domain.Features.InfrastructureModule.Entities.User", null)
+                        .WithMany()
+                        .HasForeignKey("CreatedById")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .HasConstraintName("fk_bulk_onboarding_batch_rows_users_created_by_id");
 
                     b.HasOne("ONEVO.Domain.Features.CoreHr.Entities.OnboardingDraft", null)
                         .WithMany()
@@ -17852,6 +18206,12 @@ namespace ONEVO.Infrastructure.Migrations
 
             modelBuilder.Entity("ONEVO.Domain.Features.CoreHr.Entities.Employee", b =>
                 {
+                    b.HasOne("ONEVO.Domain.Features.InfrastructureModule.Entities.User", null)
+                        .WithMany()
+                        .HasForeignKey("CreatedById")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .HasConstraintName("fk_employees_users_created_by_id");
+
                     b.HasOne("ONEVO.Domain.Features.OrgStructure.Entities.Department", null)
                         .WithMany()
                         .HasForeignKey("DepartmentId")
@@ -17880,6 +18240,12 @@ namespace ONEVO.Infrastructure.Migrations
 
             modelBuilder.Entity("ONEVO.Domain.Features.CoreHr.Entities.EmployeeAddress", b =>
                 {
+                    b.HasOne("ONEVO.Domain.Features.InfrastructureModule.Entities.User", null)
+                        .WithMany()
+                        .HasForeignKey("CreatedById")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .HasConstraintName("fk_employee_addresses_users_created_by_id");
+
                     b.HasOne("ONEVO.Domain.Features.CoreHr.Entities.Employee", null)
                         .WithMany()
                         .HasForeignKey("EmployeeId")
@@ -17890,6 +18256,12 @@ namespace ONEVO.Infrastructure.Migrations
 
             modelBuilder.Entity("ONEVO.Domain.Features.CoreHr.Entities.EmployeeBankDetail", b =>
                 {
+                    b.HasOne("ONEVO.Domain.Features.InfrastructureModule.Entities.User", null)
+                        .WithMany()
+                        .HasForeignKey("CreatedById")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .HasConstraintName("fk_employee_bank_details_users_created_by_id");
+
                     b.HasOne("ONEVO.Domain.Features.CoreHr.Entities.Employee", null)
                         .WithMany()
                         .HasForeignKey("EmployeeId")
@@ -17935,6 +18307,12 @@ namespace ONEVO.Infrastructure.Migrations
 
             modelBuilder.Entity("ONEVO.Domain.Features.CoreHr.Entities.EmployeeDependent", b =>
                 {
+                    b.HasOne("ONEVO.Domain.Features.InfrastructureModule.Entities.User", null)
+                        .WithMany()
+                        .HasForeignKey("CreatedById")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .HasConstraintName("fk_employee_dependents_users_created_by_id");
+
                     b.HasOne("ONEVO.Domain.Features.CoreHr.Entities.Employee", null)
                         .WithMany()
                         .HasForeignKey("EmployeeId")
@@ -17945,6 +18323,12 @@ namespace ONEVO.Infrastructure.Migrations
 
             modelBuilder.Entity("ONEVO.Domain.Features.CoreHr.Entities.EmployeeEmergencyContact", b =>
                 {
+                    b.HasOne("ONEVO.Domain.Features.InfrastructureModule.Entities.User", null)
+                        .WithMany()
+                        .HasForeignKey("CreatedById")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .HasConstraintName("fk_employee_emergency_contacts_users_created_by_id");
+
                     b.HasOne("ONEVO.Domain.Features.CoreHr.Entities.Employee", null)
                         .WithMany()
                         .HasForeignKey("EmployeeId")
@@ -18039,6 +18423,12 @@ namespace ONEVO.Infrastructure.Migrations
                         .OnDelete(DeleteBehavior.NoAction)
                         .HasConstraintName("fk_onboarding_drafts_file_records_avatar_file_id");
 
+                    b.HasOne("ONEVO.Domain.Features.InfrastructureModule.Entities.User", null)
+                        .WithMany()
+                        .HasForeignKey("CreatedById")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .HasConstraintName("fk_onboarding_drafts_users_created_by_id");
+
                     b.HasOne("ONEVO.Domain.Features.OrgStructure.Entities.Department", null)
                         .WithMany()
                         .HasForeignKey("DepartmentId")
@@ -18086,6 +18476,12 @@ namespace ONEVO.Infrastructure.Migrations
 
             modelBuilder.Entity("ONEVO.Domain.Features.CoreHr.Entities.PositionAssignment", b =>
                 {
+                    b.HasOne("ONEVO.Domain.Features.InfrastructureModule.Entities.User", null)
+                        .WithMany()
+                        .HasForeignKey("CreatedById")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .HasConstraintName("fk_position_assignments_users_created_by_id");
+
                     b.HasOne("ONEVO.Domain.Features.CoreHr.Entities.Employee", null)
                         .WithMany()
                         .HasForeignKey("EmployeeId")
@@ -18109,6 +18505,12 @@ namespace ONEVO.Infrastructure.Migrations
 
             modelBuilder.Entity("ONEVO.Domain.Features.CoreHr.Entities.ReportingManagerChange", b =>
                 {
+                    b.HasOne("ONEVO.Domain.Features.InfrastructureModule.Entities.User", null)
+                        .WithMany()
+                        .HasForeignKey("CreatedById")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .HasConstraintName("fk_reporting_manager_changes_users_created_by_id");
+
                     b.HasOne("ONEVO.Domain.Features.CoreHr.Entities.Employee", null)
                         .WithMany()
                         .HasForeignKey("EmployeeId")
@@ -18161,6 +18563,12 @@ namespace ONEVO.Infrastructure.Migrations
 
             modelBuilder.Entity("ONEVO.Domain.Features.Dashboard.Entities.DashboardTemplate", b =>
                 {
+                    b.HasOne("ONEVO.Domain.Features.InfrastructureModule.Entities.User", null)
+                        .WithMany()
+                        .HasForeignKey("CreatedById")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .HasConstraintName("fk_dashboard_templates_users_created_by_id");
+
                     b.HasOne("ONEVO.Domain.Features.Auth.Entities.Role", null)
                         .WithMany()
                         .HasForeignKey("RoleId")
@@ -18170,6 +18578,12 @@ namespace ONEVO.Infrastructure.Migrations
 
             modelBuilder.Entity("ONEVO.Domain.Features.Dashboard.Entities.DashboardTemplateWidget", b =>
                 {
+                    b.HasOne("ONEVO.Domain.Features.InfrastructureModule.Entities.User", null)
+                        .WithMany()
+                        .HasForeignKey("CreatedById")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .HasConstraintName("fk_dashboard_template_widgets_users_created_by_id");
+
                     b.HasOne("ONEVO.Domain.Features.Dashboard.Entities.DashboardTemplate", null)
                         .WithMany("Widgets")
                         .HasForeignKey("TemplateId")
@@ -18180,6 +18594,12 @@ namespace ONEVO.Infrastructure.Migrations
 
             modelBuilder.Entity("ONEVO.Domain.Features.Dashboard.Entities.DashboardTemplateWidgetLayout", b =>
                 {
+                    b.HasOne("ONEVO.Domain.Features.InfrastructureModule.Entities.User", null)
+                        .WithMany()
+                        .HasForeignKey("CreatedById")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .HasConstraintName("fk_dashboard_template_widget_layouts_users_created_by_id");
+
                     b.HasOne("ONEVO.Domain.Features.Dashboard.Entities.DashboardTemplateWidget", null)
                         .WithMany("Layouts")
                         .HasForeignKey("TemplateWidgetId")
@@ -18190,6 +18610,12 @@ namespace ONEVO.Infrastructure.Migrations
 
             modelBuilder.Entity("ONEVO.Domain.Features.Dashboard.Entities.DashboardWidget", b =>
                 {
+                    b.HasOne("ONEVO.Domain.Features.InfrastructureModule.Entities.User", null)
+                        .WithMany()
+                        .HasForeignKey("CreatedById")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .HasConstraintName("fk_dashboard_widgets_users_created_by_id");
+
                     b.HasOne("ONEVO.Domain.Features.Dashboard.Entities.UserDashboard", null)
                         .WithMany("Widgets")
                         .HasForeignKey("DashboardId")
@@ -18200,12 +18626,36 @@ namespace ONEVO.Infrastructure.Migrations
 
             modelBuilder.Entity("ONEVO.Domain.Features.Dashboard.Entities.DashboardWidgetLayout", b =>
                 {
+                    b.HasOne("ONEVO.Domain.Features.InfrastructureModule.Entities.User", null)
+                        .WithMany()
+                        .HasForeignKey("CreatedById")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .HasConstraintName("fk_dashboard_widget_layouts_users_created_by_id");
+
                     b.HasOne("ONEVO.Domain.Features.Dashboard.Entities.DashboardWidget", null)
                         .WithMany("Layouts")
                         .HasForeignKey("WidgetId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired()
                         .HasConstraintName("fk_dashboard_widget_layouts_dashboard_widgets_widget_id");
+                });
+
+            modelBuilder.Entity("ONEVO.Domain.Features.Dashboard.Entities.UserDashboard", b =>
+                {
+                    b.HasOne("ONEVO.Domain.Features.InfrastructureModule.Entities.User", null)
+                        .WithMany()
+                        .HasForeignKey("CreatedById")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .HasConstraintName("fk_user_dashboards_users_created_by_id");
+                });
+
+            modelBuilder.Entity("ONEVO.Domain.Features.DevPlatform.AppCatalog.Entities.GlobalApplication", b =>
+                {
+                    b.HasOne("ONEVO.Domain.Features.DevPlatform.PlatformAccess.Entities.PlatformUser", null)
+                        .WithMany()
+                        .HasForeignKey("CreatedById")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .HasConstraintName("fk_global_app_catalog_platform_users_created_by_id");
                 });
 
             modelBuilder.Entity("ONEVO.Domain.Features.DevPlatform.Compliance.Entities.LegalDocumentVersion", b =>
@@ -18552,6 +19002,24 @@ namespace ONEVO.Infrastructure.Migrations
                         .HasConstraintName("fk_platform_service_keys_platform_users_updated_by_id");
                 });
 
+            modelBuilder.Entity("ONEVO.Domain.Features.DevPlatform.SystemConfig.TrayReleases.Entities.TrayAppRelease", b =>
+                {
+                    b.HasOne("ONEVO.Domain.Features.DevPlatform.PlatformAccess.Entities.PlatformUser", null)
+                        .WithMany()
+                        .HasForeignKey("CreatedById")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .HasConstraintName("fk_tray_app_releases_platform_users_created_by_id");
+                });
+
+            modelBuilder.Entity("ONEVO.Domain.Features.Inbox.Entities.InboxDecisionJournalEntry", b =>
+                {
+                    b.HasOne("ONEVO.Domain.Features.InfrastructureModule.Entities.User", null)
+                        .WithMany()
+                        .HasForeignKey("CreatedById")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .HasConstraintName("fk_inbox_decision_journal_users_created_by_id");
+                });
+
             modelBuilder.Entity("ONEVO.Domain.Features.InfrastructureModule.Entities.TenantStatusHistory", b =>
                 {
                     b.HasOne("ONEVO.Domain.Features.DevPlatform.PlatformAccess.Entities.PlatformUser", null)
@@ -18566,6 +19034,15 @@ namespace ONEVO.Infrastructure.Migrations
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired()
                         .HasConstraintName("fk_tenant_status_histories_tenants_tenant_id");
+                });
+
+            modelBuilder.Entity("ONEVO.Domain.Features.InfrastructureModule.Entities.User", b =>
+                {
+                    b.HasOne("ONEVO.Domain.Features.InfrastructureModule.Entities.User", null)
+                        .WithMany()
+                        .HasForeignKey("CreatedById")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .HasConstraintName("fk_users_users_created_by_id");
                 });
 
             modelBuilder.Entity("ONEVO.Domain.Features.Leave.BalanceAudit.Entities.LeaveBalanceAudit", b =>
@@ -18953,6 +19430,12 @@ namespace ONEVO.Infrastructure.Migrations
 
             modelBuilder.Entity("ONEVO.Domain.Features.OrgStructure.Entities.Position", b =>
                 {
+                    b.HasOne("ONEVO.Domain.Features.InfrastructureModule.Entities.User", null)
+                        .WithMany()
+                        .HasForeignKey("CreatedById")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .HasConstraintName("fk_positions_users_created_by_id");
+
                     b.HasOne("ONEVO.Domain.Features.Auth.Entities.Role", null)
                         .WithMany()
                         .HasForeignKey("DefaultRoleId")
@@ -19090,6 +19573,24 @@ namespace ONEVO.Infrastructure.Migrations
                         .HasConstraintName("fk_subscription_invoices_tenant_subscriptions_tenant_subscription_id");
                 });
 
+            modelBuilder.Entity("ONEVO.Domain.Features.SharedPlatform.Entities.TenantOneTimeCharge", b =>
+                {
+                    b.HasOne("ONEVO.Domain.Features.InfrastructureModule.Entities.User", null)
+                        .WithMany()
+                        .HasForeignKey("CreatedById")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .HasConstraintName("fk_tenant_one_time_charges_users_created_by_id");
+                });
+
+            modelBuilder.Entity("ONEVO.Domain.Features.SharedPlatform.Entities.TenantSubscription", b =>
+                {
+                    b.HasOne("ONEVO.Domain.Features.DevPlatform.PlatformAccess.Entities.PlatformUser", null)
+                        .WithMany()
+                        .HasForeignKey("CreatedById")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .HasConstraintName("fk_tenant_subscriptions_platform_users_created_by_id");
+                });
+
             modelBuilder.Entity("ONEVO.Domain.Features.SharedPlatform.Notifications.Entities.NotificationTemplateVersion", b =>
                 {
                     b.HasOne("ONEVO.Domain.Features.SharedPlatform.Notifications.Entities.NotificationTemplate", null)
@@ -19111,6 +19612,12 @@ namespace ONEVO.Infrastructure.Migrations
 
             modelBuilder.Entity("ONEVO.Domain.Features.SharedPlatform.PaymentGateway.Entities.PaymentGatewayConfig", b =>
                 {
+                    b.HasOne("ONEVO.Domain.Features.DevPlatform.PlatformAccess.Entities.PlatformUser", null)
+                        .WithMany()
+                        .HasForeignKey("CreatedById")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .HasConstraintName("fk_payment_gateway_configs_platform_users_created_by_id");
+
                     b.HasOne("ONEVO.Domain.Features.DevPlatform.SystemConfig.PlatformProviders.Entities.PlatformProvider", null)
                         .WithMany()
                         .HasForeignKey("Provider")
@@ -19122,6 +19629,12 @@ namespace ONEVO.Infrastructure.Migrations
 
             modelBuilder.Entity("ONEVO.Domain.Features.SharedPlatform.PaymentGateway.Entities.PaymentGatewayCountryRoute", b =>
                 {
+                    b.HasOne("ONEVO.Domain.Features.DevPlatform.PlatformAccess.Entities.PlatformUser", null)
+                        .WithMany()
+                        .HasForeignKey("CreatedById")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .HasConstraintName("fk_payment_gateway_country_routes_platform_users_created_by_id");
+
                     b.HasOne("ONEVO.Domain.Features.SharedPlatform.PaymentGateway.Entities.PaymentGatewayConfig", "GatewayConfig")
                         .WithMany("CountryRoutes")
                         .HasForeignKey("GatewayConfigId")
@@ -19194,6 +19707,12 @@ namespace ONEVO.Infrastructure.Migrations
 
             modelBuilder.Entity("ONEVO.Domain.Features.Storage.EntityAssets.Entities.EntityAsset", b =>
                 {
+                    b.HasOne("ONEVO.Domain.Features.InfrastructureModule.Entities.User", null)
+                        .WithMany()
+                        .HasForeignKey("CreatedById")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .HasConstraintName("fk_entity_assets_users_created_by_id");
+
                     b.HasOne("ONEVO.Domain.Features.Storage.File.Entities.FileRecord", null)
                         .WithMany()
                         .HasForeignKey("FileRecordId")
@@ -19260,6 +19779,12 @@ namespace ONEVO.Infrastructure.Migrations
                         .OnDelete(DeleteBehavior.NoAction)
                         .HasConstraintName("fk_attendance_alerts_leave_requests_converted_leave_request_id");
 
+                    b.HasOne("ONEVO.Domain.Features.InfrastructureModule.Entities.User", null)
+                        .WithMany()
+                        .HasForeignKey("CreatedById")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .HasConstraintName("fk_attendance_alerts_users_created_by_id");
+
                     b.HasOne("ONEVO.Domain.Features.CoreHr.Entities.Employee", null)
                         .WithMany()
                         .HasForeignKey("EmployeeId")
@@ -19287,6 +19812,12 @@ namespace ONEVO.Infrastructure.Migrations
                         .HasForeignKey("ChargeAuditId")
                         .OnDelete(DeleteBehavior.NoAction)
                         .HasConstraintName("fk_attendance_alert_deductions_leave_balance_audits_charge_audit_id");
+
+                    b.HasOne("ONEVO.Domain.Features.InfrastructureModule.Entities.User", null)
+                        .WithMany()
+                        .HasForeignKey("CreatedById")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .HasConstraintName("fk_attendance_alert_deductions_users_created_by_id");
 
                     b.HasOne("ONEVO.Domain.Features.CoreHr.Entities.Employee", null)
                         .WithMany()
@@ -19398,6 +19929,12 @@ namespace ONEVO.Infrastructure.Migrations
 
             modelBuilder.Entity("ONEVO.Domain.Features.TimeAttendance.Entities.ClockInPolicy", b =>
                 {
+                    b.HasOne("ONEVO.Domain.Features.InfrastructureModule.Entities.User", null)
+                        .WithMany()
+                        .HasForeignKey("CreatedById")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .HasConstraintName("fk_clock_in_policies_users_created_by_id");
+
                     b.HasOne("ONEVO.Domain.Features.OrgStructure.Entities.LegalEntity", null)
                         .WithMany()
                         .HasForeignKey("LegalEntityId")
@@ -19513,6 +20050,12 @@ namespace ONEVO.Infrastructure.Migrations
                         .IsRequired()
                         .HasConstraintName("fk_wm_approval_requests_employees_approver_employee_id");
 
+                    b.HasOne("ONEVO.Domain.Features.InfrastructureModule.Entities.User", null)
+                        .WithMany()
+                        .HasForeignKey("CreatedById")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .HasConstraintName("fk_wm_approval_requests_users_created_by_id");
+
                     b.HasOne("ONEVO.Domain.Features.CoreHr.Entities.Employee", null)
                         .WithMany()
                         .HasForeignKey("DecidedByEmployeeId")
@@ -19553,6 +20096,12 @@ namespace ONEVO.Infrastructure.Migrations
                         .HasForeignKey("ArchivedById")
                         .OnDelete(DeleteBehavior.NoAction)
                         .HasConstraintName("fk_calendar_events_employees_archived_by_id");
+
+                    b.HasOne("ONEVO.Domain.Features.CoreHr.Entities.Employee", null)
+                        .WithMany()
+                        .HasForeignKey("CreatedById")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .HasConstraintName("fk_calendar_events_employees_created_by_id");
 
                     b.HasOne("ONEVO.Domain.Features.WorkManagement.Projects.Entities.Project", null)
                         .WithMany()
@@ -19615,6 +20164,12 @@ namespace ONEVO.Infrastructure.Migrations
 
             modelBuilder.Entity("ONEVO.Domain.Features.WorkManagement.Labels.Entities.Label", b =>
                 {
+                    b.HasOne("ONEVO.Domain.Features.InfrastructureModule.Entities.User", null)
+                        .WithMany()
+                        .HasForeignKey("CreatedById")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .HasConstraintName("fk_labels_users_created_by_id");
+
                     b.HasOne("ONEVO.Domain.Features.WorkManagement.Projects.Entities.Project", null)
                         .WithMany()
                         .HasForeignKey("ProjectId")
@@ -19734,6 +20289,12 @@ namespace ONEVO.Infrastructure.Migrations
                         .OnDelete(DeleteBehavior.NoAction)
                         .HasConstraintName("fk_meeting_series_wm_approval_requests_approval_request_id");
 
+                    b.HasOne("ONEVO.Domain.Features.InfrastructureModule.Entities.User", null)
+                        .WithMany()
+                        .HasForeignKey("CreatedById")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .HasConstraintName("fk_meeting_series_users_created_by_id");
+
                     b.HasOne("ONEVO.Domain.Features.WorkManagement.Objectives.Entities.Objective", null)
                         .WithMany()
                         .HasForeignKey("ObjectiveId")
@@ -19781,6 +20342,12 @@ namespace ONEVO.Infrastructure.Migrations
 
             modelBuilder.Entity("ONEVO.Domain.Features.WorkManagement.Monitoring.Entities.MonitorAlert", b =>
                 {
+                    b.HasOne("ONEVO.Domain.Features.InfrastructureModule.Entities.User", null)
+                        .WithMany()
+                        .HasForeignKey("CreatedById")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .HasConstraintName("fk_wm_monitor_alerts_users_created_by_id");
+
                     b.HasOne("ONEVO.Domain.Features.WorkManagement.Projects.Entities.Project", null)
                         .WithMany()
                         .HasForeignKey("ProjectId")
@@ -19797,6 +20364,12 @@ namespace ONEVO.Infrastructure.Migrations
 
             modelBuilder.Entity("ONEVO.Domain.Features.WorkManagement.Monitoring.Entities.TaskRateSetting", b =>
                 {
+                    b.HasOne("ONEVO.Domain.Features.InfrastructureModule.Entities.User", null)
+                        .WithMany()
+                        .HasForeignKey("CreatedById")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .HasConstraintName("fk_wm_task_rate_settings_users_created_by_id");
+
                     b.HasOne("ONEVO.Domain.Features.OrgStructure.Entities.LegalEntity", null)
                         .WithMany()
                         .HasForeignKey("LegalEntityId")
@@ -19826,6 +20399,12 @@ namespace ONEVO.Infrastructure.Migrations
                         .OnDelete(DeleteBehavior.NoAction)
                         .HasConstraintName("fk_wm_notification_log_wm_approval_requests_approval_request_id");
 
+                    b.HasOne("ONEVO.Domain.Features.InfrastructureModule.Entities.User", null)
+                        .WithMany()
+                        .HasForeignKey("CreatedById")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .HasConstraintName("fk_wm_notification_log_users_created_by_id");
+
                     b.HasOne("ONEVO.Domain.Features.WorkManagement.Projects.Entities.Project", null)
                         .WithMany()
                         .HasForeignKey("ProjectId")
@@ -19843,6 +20422,12 @@ namespace ONEVO.Infrastructure.Migrations
 
             modelBuilder.Entity("ONEVO.Domain.Features.WorkManagement.Objectives.Entities.ModuleHourSummary", b =>
                 {
+                    b.HasOne("ONEVO.Domain.Features.InfrastructureModule.Entities.User", null)
+                        .WithMany()
+                        .HasForeignKey("CreatedById")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .HasConstraintName("fk_wm_module_hour_summaries_users_created_by_id");
+
                     b.HasOne("ONEVO.Domain.Features.WorkManagement.Projects.Entities.Project", null)
                         .WithMany()
                         .HasForeignKey("ProjectId")
@@ -19853,6 +20438,12 @@ namespace ONEVO.Infrastructure.Migrations
 
             modelBuilder.Entity("ONEVO.Domain.Features.WorkManagement.Objectives.Entities.Objective", b =>
                 {
+                    b.HasOne("ONEVO.Domain.Features.InfrastructureModule.Entities.User", null)
+                        .WithMany()
+                        .HasForeignKey("CreatedById")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .HasConstraintName("fk_objectives_users_created_by_id");
+
                     b.HasOne("ONEVO.Domain.Features.WorkManagement.Objectives.Entities.Objective", null)
                         .WithMany()
                         .HasForeignKey("CreatorPositionObjectiveId")
@@ -19888,6 +20479,12 @@ namespace ONEVO.Infrastructure.Migrations
 
             modelBuilder.Entity("ONEVO.Domain.Features.WorkManagement.Planner.Entities.PlannedTaskBlock", b =>
                 {
+                    b.HasOne("ONEVO.Domain.Features.InfrastructureModule.Entities.User", null)
+                        .WithMany()
+                        .HasForeignKey("CreatedById")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .HasConstraintName("fk_planned_task_blocks_users_created_by_id");
+
                     b.HasOne("ONEVO.Domain.Features.CoreHr.Entities.Employee", null)
                         .WithMany()
                         .HasForeignKey("EmployeeId")
@@ -19905,6 +20502,12 @@ namespace ONEVO.Infrastructure.Migrations
 
             modelBuilder.Entity("ONEVO.Domain.Features.WorkManagement.ProjectInvitations.Entities.ProjectMemberInvitation", b =>
                 {
+                    b.HasOne("ONEVO.Domain.Features.InfrastructureModule.Entities.User", null)
+                        .WithMany()
+                        .HasForeignKey("CreatedById")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .HasConstraintName("fk_project_member_invitations_users_created_by_id");
+
                     b.HasOne("ONEVO.Domain.Features.CoreHr.Entities.Employee", null)
                         .WithMany()
                         .HasForeignKey("InvitedById")
@@ -19936,6 +20539,12 @@ namespace ONEVO.Infrastructure.Migrations
 
             modelBuilder.Entity("ONEVO.Domain.Features.WorkManagement.ProjectMembers.Entities.ProjectMember", b =>
                 {
+                    b.HasOne("ONEVO.Domain.Features.InfrastructureModule.Entities.User", null)
+                        .WithMany()
+                        .HasForeignKey("CreatedById")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .HasConstraintName("fk_project_members_users_created_by_id");
+
                     b.HasOne("ONEVO.Domain.Features.CoreHr.Entities.Employee", null)
                         .WithMany()
                         .HasForeignKey("EmployeeId")
@@ -19967,6 +20576,12 @@ namespace ONEVO.Infrastructure.Migrations
                         .IsRequired()
                         .HasConstraintName("fk_projects_project_categories_category_id");
 
+                    b.HasOne("ONEVO.Domain.Features.InfrastructureModule.Entities.User", null)
+                        .WithMany()
+                        .HasForeignKey("CreatedById")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .HasConstraintName("fk_projects_users_created_by_id");
+
                     b.HasOne("ONEVO.Domain.Features.CoreHr.Entities.Employee", null)
                         .WithMany()
                         .HasForeignKey("LeadId")
@@ -19982,8 +20597,23 @@ namespace ONEVO.Infrastructure.Migrations
                         .HasConstraintName("fk_projects_legal_entities_owning_legal_entity_id");
                 });
 
+            modelBuilder.Entity("ONEVO.Domain.Features.WorkManagement.Projects.Entities.ProjectCategory", b =>
+                {
+                    b.HasOne("ONEVO.Domain.Features.InfrastructureModule.Entities.User", null)
+                        .WithMany()
+                        .HasForeignKey("CreatedById")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .HasConstraintName("fk_project_categories_users_created_by_id");
+                });
+
             modelBuilder.Entity("ONEVO.Domain.Features.WorkManagement.ReleaseCalendar.Entities.ReleaseCalendarEntry", b =>
                 {
+                    b.HasOne("ONEVO.Domain.Features.InfrastructureModule.Entities.User", null)
+                        .WithMany()
+                        .HasForeignKey("CreatedById")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .HasConstraintName("fk_release_calendar_users_created_by_id");
+
                     b.HasOne("ONEVO.Domain.Features.WorkManagement.Projects.Entities.Project", null)
                         .WithMany()
                         .HasForeignKey("ProjectId")
@@ -20008,6 +20638,12 @@ namespace ONEVO.Infrastructure.Migrations
 
             modelBuilder.Entity("ONEVO.Domain.Features.WorkManagement.Sprints.Entities.Sprint", b =>
                 {
+                    b.HasOne("ONEVO.Domain.Features.InfrastructureModule.Entities.User", null)
+                        .WithMany()
+                        .HasForeignKey("CreatedById")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .HasConstraintName("fk_sprints_users_created_by_id");
+
                     b.HasOne("ONEVO.Domain.Features.WorkManagement.Objectives.Entities.Objective", null)
                         .WithMany()
                         .HasForeignKey("CreatorPositionObjectiveId")
@@ -20024,6 +20660,12 @@ namespace ONEVO.Infrastructure.Migrations
 
             modelBuilder.Entity("ONEVO.Domain.Features.WorkManagement.Sprints.Entities.SprintActivityLog", b =>
                 {
+                    b.HasOne("ONEVO.Domain.Features.InfrastructureModule.Entities.User", null)
+                        .WithMany()
+                        .HasForeignKey("CreatedById")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .HasConstraintName("fk_sprint_activity_logs_users_created_by_id");
+
                     b.HasOne("ONEVO.Domain.Features.CoreHr.Entities.Employee", null)
                         .WithMany()
                         .HasForeignKey("EmployeeId")
@@ -20072,6 +20714,12 @@ namespace ONEVO.Infrastructure.Migrations
 
             modelBuilder.Entity("ONEVO.Domain.Features.WorkManagement.Tasks.Entities.TaskCategory", b =>
                 {
+                    b.HasOne("ONEVO.Domain.Features.InfrastructureModule.Entities.User", null)
+                        .WithMany()
+                        .HasForeignKey("CreatedById")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .HasConstraintName("fk_task_categories_users_created_by_id");
+
                     b.HasOne("ONEVO.Domain.Features.WorkManagement.Projects.Entities.Project", null)
                         .WithMany()
                         .HasForeignKey("ProjectId")
@@ -20082,6 +20730,12 @@ namespace ONEVO.Infrastructure.Migrations
 
             modelBuilder.Entity("ONEVO.Domain.Features.WorkManagement.Tasks.Entities.TaskClockingSession", b =>
                 {
+                    b.HasOne("ONEVO.Domain.Features.InfrastructureModule.Entities.User", null)
+                        .WithMany()
+                        .HasForeignKey("CreatedById")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .HasConstraintName("fk_task_clocking_sessions_users_created_by_id");
+
                     b.HasOne("ONEVO.Domain.Features.CoreHr.Entities.Employee", null)
                         .WithMany()
                         .HasForeignKey("EmployeeId")
@@ -20099,6 +20753,12 @@ namespace ONEVO.Infrastructure.Migrations
 
             modelBuilder.Entity("ONEVO.Domain.Features.WorkManagement.Tasks.Entities.TaskComment", b =>
                 {
+                    b.HasOne("ONEVO.Domain.Features.InfrastructureModule.Entities.User", null)
+                        .WithMany()
+                        .HasForeignKey("CreatedById")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .HasConstraintName("fk_task_comments_users_created_by_id");
+
                     b.HasOne("ONEVO.Domain.Features.CoreHr.Entities.Employee", null)
                         .WithMany()
                         .HasForeignKey("EmployeeId")
@@ -20129,6 +20789,12 @@ namespace ONEVO.Infrastructure.Migrations
                         .IsRequired()
                         .HasConstraintName("fk_task_comment_logs_task_comments_comment_id");
 
+                    b.HasOne("ONEVO.Domain.Features.InfrastructureModule.Entities.User", null)
+                        .WithMany()
+                        .HasForeignKey("CreatedById")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .HasConstraintName("fk_task_comment_logs_users_created_by_id");
+
                     b.HasOne("ONEVO.Domain.Features.CoreHr.Entities.Employee", null)
                         .WithMany()
                         .HasForeignKey("EmployeeId")
@@ -20153,6 +20819,12 @@ namespace ONEVO.Infrastructure.Migrations
                         .IsRequired()
                         .HasConstraintName("fk_task_comment_reactions_task_comments_comment_id");
 
+                    b.HasOne("ONEVO.Domain.Features.InfrastructureModule.Entities.User", null)
+                        .WithMany()
+                        .HasForeignKey("CreatedById")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .HasConstraintName("fk_task_comment_reactions_users_created_by_id");
+
                     b.HasOne("ONEVO.Domain.Features.CoreHr.Entities.Employee", null)
                         .WithMany()
                         .HasForeignKey("EmployeeId")
@@ -20163,6 +20835,12 @@ namespace ONEVO.Infrastructure.Migrations
 
             modelBuilder.Entity("ONEVO.Domain.Features.WorkManagement.Tasks.Entities.TaskDraft", b =>
                 {
+                    b.HasOne("ONEVO.Domain.Features.InfrastructureModule.Entities.User", null)
+                        .WithMany()
+                        .HasForeignKey("CreatedById")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .HasConstraintName("fk_task_drafts_users_created_by_id");
+
                     b.HasOne("ONEVO.Domain.Features.InfrastructureModule.Entities.User", null)
                         .WithMany()
                         .HasForeignKey("OwnerUserId")
@@ -20180,6 +20858,12 @@ namespace ONEVO.Infrastructure.Migrations
 
             modelBuilder.Entity("ONEVO.Domain.Features.WorkManagement.Tasks.Entities.TaskEditLog", b =>
                 {
+                    b.HasOne("ONEVO.Domain.Features.InfrastructureModule.Entities.User", null)
+                        .WithMany()
+                        .HasForeignKey("CreatedById")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .HasConstraintName("fk_task_edit_logs_users_created_by_id");
+
                     b.HasOne("ONEVO.Domain.Features.WorkManagement.Approvals.Entities.WorkApprovalRequest", null)
                         .WithMany()
                         .HasForeignKey("EditRequestId")
@@ -20209,6 +20893,12 @@ namespace ONEVO.Infrastructure.Migrations
                         .OnDelete(DeleteBehavior.Restrict)
                         .HasConstraintName("fk_task_percentage_logs_task_clocking_sessions_clocking_session_id");
 
+                    b.HasOne("ONEVO.Domain.Features.InfrastructureModule.Entities.User", null)
+                        .WithMany()
+                        .HasForeignKey("CreatedById")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .HasConstraintName("fk_task_percentage_logs_users_created_by_id");
+
                     b.HasOne("ONEVO.Domain.Features.CoreHr.Entities.Employee", null)
                         .WithMany()
                         .HasForeignKey("EmployeeId")
@@ -20226,6 +20916,12 @@ namespace ONEVO.Infrastructure.Migrations
 
             modelBuilder.Entity("ONEVO.Domain.Features.WorkManagement.Tasks.Entities.TaskStatus", b =>
                 {
+                    b.HasOne("ONEVO.Domain.Features.InfrastructureModule.Entities.User", null)
+                        .WithMany()
+                        .HasForeignKey("CreatedById")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .HasConstraintName("fk_task_statuses_users_created_by_id");
+
                     b.HasOne("ONEVO.Domain.Features.WorkManagement.Objectives.Entities.Objective", null)
                         .WithMany()
                         .HasForeignKey("ObjectiveId")
@@ -20242,6 +20938,12 @@ namespace ONEVO.Infrastructure.Migrations
 
             modelBuilder.Entity("ONEVO.Domain.Features.WorkManagement.Tasks.Entities.TaskStatusChangeLog", b =>
                 {
+                    b.HasOne("ONEVO.Domain.Features.InfrastructureModule.Entities.User", null)
+                        .WithMany()
+                        .HasForeignKey("CreatedById")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .HasConstraintName("fk_task_status_change_logs_users_created_by_id");
+
                     b.HasOne("ONEVO.Domain.Features.CoreHr.Entities.Employee", null)
                         .WithMany()
                         .HasForeignKey("EmployeeId")
@@ -20279,6 +20981,12 @@ namespace ONEVO.Infrastructure.Migrations
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired()
                         .HasConstraintName("fk_tasks_task_categories_category_id");
+
+                    b.HasOne("ONEVO.Domain.Features.InfrastructureModule.Entities.User", null)
+                        .WithMany()
+                        .HasForeignKey("CreatedById")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .HasConstraintName("fk_tasks_users_created_by_id");
 
                     b.HasOne("ONEVO.Domain.Features.WorkManagement.Objectives.Entities.Objective", null)
                         .WithMany()
@@ -20322,6 +21030,12 @@ namespace ONEVO.Infrastructure.Migrations
 
             modelBuilder.Entity("ONEVO.Domain.Features.WorkManagement.Versions.Entities.ProjectVersion", b =>
                 {
+                    b.HasOne("ONEVO.Domain.Features.InfrastructureModule.Entities.User", null)
+                        .WithMany()
+                        .HasForeignKey("CreatedById")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .HasConstraintName("fk_versions_users_created_by_id");
+
                     b.HasOne("ONEVO.Domain.Features.WorkManagement.Projects.Entities.Project", null)
                         .WithMany()
                         .HasForeignKey("ProjectId")

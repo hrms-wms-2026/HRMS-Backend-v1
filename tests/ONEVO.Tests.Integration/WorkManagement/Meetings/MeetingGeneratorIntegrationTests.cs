@@ -104,7 +104,7 @@ public sealed class MeetingGeneratorIntegrationTests
         // A split commits after the generator's scan and before its per-series step.
         await using (var db = h.NewContext())
             Assert.True((await new MeetingTestServices(db, new MeetingTestClock(Now)).Edits.EditAsync(h.TenantId, series.OrganizerEmployeeId,
-                Guid.NewGuid(), series.Id, First.AddDays(3), new EditMeetingRequest(MeetingScopes.Following, 0, "Later",
+                h.UserIdOf(series.OrganizerEmployeeId), series.Id, First.AddDays(3), new EditMeetingRequest(MeetingScopes.Following, 0, "Later",
                     null, null, null, null, null, null, null, null), CancellationToken.None)).IsSuccess);
 
         await using (var db = h.NewContext())

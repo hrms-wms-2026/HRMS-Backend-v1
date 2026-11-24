@@ -76,7 +76,10 @@ public sealed class EfCalendarEventRepositoryTests
     [Fact]
     public async Task GetInDateRangeForCallerAsync_ExcludesRecurringMastersAndCancellationMarkers()
     {
-        await using var db = BuildInMemoryDb(new Mock<ICurrentUser>().Object);
+        var caller = new Mock<ICurrentUser>();
+        caller.SetupGet(x => x.IsAuthenticated).Returns(true);
+        caller.SetupGet(x => x.UserId).Returns(UserId);
+        await using var db = BuildInMemoryDb(caller.Object);
         var master = MakeEvent(startDate: new DateTimeOffset(2026, 9, 10, 9, 0, 0, TimeSpan.Zero));
         master.Recurrence = CalendarRecurrences.Weekly;
         master.RecurrenceRule = "FREQ=WEEKLY";
@@ -98,7 +101,7 @@ public sealed class EfCalendarEventRepositoryTests
 
         var repository = new EfCalendarEventRepository(db);
         var result = await repository.GetInDateRangeForCallerAsync(
-            TenantId, master.CreatedById, EmployeeId, RangeStart, RangeEnd, CancellationToken.None);
+            TenantId, UserId, EmployeeId, RangeStart, RangeEnd, CancellationToken.None);
 
         Assert.Single(result);
         Assert.Equal(detachedChild.Id, result[0].Id);

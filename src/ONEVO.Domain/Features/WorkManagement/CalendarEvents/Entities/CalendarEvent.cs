@@ -19,7 +19,7 @@ public class CalendarEvent : ITenantOwnedEntity
     public DateOnly StartDate { get; set; }
     public DateOnly EndDate { get; set; }
     public string Status { get; set; } = CalendarEventStatuses.Active;
-    public Guid CreatedById { get; set; }
+    public Guid? CreatedById { get; set; }
     public DateTimeOffset CreatedAt { get; set; }
     public Guid? ArchivedById { get; set; }
     public DateTimeOffset? ArchivedAt { get; set; }

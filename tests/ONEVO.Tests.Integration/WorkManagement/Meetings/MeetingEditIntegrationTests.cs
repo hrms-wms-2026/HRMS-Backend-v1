@@ -47,7 +47,7 @@ public sealed class MeetingEditIntegrationTests
         var w = await SeedAsync();
         await using (var db = w.H.NewContext())
         {
-            var result = await new MeetingTestServices(db, Clock()).Edits.EditAsync(w.H.TenantId, w.Organizer, Guid.NewGuid(),
+            var result = await new MeetingTestServices(db, Clock()).Edits.EditAsync(w.H.TenantId, w.Organizer, w.H.UserIdOf(w.Organizer),
                 w.Series.Id, First.AddDays(7), Edit(MeetingScopes.This, 0, title: "Moved to room 5", location: "Room 5",
                     start: First.AddDays(7).AddHours(2)), CancellationToken.None);
             Assert.True(result.IsSuccess, result.Error);
@@ -71,12 +71,12 @@ public sealed class MeetingEditIntegrationTests
         await using (var db = w.H.NewContext())
         {
             var services = new MeetingTestServices(db, Clock());
-            Assert.True((await services.Edits.EditAsync(w.H.TenantId, w.Organizer, Guid.NewGuid(), w.Series.Id, First.AddDays(14),
+            Assert.True((await services.Edits.EditAsync(w.H.TenantId, w.Organizer, w.H.UserIdOf(w.Organizer), w.Series.Id, First.AddDays(14),
                 Edit(MeetingScopes.This, 0, title: "Detached"), CancellationToken.None)).IsSuccess);
         }
         await using (var db = w.H.NewContext())
         {
-            var result = await new MeetingTestServices(db, Clock()).Edits.EditAsync(w.H.TenantId, w.Organizer, Guid.NewGuid(),
+            var result = await new MeetingTestServices(db, Clock()).Edits.EditAsync(w.H.TenantId, w.Organizer, w.H.UserIdOf(w.Organizer),
                 w.Series.Id, First.AddDays(7), Edit(MeetingScopes.All, 0, title: "Weekly sync v2", description: "New agenda"),
                 CancellationToken.None);
             Assert.True(result.IsSuccess, result.Error);
@@ -108,7 +108,7 @@ public sealed class MeetingEditIntegrationTests
         }
 
         await using (var db = w.H.NewContext())
-            Assert.True((await new MeetingTestServices(db, Clock()).Edits.EditAsync(w.H.TenantId, w.Organizer, Guid.NewGuid(),
+            Assert.True((await new MeetingTestServices(db, Clock()).Edits.EditAsync(w.H.TenantId, w.Organizer, w.H.UserIdOf(w.Organizer),
                 w.Series.Id, First.AddDays(7), Edit(MeetingScopes.This, 0, start: First.AddDays(7).AddHours(2)),
                 CancellationToken.None)).IsSuccess);
 
@@ -125,7 +125,7 @@ public sealed class MeetingEditIntegrationTests
         var w = await SeedAsync();
         await using var db = w.H.NewContext();
 
-        var result = await new MeetingTestServices(db, Clock()).Edits.EditAsync(w.H.TenantId, w.Organizer, Guid.NewGuid(),
+        var result = await new MeetingTestServices(db, Clock()).Edits.EditAsync(w.H.TenantId, w.Organizer, w.H.UserIdOf(w.Organizer),
             w.Series.Id, First.AddDays(7), Edit(scope, 0, location: new string('x', 501)), CancellationToken.None);
 
         Assert.Equal((400, MeetingErrorCodes.LocationInvalid), (result.StatusCode, result.ErrorCode));
@@ -136,11 +136,11 @@ public sealed class MeetingEditIntegrationTests
     {
         var w = await SeedAsync();
         await using (var db = w.H.NewContext())
-            Assert.True((await new MeetingTestServices(db, Clock()).Edits.EditAsync(w.H.TenantId, w.Organizer, Guid.NewGuid(),
+            Assert.True((await new MeetingTestServices(db, Clock()).Edits.EditAsync(w.H.TenantId, w.Organizer, w.H.UserIdOf(w.Organizer),
                 w.Series.Id, First.AddDays(7), Edit(MeetingScopes.This, 0, title: "First tab"), CancellationToken.None)).IsSuccess);
 
         await using var second = w.H.NewContext();
-        var result = await new MeetingTestServices(second, Clock()).Edits.EditAsync(w.H.TenantId, w.Organizer, Guid.NewGuid(),
+        var result = await new MeetingTestServices(second, Clock()).Edits.EditAsync(w.H.TenantId, w.Organizer, w.H.UserIdOf(w.Organizer),
             w.Series.Id, First.AddDays(7), Edit(MeetingScopes.This, 0, title: "Second tab"), CancellationToken.None);
 
         Assert.Equal((409, MeetingErrorCodes.Changed), (result.StatusCode, result.ErrorCode));
@@ -153,13 +153,13 @@ public sealed class MeetingEditIntegrationTests
         await using (var db = w.H.NewContext())
         {
             var services = new MeetingTestServices(db, Clock());
-            var time = await services.Edits.EditAsync(w.H.TenantId, w.Organizer, Guid.NewGuid(), w.Series.Id, First,
+            var time = await services.Edits.EditAsync(w.H.TenantId, w.Organizer, w.H.UserIdOf(w.Organizer), w.Series.Id, First,
                 Edit(MeetingScopes.This, 0, start: First.AddDays(10)), CancellationToken.None);
             Assert.Equal((409, MeetingErrorCodes.OccurrenceStarted), (time.StatusCode, time.ErrorCode));
         }
         await using (var db = w.H.NewContext())
         {
-            var notes = await new MeetingTestServices(db, Clock()).Edits.EditAsync(w.H.TenantId, w.Organizer, Guid.NewGuid(),
+            var notes = await new MeetingTestServices(db, Clock()).Edits.EditAsync(w.H.TenantId, w.Organizer, w.H.UserIdOf(w.Organizer),
                 w.Series.Id, First, Edit(MeetingScopes.This, 0, description: "Minutes: shipped v1"), CancellationToken.None);
             Assert.True(notes.IsSuccess, notes.Error);
         }
@@ -179,9 +179,9 @@ public sealed class MeetingEditIntegrationTests
         await using var db = w.H.NewContext();
         var services = new MeetingTestServices(db, Clock());
 
-        var attendee = await services.Edits.EditAsync(w.H.TenantId, w.Attendee, Guid.NewGuid(), w.Series.Id, First.AddDays(7),
+        var attendee = await services.Edits.EditAsync(w.H.TenantId, w.Attendee, w.H.UserIdOf(w.Attendee), w.Series.Id, First.AddDays(7),
             Edit(MeetingScopes.This, 0, title: "x"), CancellationToken.None);
-        var outsider = await services.Edits.EditAsync(w.H.TenantId, w.Outsider, Guid.NewGuid(), w.Series.Id, First.AddDays(7),
+        var outsider = await services.Edits.EditAsync(w.H.TenantId, w.Outsider, w.H.UserIdOf(w.Outsider), w.Series.Id, First.AddDays(7),
             Edit(MeetingScopes.This, 0, title: "x"), CancellationToken.None);
 
         Assert.Equal((403, MeetingErrorCodes.OrganizerRequired), (attendee.StatusCode, attendee.ErrorCode));
@@ -195,7 +195,7 @@ public sealed class MeetingEditIntegrationTests
         var third = First.AddDays(21);
         await using (var db = w.H.NewContext())
         {
-            var result = await new MeetingTestServices(db, Clock()).Edits.EditAsync(w.H.TenantId, w.Organizer, Guid.NewGuid(),
+            var result = await new MeetingTestServices(db, Clock()).Edits.EditAsync(w.H.TenantId, w.Organizer, w.H.UserIdOf(w.Organizer),
                 w.Series.Id, third, Edit(MeetingScopes.This, 0, location: "Online"), CancellationToken.None);
             Assert.True(result.IsSuccess, result.Error);
             Assert.Equal(ONEVO.Application.Features.WorkManagement.Meetings.MeetingOccurrenceIds.For(w.Series.Id, third), result.Value!.OccurrenceTaskId);
