@@ -97,6 +97,14 @@ namespace ONEVO.Infrastructure.Migrations
             UPDATE dbo.wm_notification_log SET created_by_id = NULL WHERE created_by_id = '00000000-0000-0000-0000-000000000000';
             UPDATE dbo.wm_task_rate_settings SET created_by_id = NULL WHERE created_by_id = '00000000-0000-0000-0000-000000000000';
 
+            -- tenant_subscriptions.created_by_id points at platform_users. DevSmokeTestTenantSeeder wrote the tenant
+            -- owner's users id there before this task (it now writes NULL, as CreateTenant does). Only that known
+            -- pattern is cleared: a value that is a users row and not a platform_users row. The row stays.
+            UPDATE s SET created_by_id = NULL FROM dbo.tenant_subscriptions s
+            WHERE s.created_by_id IS NOT NULL
+              AND NOT EXISTS (SELECT 1 FROM dbo.platform_users p WHERE p.id = s.created_by_id)
+              AND EXISTS (SELECT 1 FROM dbo.users u WHERE u.id = s.created_by_id);
+
             DECLARE @n int, @orphans nvarchar(max) = N'';
             SELECT @n = COUNT(*) FROM dbo.attendance_alert_deductions c WHERE c.created_by_id IS NOT NULL AND NOT EXISTS (SELECT 1 FROM dbo.users p WHERE p.id = c.created_by_id);
             IF @n > 0 SET @orphans = CONCAT(@orphans, N' attendance_alert_deductions=', @n);
