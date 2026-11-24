@@ -8,7 +8,7 @@ using ONEVO.Domain.Features.DevPlatform.PlatformAccess.Entities;
 
 namespace ONEVO.Application.Features.DevPlatform.PlatformAccess.Commands.AcceptPlatformManagerInvite;
 
-public sealed class AcceptPlatformManagerInviteCommandHandler : IRequestHandler<AcceptPlatformManagerInviteCommand, Result>
+public sealed class AcceptPlatformManagerInviteCommandHandler : IRequestHandler<AcceptPlatformManagerInviteCommand, Result<string>>
 {
     private readonly IPlatformUserInviteRepository _invites;
     private readonly IPlatformUserRepository _users;
@@ -39,26 +39,26 @@ public sealed class AcceptPlatformManagerInviteCommandHandler : IRequestHandler<
         _uow = uow;
     }
 
-    public async Task<Result> Handle(AcceptPlatformManagerInviteCommand request, CancellationToken ct)
+    public async Task<Result<string>> Handle(AcceptPlatformManagerInviteCommand request, CancellationToken ct)
     {
         var tokenHash = _tokens.HashToken(request.RawToken);
         var invite = await _invites.GetByTokenHashAsync(tokenHash, ct);
         if (invite is null)
-            return Result.NotFound("Invitation not found.");
+            return Result<string>.NotFound("Invitation not found.");
 
         var now = _clock.UtcNow;
         if (invite.AcceptedAt is not null)
-            return Result.Failure("This invitation has already been accepted.", 400);
+            return Result<string>.Failure("This invitation has already been accepted.", 400);
         if (invite.RevokedAt is not null)
-            return Result.Failure("This invitation has been revoked.", 400);
+            return Result<string>.Failure("This invitation has been revoked.", 400);
         if (invite.ExpiresAt <= now)
-            return Result.Failure("This invitation has expired.", 400);
+            return Result<string>.Failure("This invitation has expired.", 400);
 
         var user = invite.PlatformUserId.HasValue
             ? await _users.GetByIdAsync(invite.PlatformUserId.Value, ct)
             : null;
         if (user is null)
-            return Result.Failure("Invited user record not found.", 500);
+            return Result<string>.Failure("Invited user record not found.", 500);
 
         await _credentials.AddAsync(new PlatformUserCredential
         {
@@ -89,6 +89,6 @@ public sealed class AcceptPlatformManagerInviteCommandHandler : IRequestHandler<
         }, ct);
 
         await _uow.SaveChangesAsync(ct);
-        return Result.Success();
+        return Result<string>.Success(user.Email);
     }
 }
