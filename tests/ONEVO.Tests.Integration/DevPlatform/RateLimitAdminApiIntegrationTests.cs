@@ -83,7 +83,7 @@ public sealed class RateLimitAdminApiIntegrationTests : IAsyncLifetime
     private string TenantRoute => $"/admin/v1/tenants/{_tenantId}/rate-limits";
 
     private IEnumerable<string> ReadRoutes() =>
-        [GlobalRoute, $"{GlobalRoute}/changes", PlanRoute, TenantRoute];
+        [GlobalRoute, $"{GlobalRoute}/changes", $"{GlobalRoute}/rejections", PlanRoute, TenantRoute];
 
     private IEnumerable<(HttpMethod Method, string Path)> WriteRoutes() =>
     [
@@ -272,5 +272,45 @@ public sealed class RateLimitAdminApiIntegrationTests : IAsyncLifetime
 
         plan.GetProperty("rateLimits").EnumerateArray().Select(e => e.GetProperty("limitName").GetString())
             .Should().Equal("SignedIn", "TrayDevice", "TenantCeiling");
+    }
+
+    // ------------------------------------------------------------- task 49: rejections
+
+    [Fact]
+    public async Task Rejections_put_the_most_limited_tenant_on_top_with_its_name_and_effective_limits()
+    {
+        // The limiter -> stats wiring is covered on a TestServer (ApiRateLimitingTests); there is no
+        // tenant sign-in helper here, so the rejections are recorded on the instance's own counter.
+        var stats = _factory.Services.GetRequiredService<IRateLimitRejectionStats>();
+        for (var i = 0; i < 25; i++)
+            stats.Record(_tenantId, "User");
+        stats.Record(_tenantId, "TrayDevice");
+        stats.Record(null, "Anonymous");
+        (await _client.SendAsync(Write(HttpMethod.Put, $"{TenantRoute}/SignedIn", SetBody(1200, 200)))).EnsureSuccessStatusCode();
+
+        var body = await JsonAsync(await _client.GetAsync($"{GlobalRoute}/rejections?minutes=60"));
+
+        body.GetProperty("scope").GetString().Should().Be("instance");
+        body.GetProperty("note").GetString().Should().Contain("this API server only");
+        body.GetProperty("minutes").GetInt32().Should().Be(60);
+        var top = body.GetProperty("tenants").EnumerateArray().First();
+        top.GetProperty("tenantId").GetGuid().Should().Be(_tenantId);
+        top.GetProperty("tenantName").GetString().Should().Be("Rate Limit Tenant");
+        top.GetProperty("totalRejections").GetInt64().Should().Be(26);
+        top.GetProperty("byKind").EnumerateArray().First().GetProperty("kind").GetString().Should().Be("User");
+        var signedIn = top.GetProperty("effectiveLimits").EnumerateArray()
+            .Single(l => l.GetProperty("limitName").GetString() == "SignedIn");
+        signedIn.GetProperty("perMinute").GetInt32().Should().Be(1200);
+        signedIn.GetProperty("burst").GetInt32().Should().Be(200);
+
+        var raw = await (await _client.GetAsync($"{GlobalRoute}/rejections")).Content.ReadAsStringAsync();
+        raw.Should().NotContainAny("userId", "ipAddress", "sessionId");
+    }
+
+    [Fact]
+    public async Task Rejections_minutes_outside_1_to_60_is_400()
+    {
+        (await _client.GetAsync($"{GlobalRoute}/rejections?minutes=0")).StatusCode.Should().Be(HttpStatusCode.BadRequest);
+        (await _client.GetAsync($"{GlobalRoute}/rejections?minutes=61")).StatusCode.Should().Be(HttpStatusCode.BadRequest);
     }
 }
