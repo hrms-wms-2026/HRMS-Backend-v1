@@ -85,4 +85,4 @@ These were in the task's text-search list. Write paths are lower priority, and n
 
 ## Integration run
 
-Touched-area integration run (Meetings, MyTeam, Calendar, employee list, hierarchy closure, the new budget tests): running when this report was committed; the result is added in a follow-up commit and in the PR.
+Touched-area integration run (Meetings, MyTeam, Calendar, employee list, hierarchy closure, the new budget tests), SQL Server, 2026-11-24: 306 of 307 passed. The one failure, `RawSqlBehaviourTests.MeetingSeriesLock_IsHeldUntilTheTransactionEnds`, was a deadlock inside the test fixture while it migrated its database (`SqlServerFixture.CreateDatabaseAsync`), before the test body ran. Re-run alone, all 24 `RawSqlBehaviourTests` passed. The full integration suite was not run.
