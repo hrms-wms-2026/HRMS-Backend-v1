@@ -53,6 +53,49 @@ public static class ReferenceForeignKeys
         ApplyTimeAttendance(modelBuilder);
         ApplyWorkManagement(modelBuilder);
         ApplyAuditColumns(modelBuilder);
+        ApplyTenantColumns(modelBuilder);
+    }
+
+    /// <summary>
+    /// Task 39d: every <c>tenant_id</c> column gets a NO ACTION key to <c>tenants</c>. A tenant is cancelled, never
+    /// deleted, so no cascade is needed. A nullable <c>tenant_id</c> (the PlatformShared RLS tables, such as
+    /// <c>outbox_messages</c>) stays nullable; the key checks only values that are not null.
+    ///
+    /// RLS predicates do not apply to a key check, so the keys hold under every predicate, TenantStrict included.
+    /// The loop matches the <c>TenantId</c> property (not <see cref="ITenantOwnedEntity"/>, whose
+    /// <c>Guid TenantId</c> leaves out the nullable tables), skips a column that already has its key (the Auth
+    /// challenges, billing, support and tenancy tables configure theirs), and covers tables added later.
+    /// </summary>
+    private static void ApplyTenantColumns(ModelBuilder b)
+    {
+        var tenantType = b.Model.FindEntityType(typeof(Tenant))!;
+        foreach (var entityType in b.Model.GetEntityTypes().ToList())
+        {
+            if (entityType == tenantType || entityType.IsOwned() || entityType.BaseType is not null
+                || entityType.GetTableName() is null)
+            {
+                continue;
+            }
+
+            var tenantId = entityType.FindProperty("TenantId");
+            if (tenantId is null || (tenantId.ClrType != typeof(Guid) && tenantId.ClrType != typeof(Guid?)))
+            {
+                continue;
+            }
+
+            var hasKey = entityType.GetForeignKeys().Any(fk =>
+                fk.PrincipalEntityType == tenantType && fk.Properties.Count == 1 && fk.Properties[0] == tenantId);
+            if (hasKey)
+            {
+                continue;
+            }
+
+            b.Entity(entityType.ClrType)
+                .HasOne(typeof(Tenant))
+                .WithMany()
+                .HasForeignKey("TenantId")
+                .OnDelete(DeleteBehavior.NoAction);
+        }
     }
 
     /// <summary>

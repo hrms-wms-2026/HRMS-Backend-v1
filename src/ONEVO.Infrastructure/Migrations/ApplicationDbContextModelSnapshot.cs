@@ -610,6 +610,9 @@ namespace ONEVO.Infrastructure.Migrations
                     b.HasKey("Id")
                         .HasName("pk_password_reset_tokens");
 
+                    b.HasIndex("TenantId")
+                        .HasDatabaseName("ix_password_reset_tokens_tenant_id");
+
                     b.HasIndex("TokenHash")
                         .IsUnique()
                         .HasDatabaseName("ix_password_reset_tokens_token_hash");
@@ -755,6 +758,9 @@ namespace ONEVO.Infrastructure.Migrations
                     b.HasIndex("ReplacedById")
                         .HasDatabaseName("ix_refresh_tokens_replaced_by_id");
 
+                    b.HasIndex("TenantId")
+                        .HasDatabaseName("ix_refresh_tokens_tenant_id");
+
                     b.HasIndex("TokenHash")
                         .IsUnique()
                         .HasDatabaseName("ix_refresh_tokens_token_hash");
@@ -856,6 +862,9 @@ namespace ONEVO.Infrastructure.Migrations
 
                     b.HasIndex("PermissionId")
                         .HasDatabaseName("ix_role_permissions_permission_id");
+
+                    b.HasIndex("TenantId")
+                        .HasDatabaseName("ix_role_permissions_tenant_id");
 
                     b.ToTable("role_permissions", (string)null);
                 });
@@ -1220,6 +1229,9 @@ namespace ONEVO.Infrastructure.Migrations
                     b.HasKey("Id")
                         .HasName("pk_user_mfa");
 
+                    b.HasIndex("TenantId")
+                        .HasDatabaseName("ix_user_mfa_tenant_id");
+
                     b.HasIndex("UserId", "MethodType", "IsVerified")
                         .HasDatabaseName("ix_user_mfa_user_id_method_type_is_verified");
 
@@ -1320,6 +1332,9 @@ namespace ONEVO.Infrastructure.Migrations
 
                     b.HasIndex("SourcePositionAccessTemplateId")
                         .HasDatabaseName("ix_user_roles_source_position_access_template_id");
+
+                    b.HasIndex("TenantId")
+                        .HasDatabaseName("ix_user_roles_tenant_id");
 
                     b.HasIndex("UserId")
                         .HasDatabaseName("ix_user_roles_user_id");
@@ -2565,6 +2580,9 @@ namespace ONEVO.Infrastructure.Migrations
                     b.HasIndex("CreatedById")
                         .HasDatabaseName("ix_conversation_messages_created_by_id");
 
+                    b.HasIndex("TenantId")
+                        .HasDatabaseName("ix_conversation_messages_tenant_id");
+
                     b.HasIndex("ConversationId", "CreatedAt")
                         .HasDatabaseName("ix_conversation_messages_conversation_id_created_at");
 
@@ -2634,6 +2652,9 @@ namespace ONEVO.Infrastructure.Migrations
 
                     b.HasIndex("MessageId")
                         .HasDatabaseName("ix_conversation_message_attachments_message_id");
+
+                    b.HasIndex("TenantId")
+                        .HasDatabaseName("ix_conversation_message_attachments_tenant_id");
 
                     b.ToTable("conversation_message_attachments", (string)null);
                 });
@@ -2738,6 +2759,9 @@ namespace ONEVO.Infrastructure.Migrations
                     b.HasIndex("CreatedById")
                         .HasDatabaseName("ix_conversation_message_mentions_created_by_id");
 
+                    b.HasIndex("TenantId")
+                        .HasDatabaseName("ix_conversation_message_mentions_tenant_id");
+
                     b.HasIndex("MessageId", "EmployeeId")
                         .IsUnique()
                         .HasDatabaseName("ux_conversation_message_mentions_message_id_employee_id");
@@ -2795,6 +2819,9 @@ namespace ONEVO.Infrastructure.Migrations
 
                     b.HasIndex("CreatedById")
                         .HasDatabaseName("ix_conversation_message_reactions_created_by_id");
+
+                    b.HasIndex("TenantId")
+                        .HasDatabaseName("ix_conversation_message_reactions_tenant_id");
 
                     b.HasIndex("MessageId", "EmployeeId")
                         .IsUnique()
@@ -2863,6 +2890,9 @@ namespace ONEVO.Infrastructure.Migrations
 
                     b.HasIndex("CreatedById")
                         .HasDatabaseName("ix_conversation_message_revisions_created_by_id");
+
+                    b.HasIndex("TenantId")
+                        .HasDatabaseName("ix_conversation_message_revisions_tenant_id");
 
                     b.HasIndex("MessageId", "RevisedAt")
                         .HasDatabaseName("ix_conversation_message_revisions_message_id_revised_at");
@@ -4905,6 +4935,9 @@ namespace ONEVO.Infrastructure.Migrations
                     b.HasIndex("CreatedById")
                         .HasDatabaseName("ix_dashboard_template_widgets_created_by_id");
 
+                    b.HasIndex("TenantId")
+                        .HasDatabaseName("ix_dashboard_template_widgets_tenant_id");
+
                     b.HasIndex("TemplateId", "WidgetKey")
                         .IsUnique()
                         .HasDatabaseName("ux_dashboard_template_widgets_template_id_widget_key")
@@ -4978,6 +5011,9 @@ namespace ONEVO.Infrastructure.Migrations
                     b.HasIndex("CreatedById")
                         .HasDatabaseName("ix_dashboard_template_widget_layouts_created_by_id");
 
+                    b.HasIndex("TenantId")
+                        .HasDatabaseName("ix_dashboard_template_widget_layouts_tenant_id");
+
                     b.HasIndex("TemplateWidgetId", "Breakpoint")
                         .IsUnique()
                         .HasDatabaseName("ux_dashboard_template_widget_layouts_template_widget_id_breakpoint")
@@ -5048,6 +5084,9 @@ namespace ONEVO.Infrastructure.Migrations
 
                     b.HasIndex("CreatedById")
                         .HasDatabaseName("ix_dashboard_widgets_created_by_id");
+
+                    b.HasIndex("TenantId")
+                        .HasDatabaseName("ix_dashboard_widgets_tenant_id");
 
                     b.HasIndex("DashboardId", "WidgetKey")
                         .IsUnique()
@@ -5121,6 +5160,9 @@ namespace ONEVO.Infrastructure.Migrations
 
                     b.HasIndex("CreatedById")
                         .HasDatabaseName("ix_dashboard_widget_layouts_created_by_id");
+
+                    b.HasIndex("TenantId")
+                        .HasDatabaseName("ix_dashboard_widget_layouts_tenant_id");
 
                     b.HasIndex("WidgetId", "Breakpoint")
                         .IsUnique()
@@ -9832,6 +9874,9 @@ namespace ONEVO.Infrastructure.Migrations
                     b.HasIndex("LegalEntityId")
                         .HasDatabaseName("ix_tray_activation_codes_legal_entity_id");
 
+                    b.HasIndex("TenantId")
+                        .HasDatabaseName("ix_tray_activation_codes_tenant_id");
+
                     b.HasIndex("UserId", "TenantId", "CreatedAt")
                         .HasDatabaseName("ix_tray_activation_codes_user_id_tenant_id_created_at");
 
@@ -9998,6 +10043,9 @@ namespace ONEVO.Infrastructure.Migrations
 
                     b.HasKey("Id")
                         .HasName("pk_tray_device_refresh_tokens");
+
+                    b.HasIndex("TenantId")
+                        .HasDatabaseName("ix_tray_device_refresh_tokens_tenant_id");
 
                     b.HasIndex("TokenHash")
                         .IsUnique()
@@ -11223,6 +11271,9 @@ namespace ONEVO.Infrastructure.Migrations
                         .HasDatabaseName("ix_outbox_messages_processing_locked_until")
                         .HasFilter("status = 'processing'");
 
+                    b.HasIndex("TenantId")
+                        .HasDatabaseName("ix_outbox_messages_tenant_id");
+
                     b.HasIndex("Status", "NextAttemptAt")
                         .HasDatabaseName("ix_outbox_messages_status_next_attempt_at");
 
@@ -11552,7 +11603,6 @@ namespace ONEVO.Infrastructure.Migrations
             modelBuilder.Entity("ONEVO.Domain.Features.SharedPlatform.Entities.TenantProvisioningState", b =>
                 {
                     b.Property<Guid>("TenantId")
-                        .ValueGeneratedOnAdd()
                         .HasColumnType("uniqueidentifier")
                         .HasColumnName("tenant_id");
 
@@ -12820,6 +12870,9 @@ namespace ONEVO.Infrastructure.Migrations
 
                     b.HasIndex("FileRecordId")
                         .HasDatabaseName("ix_entity_assets_file_record_id");
+
+                    b.HasIndex("TenantId")
+                        .HasDatabaseName("ix_entity_assets_tenant_id");
 
                     b.HasIndex("OwnerType", "OwnerId")
                         .HasDatabaseName("ix_entity_assets_owner_type_owner_id");
@@ -16819,6 +16872,9 @@ namespace ONEVO.Infrastructure.Migrations
                     b.HasIndex("EmployeeId")
                         .HasDatabaseName("ix_task_comment_reactions_employee_id");
 
+                    b.HasIndex("TenantId")
+                        .HasDatabaseName("ix_task_comment_reactions_tenant_id");
+
                     b.HasIndex("CommentId", "EmployeeId")
                         .IsUnique()
                         .HasDatabaseName("ix_task_comment_reactions_comment_id_employee_id");
@@ -17650,6 +17706,46 @@ namespace ONEVO.Infrastructure.Migrations
                     b.ToTable("severities", (string)null);
                 });
 
+            modelBuilder.Entity("ONEVO.Domain.Features.Auth.Entities.AuditLog", b =>
+                {
+                    b.HasOne("ONEVO.Domain.Features.InfrastructureModule.Entities.Tenant", null)
+                        .WithMany()
+                        .HasForeignKey("TenantId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired()
+                        .HasConstraintName("fk_audit_logs_tenants_tenant_id");
+                });
+
+            modelBuilder.Entity("ONEVO.Domain.Features.Auth.Entities.FeatureAccessGrant", b =>
+                {
+                    b.HasOne("ONEVO.Domain.Features.InfrastructureModule.Entities.Tenant", null)
+                        .WithMany()
+                        .HasForeignKey("TenantId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired()
+                        .HasConstraintName("fk_feature_access_grants_tenants_tenant_id");
+                });
+
+            modelBuilder.Entity("ONEVO.Domain.Features.Auth.Entities.InvitationToken", b =>
+                {
+                    b.HasOne("ONEVO.Domain.Features.InfrastructureModule.Entities.Tenant", null)
+                        .WithMany()
+                        .HasForeignKey("TenantId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired()
+                        .HasConstraintName("fk_invitation_tokens_tenants_tenant_id");
+                });
+
+            modelBuilder.Entity("ONEVO.Domain.Features.Auth.Entities.LegalAcceptanceRecord", b =>
+                {
+                    b.HasOne("ONEVO.Domain.Features.InfrastructureModule.Entities.Tenant", null)
+                        .WithMany()
+                        .HasForeignKey("TenantId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired()
+                        .HasConstraintName("fk_legal_acceptance_records_tenants_tenant_id");
+                });
+
             modelBuilder.Entity("ONEVO.Domain.Features.Auth.Entities.LegalLoginChallenge", b =>
                 {
                     b.HasOne("ONEVO.Domain.Features.Auth.Entities.LegalLoginChallenge", null)
@@ -17690,6 +17786,16 @@ namespace ONEVO.Infrastructure.Migrations
                         .HasConstraintName("fk_mfa_challenges_users_user_id");
                 });
 
+            modelBuilder.Entity("ONEVO.Domain.Features.Auth.Entities.PasswordResetToken", b =>
+                {
+                    b.HasOne("ONEVO.Domain.Features.InfrastructureModule.Entities.Tenant", null)
+                        .WithMany()
+                        .HasForeignKey("TenantId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired()
+                        .HasConstraintName("fk_password_reset_tokens_tenants_tenant_id");
+                });
+
             modelBuilder.Entity("ONEVO.Domain.Features.Auth.Entities.RefreshToken", b =>
                 {
                     b.HasOne("ONEVO.Domain.Features.Auth.Entities.RefreshToken", null)
@@ -17697,6 +17803,13 @@ namespace ONEVO.Infrastructure.Migrations
                         .HasForeignKey("ReplacedById")
                         .OnDelete(DeleteBehavior.NoAction)
                         .HasConstraintName("fk_refresh_tokens_refresh_tokens_replaced_by_id");
+
+                    b.HasOne("ONEVO.Domain.Features.InfrastructureModule.Entities.Tenant", null)
+                        .WithMany()
+                        .HasForeignKey("TenantId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired()
+                        .HasConstraintName("fk_refresh_tokens_tenants_tenant_id");
                 });
 
             modelBuilder.Entity("ONEVO.Domain.Features.Auth.Entities.Role", b =>
@@ -17712,6 +17825,13 @@ namespace ONEVO.Infrastructure.Migrations
                         .HasForeignKey("SourceTemplateId")
                         .OnDelete(DeleteBehavior.SetNull)
                         .HasConstraintName("fk_roles_role_templates_source_template_id");
+
+                    b.HasOne("ONEVO.Domain.Features.InfrastructureModule.Entities.Tenant", null)
+                        .WithMany()
+                        .HasForeignKey("TenantId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired()
+                        .HasConstraintName("fk_roles_tenants_tenant_id");
                 });
 
             modelBuilder.Entity("ONEVO.Domain.Features.Auth.Entities.RolePermission", b =>
@@ -17730,9 +17850,36 @@ namespace ONEVO.Infrastructure.Migrations
                         .IsRequired()
                         .HasConstraintName("fk_role_permissions_roles_role_id");
 
+                    b.HasOne("ONEVO.Domain.Features.InfrastructureModule.Entities.Tenant", null)
+                        .WithMany()
+                        .HasForeignKey("TenantId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired()
+                        .HasConstraintName("fk_role_permissions_tenants_tenant_id");
+
                     b.Navigation("Permission");
 
                     b.Navigation("Role");
+                });
+
+            modelBuilder.Entity("ONEVO.Domain.Features.Auth.Entities.Session", b =>
+                {
+                    b.HasOne("ONEVO.Domain.Features.InfrastructureModule.Entities.Tenant", null)
+                        .WithMany()
+                        .HasForeignKey("TenantId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired()
+                        .HasConstraintName("fk_sessions_tenants_tenant_id");
+                });
+
+            modelBuilder.Entity("ONEVO.Domain.Features.Auth.Entities.TenantAuthPolicy", b =>
+                {
+                    b.HasOne("ONEVO.Domain.Features.InfrastructureModule.Entities.Tenant", null)
+                        .WithMany()
+                        .HasForeignKey("TenantId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired()
+                        .HasConstraintName("fk_tenant_auth_policies_tenants_tenant_id");
                 });
 
             modelBuilder.Entity("ONEVO.Domain.Features.Auth.Entities.TenantSessionExchangeChallenge", b =>
@@ -17752,6 +17899,26 @@ namespace ONEVO.Infrastructure.Migrations
                         .HasConstraintName("fk_tenant_session_exchange_challenges_users_user_id");
                 });
 
+            modelBuilder.Entity("ONEVO.Domain.Features.Auth.Entities.UserExternalIdentity", b =>
+                {
+                    b.HasOne("ONEVO.Domain.Features.InfrastructureModule.Entities.Tenant", null)
+                        .WithMany()
+                        .HasForeignKey("TenantId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired()
+                        .HasConstraintName("fk_user_external_identities_tenants_tenant_id");
+                });
+
+            modelBuilder.Entity("ONEVO.Domain.Features.Auth.Entities.UserMfa", b =>
+                {
+                    b.HasOne("ONEVO.Domain.Features.InfrastructureModule.Entities.Tenant", null)
+                        .WithMany()
+                        .HasForeignKey("TenantId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired()
+                        .HasConstraintName("fk_user_mfa_tenants_tenant_id");
+                });
+
             modelBuilder.Entity("ONEVO.Domain.Features.Auth.Entities.UserPermissionOverride", b =>
                 {
                     b.HasOne("ONEVO.Domain.Features.Auth.Entities.Permission", "Permission")
@@ -17760,6 +17927,13 @@ namespace ONEVO.Infrastructure.Migrations
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired()
                         .HasConstraintName("fk_user_permission_overrides_permissions_permission_id");
+
+                    b.HasOne("ONEVO.Domain.Features.InfrastructureModule.Entities.Tenant", null)
+                        .WithMany()
+                        .HasForeignKey("TenantId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired()
+                        .HasConstraintName("fk_user_permission_overrides_tenants_tenant_id");
 
                     b.Navigation("Permission");
                 });
@@ -17772,6 +17946,13 @@ namespace ONEVO.Infrastructure.Migrations
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired()
                         .HasConstraintName("fk_user_roles_roles_role_id");
+
+                    b.HasOne("ONEVO.Domain.Features.InfrastructureModule.Entities.Tenant", null)
+                        .WithMany()
+                        .HasForeignKey("TenantId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired()
+                        .HasConstraintName("fk_user_roles_tenants_tenant_id");
 
                     b.Navigation("Role");
                 });
@@ -17789,6 +17970,13 @@ namespace ONEVO.Infrastructure.Migrations
                         .HasForeignKey("RecurrenceParentId")
                         .OnDelete(DeleteBehavior.NoAction)
                         .HasConstraintName("fk_personal_calendar_events_recurrence_parent_id");
+
+                    b.HasOne("ONEVO.Domain.Features.InfrastructureModule.Entities.Tenant", null)
+                        .WithMany()
+                        .HasForeignKey("TenantId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired()
+                        .HasConstraintName("fk_personal_calendar_events_tenants_tenant_id");
                 });
 
             modelBuilder.Entity("ONEVO.Domain.Features.Calendar.Entities.CalendarEventGuest", b =>
@@ -17798,6 +17986,23 @@ namespace ONEVO.Infrastructure.Migrations
                         .HasForeignKey("MeetingSeriesId")
                         .OnDelete(DeleteBehavior.Restrict)
                         .HasConstraintName("fk_calendar_event_guests_meeting_series_meeting_series_id");
+
+                    b.HasOne("ONEVO.Domain.Features.InfrastructureModule.Entities.Tenant", null)
+                        .WithMany()
+                        .HasForeignKey("TenantId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired()
+                        .HasConstraintName("fk_calendar_event_guests_tenants_tenant_id");
+                });
+
+            modelBuilder.Entity("ONEVO.Domain.Features.Calendar.Entities.CalendarEventMeeting", b =>
+                {
+                    b.HasOne("ONEVO.Domain.Features.InfrastructureModule.Entities.Tenant", null)
+                        .WithMany()
+                        .HasForeignKey("TenantId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired()
+                        .HasConstraintName("fk_calendar_event_meetings_tenants_tenant_id");
                 });
 
             modelBuilder.Entity("ONEVO.Domain.Features.Calendar.Entities.CalendarEventMeetingAttendance", b =>
@@ -17813,6 +18018,13 @@ namespace ONEVO.Infrastructure.Migrations
                         .HasForeignKey("OccurrenceTaskId")
                         .OnDelete(DeleteBehavior.Restrict)
                         .HasConstraintName("fk_calendar_event_meeting_attendances_meeting_details_occurrence_task_id");
+
+                    b.HasOne("ONEVO.Domain.Features.InfrastructureModule.Entities.Tenant", null)
+                        .WithMany()
+                        .HasForeignKey("TenantId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired()
+                        .HasConstraintName("fk_calendar_event_meeting_attendances_tenants_tenant_id");
                 });
 
             modelBuilder.Entity("ONEVO.Domain.Features.Calendar.Entities.CalendarEventParticipant", b =>
@@ -17828,6 +18040,13 @@ namespace ONEVO.Infrastructure.Migrations
                         .HasForeignKey("MeetingSeriesId")
                         .OnDelete(DeleteBehavior.Restrict)
                         .HasConstraintName("fk_calendar_event_participants_meeting_series_meeting_series_id");
+
+                    b.HasOne("ONEVO.Domain.Features.InfrastructureModule.Entities.Tenant", null)
+                        .WithMany()
+                        .HasForeignKey("TenantId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired()
+                        .HasConstraintName("fk_calendar_event_participants_tenants_tenant_id");
                 });
 
             modelBuilder.Entity("ONEVO.Domain.Features.Calendar.Entities.CalendarEventParticipantRsvpHistory", b =>
@@ -17837,6 +18056,13 @@ namespace ONEVO.Infrastructure.Migrations
                         .HasForeignKey("CreatedById")
                         .OnDelete(DeleteBehavior.NoAction)
                         .HasConstraintName("fk_calendar_event_participant_rsvp_history_users_created_by_id");
+
+                    b.HasOne("ONEVO.Domain.Features.InfrastructureModule.Entities.Tenant", null)
+                        .WithMany()
+                        .HasForeignKey("TenantId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired()
+                        .HasConstraintName("fk_calendar_event_participant_rsvp_history_tenants_tenant_id");
                 });
 
             modelBuilder.Entity("ONEVO.Domain.Features.Calendar.Entities.CalendarEventReminderLog", b =>
@@ -17846,6 +18072,13 @@ namespace ONEVO.Infrastructure.Migrations
                         .HasForeignKey("CreatedById")
                         .OnDelete(DeleteBehavior.NoAction)
                         .HasConstraintName("fk_calendar_event_reminders_sent_users_created_by_id");
+
+                    b.HasOne("ONEVO.Domain.Features.InfrastructureModule.Entities.Tenant", null)
+                        .WithMany()
+                        .HasForeignKey("TenantId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired()
+                        .HasConstraintName("fk_calendar_event_reminders_sent_tenants_tenant_id");
                 });
 
             modelBuilder.Entity("ONEVO.Domain.Features.Calendar.Entities.CalendarMeetingIncident", b =>
@@ -17855,6 +18088,23 @@ namespace ONEVO.Infrastructure.Migrations
                         .HasForeignKey("CreatedById")
                         .OnDelete(DeleteBehavior.NoAction)
                         .HasConstraintName("fk_calendar_meeting_incidents_users_created_by_id");
+
+                    b.HasOne("ONEVO.Domain.Features.InfrastructureModule.Entities.Tenant", null)
+                        .WithMany()
+                        .HasForeignKey("TenantId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired()
+                        .HasConstraintName("fk_calendar_meeting_incidents_tenants_tenant_id");
+                });
+
+            modelBuilder.Entity("ONEVO.Domain.Features.Calendar.Entities.ExternalCalendarConnection", b =>
+                {
+                    b.HasOne("ONEVO.Domain.Features.InfrastructureModule.Entities.Tenant", null)
+                        .WithMany()
+                        .HasForeignKey("TenantId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired()
+                        .HasConstraintName("fk_external_calendar_connections_tenants_tenant_id");
                 });
 
             modelBuilder.Entity("ONEVO.Domain.Features.Calendar.Entities.ExternalCalendarEventLink", b =>
@@ -17864,6 +18114,13 @@ namespace ONEVO.Infrastructure.Migrations
                         .HasForeignKey("MeetingTaskId")
                         .OnDelete(DeleteBehavior.Restrict)
                         .HasConstraintName("fk_external_calendar_event_links_meeting_details_meeting_task_id");
+
+                    b.HasOne("ONEVO.Domain.Features.InfrastructureModule.Entities.Tenant", null)
+                        .WithMany()
+                        .HasForeignKey("TenantId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired()
+                        .HasConstraintName("fk_external_calendar_event_links_tenants_tenant_id");
                 });
 
             modelBuilder.Entity("ONEVO.Domain.Features.Calendar.Entities.HolidayCalendarSettings", b =>
@@ -17873,6 +18130,13 @@ namespace ONEVO.Infrastructure.Migrations
                         .HasForeignKey("CreatedById")
                         .OnDelete(DeleteBehavior.NoAction)
                         .HasConstraintName("fk_holiday_calendar_settings_users_created_by_id");
+
+                    b.HasOne("ONEVO.Domain.Features.InfrastructureModule.Entities.Tenant", null)
+                        .WithMany()
+                        .HasForeignKey("TenantId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired()
+                        .HasConstraintName("fk_holiday_calendar_settings_tenants_tenant_id");
                 });
 
             modelBuilder.Entity("ONEVO.Domain.Features.Conversations.Entities.Conversation", b =>
@@ -17882,6 +18146,13 @@ namespace ONEVO.Infrastructure.Migrations
                         .HasForeignKey("CreatedById")
                         .OnDelete(DeleteBehavior.NoAction)
                         .HasConstraintName("fk_conversations_users_created_by_id");
+
+                    b.HasOne("ONEVO.Domain.Features.InfrastructureModule.Entities.Tenant", null)
+                        .WithMany()
+                        .HasForeignKey("TenantId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired()
+                        .HasConstraintName("fk_conversations_tenants_tenant_id");
                 });
 
             modelBuilder.Entity("ONEVO.Domain.Features.Conversations.Entities.ConversationFavorite", b =>
@@ -17898,6 +18169,13 @@ namespace ONEVO.Infrastructure.Migrations
                         .HasForeignKey("CreatedById")
                         .OnDelete(DeleteBehavior.NoAction)
                         .HasConstraintName("fk_conversation_favorites_users_created_by_id");
+
+                    b.HasOne("ONEVO.Domain.Features.InfrastructureModule.Entities.Tenant", null)
+                        .WithMany()
+                        .HasForeignKey("TenantId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired()
+                        .HasConstraintName("fk_conversation_favorites_tenants_tenant_id");
                 });
 
             modelBuilder.Entity("ONEVO.Domain.Features.Conversations.Entities.ConversationMessage", b =>
@@ -17914,6 +18192,13 @@ namespace ONEVO.Infrastructure.Migrations
                         .HasForeignKey("CreatedById")
                         .OnDelete(DeleteBehavior.NoAction)
                         .HasConstraintName("fk_conversation_messages_users_created_by_id");
+
+                    b.HasOne("ONEVO.Domain.Features.InfrastructureModule.Entities.Tenant", null)
+                        .WithMany()
+                        .HasForeignKey("TenantId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired()
+                        .HasConstraintName("fk_conversation_messages_tenants_tenant_id");
                 });
 
             modelBuilder.Entity("ONEVO.Domain.Features.Conversations.Entities.ConversationMessageAttachment", b =>
@@ -17930,6 +18215,13 @@ namespace ONEVO.Infrastructure.Migrations
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired()
                         .HasConstraintName("fk_conversation_message_attachments_conversation_messages_message_id");
+
+                    b.HasOne("ONEVO.Domain.Features.InfrastructureModule.Entities.Tenant", null)
+                        .WithMany()
+                        .HasForeignKey("TenantId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired()
+                        .HasConstraintName("fk_conversation_message_attachments_tenants_tenant_id");
                 });
 
             modelBuilder.Entity("ONEVO.Domain.Features.Conversations.Entities.ConversationMessageHide", b =>
@@ -17946,6 +18238,13 @@ namespace ONEVO.Infrastructure.Migrations
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired()
                         .HasConstraintName("fk_conversation_message_hides_conversation_messages_message_id");
+
+                    b.HasOne("ONEVO.Domain.Features.InfrastructureModule.Entities.Tenant", null)
+                        .WithMany()
+                        .HasForeignKey("TenantId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired()
+                        .HasConstraintName("fk_conversation_message_hides_tenants_tenant_id");
                 });
 
             modelBuilder.Entity("ONEVO.Domain.Features.Conversations.Entities.ConversationMessageMention", b =>
@@ -17962,6 +18261,13 @@ namespace ONEVO.Infrastructure.Migrations
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired()
                         .HasConstraintName("fk_conversation_message_mentions_conversation_messages_message_id");
+
+                    b.HasOne("ONEVO.Domain.Features.InfrastructureModule.Entities.Tenant", null)
+                        .WithMany()
+                        .HasForeignKey("TenantId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired()
+                        .HasConstraintName("fk_conversation_message_mentions_tenants_tenant_id");
                 });
 
             modelBuilder.Entity("ONEVO.Domain.Features.Conversations.Entities.ConversationMessageReaction", b =>
@@ -17978,6 +18284,13 @@ namespace ONEVO.Infrastructure.Migrations
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired()
                         .HasConstraintName("fk_conversation_message_reactions_conversation_messages_message_id");
+
+                    b.HasOne("ONEVO.Domain.Features.InfrastructureModule.Entities.Tenant", null)
+                        .WithMany()
+                        .HasForeignKey("TenantId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired()
+                        .HasConstraintName("fk_conversation_message_reactions_tenants_tenant_id");
                 });
 
             modelBuilder.Entity("ONEVO.Domain.Features.Conversations.Entities.ConversationMessageRevision", b =>
@@ -17994,6 +18307,13 @@ namespace ONEVO.Infrastructure.Migrations
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired()
                         .HasConstraintName("fk_conversation_message_revisions_conversation_messages_message_id");
+
+                    b.HasOne("ONEVO.Domain.Features.InfrastructureModule.Entities.Tenant", null)
+                        .WithMany()
+                        .HasForeignKey("TenantId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired()
+                        .HasConstraintName("fk_conversation_message_revisions_tenants_tenant_id");
                 });
 
             modelBuilder.Entity("ONEVO.Domain.Features.Conversations.Entities.ConversationMute", b =>
@@ -18010,6 +18330,13 @@ namespace ONEVO.Infrastructure.Migrations
                         .HasForeignKey("CreatedById")
                         .OnDelete(DeleteBehavior.NoAction)
                         .HasConstraintName("fk_conversation_mutes_users_created_by_id");
+
+                    b.HasOne("ONEVO.Domain.Features.InfrastructureModule.Entities.Tenant", null)
+                        .WithMany()
+                        .HasForeignKey("TenantId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired()
+                        .HasConstraintName("fk_conversation_mutes_tenants_tenant_id");
                 });
 
             modelBuilder.Entity("ONEVO.Domain.Features.Conversations.Entities.ConversationParticipant", b =>
@@ -18026,6 +18353,13 @@ namespace ONEVO.Infrastructure.Migrations
                         .HasForeignKey("CreatedById")
                         .OnDelete(DeleteBehavior.NoAction)
                         .HasConstraintName("fk_conversation_participants_users_created_by_id");
+
+                    b.HasOne("ONEVO.Domain.Features.InfrastructureModule.Entities.Tenant", null)
+                        .WithMany()
+                        .HasForeignKey("TenantId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired()
+                        .HasConstraintName("fk_conversation_participants_tenants_tenant_id");
                 });
 
             modelBuilder.Entity("ONEVO.Domain.Features.CoreHr.Entities.AccessGrantRequest", b =>
@@ -18089,6 +18423,13 @@ namespace ONEVO.Infrastructure.Migrations
                         .IsRequired()
                         .HasConstraintName("fk_access_grant_requests_positions_target_position_id");
 
+                    b.HasOne("ONEVO.Domain.Features.InfrastructureModule.Entities.Tenant", null)
+                        .WithMany()
+                        .HasForeignKey("TenantId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired()
+                        .HasConstraintName("fk_access_grant_requests_tenants_tenant_id");
+
                     b.HasOne("ONEVO.Domain.Features.InfrastructureModule.Entities.User", null)
                         .WithMany()
                         .HasForeignKey("UserId")
@@ -18129,6 +18470,13 @@ namespace ONEVO.Infrastructure.Migrations
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired()
                         .HasConstraintName("fk_bulk_onboarding_batches_legal_entities_legal_entity_id");
+
+                    b.HasOne("ONEVO.Domain.Features.InfrastructureModule.Entities.Tenant", null)
+                        .WithMany()
+                        .HasForeignKey("TenantId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired()
+                        .HasConstraintName("fk_bulk_onboarding_batches_tenants_tenant_id");
                 });
 
             modelBuilder.Entity("ONEVO.Domain.Features.CoreHr.Entities.BulkOnboardingBatchRow", b =>
@@ -18181,6 +18529,13 @@ namespace ONEVO.Infrastructure.Migrations
                         .HasForeignKey("ResolvedWorkModeId")
                         .OnDelete(DeleteBehavior.NoAction)
                         .HasConstraintName("fk_bulk_onboarding_batch_rows_tenant_work_modes_resolved_work_mode_id");
+
+                    b.HasOne("ONEVO.Domain.Features.InfrastructureModule.Entities.Tenant", null)
+                        .WithMany()
+                        .HasForeignKey("TenantId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired()
+                        .HasConstraintName("fk_bulk_onboarding_batch_rows_tenants_tenant_id");
                 });
 
             modelBuilder.Entity("ONEVO.Domain.Features.CoreHr.Entities.ChecklistTemplate", b =>
@@ -18202,6 +18557,13 @@ namespace ONEVO.Infrastructure.Migrations
                         .HasForeignKey("PositionId")
                         .OnDelete(DeleteBehavior.Restrict)
                         .HasConstraintName("fk_checklist_templates_positions_position_id");
+
+                    b.HasOne("ONEVO.Domain.Features.InfrastructureModule.Entities.Tenant", null)
+                        .WithMany()
+                        .HasForeignKey("TenantId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired()
+                        .HasConstraintName("fk_checklist_templates_tenants_tenant_id");
                 });
 
             modelBuilder.Entity("ONEVO.Domain.Features.CoreHr.Entities.Employee", b =>
@@ -18223,6 +18585,13 @@ namespace ONEVO.Infrastructure.Migrations
                         .HasForeignKey("LegalEntityId")
                         .OnDelete(DeleteBehavior.NoAction)
                         .HasConstraintName("fk_employees_legal_entities_legal_entity_id");
+
+                    b.HasOne("ONEVO.Domain.Features.InfrastructureModule.Entities.Tenant", null)
+                        .WithMany()
+                        .HasForeignKey("TenantId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired()
+                        .HasConstraintName("fk_employees_tenants_tenant_id");
 
                     b.HasOne("ONEVO.Domain.Features.InfrastructureModule.Entities.User", null)
                         .WithMany()
@@ -18252,6 +18621,13 @@ namespace ONEVO.Infrastructure.Migrations
                         .OnDelete(DeleteBehavior.NoAction)
                         .IsRequired()
                         .HasConstraintName("fk_employee_addresses_employees_employee_id");
+
+                    b.HasOne("ONEVO.Domain.Features.InfrastructureModule.Entities.Tenant", null)
+                        .WithMany()
+                        .HasForeignKey("TenantId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired()
+                        .HasConstraintName("fk_employee_addresses_tenants_tenant_id");
                 });
 
             modelBuilder.Entity("ONEVO.Domain.Features.CoreHr.Entities.EmployeeBankDetail", b =>
@@ -18268,6 +18644,13 @@ namespace ONEVO.Infrastructure.Migrations
                         .OnDelete(DeleteBehavior.NoAction)
                         .IsRequired()
                         .HasConstraintName("fk_employee_bank_details_employees_employee_id");
+
+                    b.HasOne("ONEVO.Domain.Features.InfrastructureModule.Entities.Tenant", null)
+                        .WithMany()
+                        .HasForeignKey("TenantId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired()
+                        .HasConstraintName("fk_employee_bank_details_tenants_tenant_id");
                 });
 
             modelBuilder.Entity("ONEVO.Domain.Features.CoreHr.Entities.EmployeeChecklistTask", b =>
@@ -18298,6 +18681,13 @@ namespace ONEVO.Infrastructure.Migrations
                         .OnDelete(DeleteBehavior.Restrict)
                         .HasConstraintName("fk_employee_checklist_tasks_checklist_templates_template_id");
 
+                    b.HasOne("ONEVO.Domain.Features.InfrastructureModule.Entities.Tenant", null)
+                        .WithMany()
+                        .HasForeignKey("TenantId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired()
+                        .HasConstraintName("fk_employee_checklist_tasks_tenants_tenant_id");
+
                     b.HasOne("ONEVO.Domain.Features.WorkManagement.Tasks.Entities.WorkTask", null)
                         .WithMany()
                         .HasForeignKey("WorkTaskId")
@@ -18319,6 +18709,13 @@ namespace ONEVO.Infrastructure.Migrations
                         .OnDelete(DeleteBehavior.NoAction)
                         .IsRequired()
                         .HasConstraintName("fk_employee_dependents_employees_employee_id");
+
+                    b.HasOne("ONEVO.Domain.Features.InfrastructureModule.Entities.Tenant", null)
+                        .WithMany()
+                        .HasForeignKey("TenantId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired()
+                        .HasConstraintName("fk_employee_dependents_tenants_tenant_id");
                 });
 
             modelBuilder.Entity("ONEVO.Domain.Features.CoreHr.Entities.EmployeeEmergencyContact", b =>
@@ -18335,6 +18732,13 @@ namespace ONEVO.Infrastructure.Migrations
                         .OnDelete(DeleteBehavior.NoAction)
                         .IsRequired()
                         .HasConstraintName("fk_employee_emergency_contacts_employees_employee_id");
+
+                    b.HasOne("ONEVO.Domain.Features.InfrastructureModule.Entities.Tenant", null)
+                        .WithMany()
+                        .HasForeignKey("TenantId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired()
+                        .HasConstraintName("fk_employee_emergency_contacts_tenants_tenant_id");
                 });
 
             modelBuilder.Entity("ONEVO.Domain.Features.CoreHr.Entities.EmployeeHierarchyClosure", b =>
@@ -18359,6 +18763,13 @@ namespace ONEVO.Infrastructure.Migrations
                         .OnDelete(DeleteBehavior.NoAction)
                         .IsRequired()
                         .HasConstraintName("fk_employee_hierarchy_closure_position_assignments_source_position_assignment_id");
+
+                    b.HasOne("ONEVO.Domain.Features.InfrastructureModule.Entities.Tenant", null)
+                        .WithMany()
+                        .HasForeignKey("TenantId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired()
+                        .HasConstraintName("fk_employee_hierarchy_closure_tenants_tenant_id");
                 });
 
             modelBuilder.Entity("ONEVO.Domain.Features.CoreHr.Entities.OffboardingRecord", b =>
@@ -18382,6 +18793,13 @@ namespace ONEVO.Infrastructure.Migrations
                         .OnDelete(DeleteBehavior.NoAction)
                         .IsRequired()
                         .HasConstraintName("fk_offboarding_records_users_initiated_by_id");
+
+                    b.HasOne("ONEVO.Domain.Features.InfrastructureModule.Entities.Tenant", null)
+                        .WithMany()
+                        .HasForeignKey("TenantId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired()
+                        .HasConstraintName("fk_offboarding_records_tenants_tenant_id");
                 });
 
             modelBuilder.Entity("ONEVO.Domain.Features.CoreHr.Entities.OffboardingTaskBypassRequest", b =>
@@ -18413,6 +18831,13 @@ namespace ONEVO.Infrastructure.Migrations
                         .OnDelete(DeleteBehavior.NoAction)
                         .IsRequired()
                         .HasConstraintName("fk_offboarding_task_bypass_requests_users_requested_by_id");
+
+                    b.HasOne("ONEVO.Domain.Features.InfrastructureModule.Entities.Tenant", null)
+                        .WithMany()
+                        .HasForeignKey("TenantId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired()
+                        .HasConstraintName("fk_offboarding_task_bypass_requests_tenants_tenant_id");
                 });
 
             modelBuilder.Entity("ONEVO.Domain.Features.CoreHr.Entities.OnboardingDraft", b =>
@@ -18467,6 +18892,13 @@ namespace ONEVO.Infrastructure.Migrations
                         .IsRequired()
                         .HasConstraintName("fk_onboarding_drafts_users_started_by_id");
 
+                    b.HasOne("ONEVO.Domain.Features.InfrastructureModule.Entities.Tenant", null)
+                        .WithMany()
+                        .HasForeignKey("TenantId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired()
+                        .HasConstraintName("fk_onboarding_drafts_tenants_tenant_id");
+
                     b.HasOne("ONEVO.Domain.Features.TimeAttendance.Entities.WorkMode", null)
                         .WithMany()
                         .HasForeignKey("WorkModeId")
@@ -18501,6 +18933,13 @@ namespace ONEVO.Infrastructure.Migrations
                         .HasForeignKey("ReportsToEmployeeId")
                         .OnDelete(DeleteBehavior.NoAction)
                         .HasConstraintName("fk_position_assignments_employees_reports_to_employee_id");
+
+                    b.HasOne("ONEVO.Domain.Features.InfrastructureModule.Entities.Tenant", null)
+                        .WithMany()
+                        .HasForeignKey("TenantId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired()
+                        .HasConstraintName("fk_position_assignments_tenants_tenant_id");
                 });
 
             modelBuilder.Entity("ONEVO.Domain.Features.CoreHr.Entities.ReportingManagerChange", b =>
@@ -18537,6 +18976,13 @@ namespace ONEVO.Infrastructure.Migrations
                         .HasForeignKey("PreviousManagerEmployeeId")
                         .OnDelete(DeleteBehavior.Restrict)
                         .HasConstraintName("fk_reporting_manager_changes_employees_previous_manager_employee_id");
+
+                    b.HasOne("ONEVO.Domain.Features.InfrastructureModule.Entities.Tenant", null)
+                        .WithMany()
+                        .HasForeignKey("TenantId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired()
+                        .HasConstraintName("fk_reporting_manager_changes_tenants_tenant_id");
                 });
 
             modelBuilder.Entity("ONEVO.Domain.Features.CoreHr.Entities.SeatIncreaseRequest", b =>
@@ -18559,6 +19005,13 @@ namespace ONEVO.Infrastructure.Migrations
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired()
                         .HasConstraintName("fk_seat_increase_requests_users_requested_by_user_id");
+
+                    b.HasOne("ONEVO.Domain.Features.InfrastructureModule.Entities.Tenant", null)
+                        .WithMany()
+                        .HasForeignKey("TenantId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired()
+                        .HasConstraintName("fk_seat_increase_requests_tenants_tenant_id");
                 });
 
             modelBuilder.Entity("ONEVO.Domain.Features.Dashboard.Entities.DashboardTemplate", b =>
@@ -18574,6 +19027,13 @@ namespace ONEVO.Infrastructure.Migrations
                         .HasForeignKey("RoleId")
                         .OnDelete(DeleteBehavior.Restrict)
                         .HasConstraintName("fk_dashboard_templates_roles_role_id");
+
+                    b.HasOne("ONEVO.Domain.Features.InfrastructureModule.Entities.Tenant", null)
+                        .WithMany()
+                        .HasForeignKey("TenantId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired()
+                        .HasConstraintName("fk_dashboard_templates_tenants_tenant_id");
                 });
 
             modelBuilder.Entity("ONEVO.Domain.Features.Dashboard.Entities.DashboardTemplateWidget", b =>
@@ -18590,6 +19050,13 @@ namespace ONEVO.Infrastructure.Migrations
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired()
                         .HasConstraintName("fk_dashboard_template_widgets_dashboard_templates_template_id");
+
+                    b.HasOne("ONEVO.Domain.Features.InfrastructureModule.Entities.Tenant", null)
+                        .WithMany()
+                        .HasForeignKey("TenantId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired()
+                        .HasConstraintName("fk_dashboard_template_widgets_tenants_tenant_id");
                 });
 
             modelBuilder.Entity("ONEVO.Domain.Features.Dashboard.Entities.DashboardTemplateWidgetLayout", b =>
@@ -18606,6 +19073,13 @@ namespace ONEVO.Infrastructure.Migrations
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired()
                         .HasConstraintName("fk_dashboard_template_widget_layouts_dashboard_template_widgets_template_widget_id");
+
+                    b.HasOne("ONEVO.Domain.Features.InfrastructureModule.Entities.Tenant", null)
+                        .WithMany()
+                        .HasForeignKey("TenantId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired()
+                        .HasConstraintName("fk_dashboard_template_widget_layouts_tenants_tenant_id");
                 });
 
             modelBuilder.Entity("ONEVO.Domain.Features.Dashboard.Entities.DashboardWidget", b =>
@@ -18622,6 +19096,13 @@ namespace ONEVO.Infrastructure.Migrations
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired()
                         .HasConstraintName("fk_dashboard_widgets_user_dashboards_dashboard_id");
+
+                    b.HasOne("ONEVO.Domain.Features.InfrastructureModule.Entities.Tenant", null)
+                        .WithMany()
+                        .HasForeignKey("TenantId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired()
+                        .HasConstraintName("fk_dashboard_widgets_tenants_tenant_id");
                 });
 
             modelBuilder.Entity("ONEVO.Domain.Features.Dashboard.Entities.DashboardWidgetLayout", b =>
@@ -18631,6 +19112,13 @@ namespace ONEVO.Infrastructure.Migrations
                         .HasForeignKey("CreatedById")
                         .OnDelete(DeleteBehavior.NoAction)
                         .HasConstraintName("fk_dashboard_widget_layouts_users_created_by_id");
+
+                    b.HasOne("ONEVO.Domain.Features.InfrastructureModule.Entities.Tenant", null)
+                        .WithMany()
+                        .HasForeignKey("TenantId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired()
+                        .HasConstraintName("fk_dashboard_widget_layouts_tenants_tenant_id");
 
                     b.HasOne("ONEVO.Domain.Features.Dashboard.Entities.DashboardWidget", null)
                         .WithMany("Layouts")
@@ -18647,6 +19135,13 @@ namespace ONEVO.Infrastructure.Migrations
                         .HasForeignKey("CreatedById")
                         .OnDelete(DeleteBehavior.NoAction)
                         .HasConstraintName("fk_user_dashboards_users_created_by_id");
+
+                    b.HasOne("ONEVO.Domain.Features.InfrastructureModule.Entities.Tenant", null)
+                        .WithMany()
+                        .HasForeignKey("TenantId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired()
+                        .HasConstraintName("fk_user_dashboards_tenants_tenant_id");
                 });
 
             modelBuilder.Entity("ONEVO.Domain.Features.DevPlatform.AppCatalog.Entities.GlobalApplication", b =>
@@ -18855,6 +19350,13 @@ namespace ONEVO.Infrastructure.Migrations
 
             modelBuilder.Entity("ONEVO.Domain.Features.DevPlatform.Support.Entities.SupportTicketAttachment", b =>
                 {
+                    b.HasOne("ONEVO.Domain.Features.InfrastructureModule.Entities.Tenant", null)
+                        .WithMany()
+                        .HasForeignKey("TenantId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired()
+                        .HasConstraintName("fk_support_ticket_attachments_tenants_tenant_id");
+
                     b.HasOne("ONEVO.Domain.Features.DevPlatform.Support.Entities.SupportTicket", "Ticket")
                         .WithMany("Attachments")
                         .HasForeignKey("TicketId")
@@ -18890,6 +19392,13 @@ namespace ONEVO.Infrastructure.Migrations
                         .HasForeignKey("AuthorUserId")
                         .OnDelete(DeleteBehavior.Restrict)
                         .HasConstraintName("fk_support_ticket_comments_users_author_user_id");
+
+                    b.HasOne("ONEVO.Domain.Features.InfrastructureModule.Entities.Tenant", null)
+                        .WithMany()
+                        .HasForeignKey("TenantId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired()
+                        .HasConstraintName("fk_support_ticket_comments_tenants_tenant_id");
 
                     b.HasOne("ONEVO.Domain.Features.DevPlatform.Support.Entities.SupportTicket", "Ticket")
                         .WithMany("Comments")
@@ -19018,6 +19527,13 @@ namespace ONEVO.Infrastructure.Migrations
                         .HasForeignKey("CreatedById")
                         .OnDelete(DeleteBehavior.NoAction)
                         .HasConstraintName("fk_inbox_decision_journal_users_created_by_id");
+
+                    b.HasOne("ONEVO.Domain.Features.InfrastructureModule.Entities.Tenant", null)
+                        .WithMany()
+                        .HasForeignKey("TenantId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired()
+                        .HasConstraintName("fk_inbox_decision_journal_tenants_tenant_id");
                 });
 
             modelBuilder.Entity("ONEVO.Domain.Features.InfrastructureModule.Entities.TenantStatusHistory", b =>
@@ -19043,6 +19559,13 @@ namespace ONEVO.Infrastructure.Migrations
                         .HasForeignKey("CreatedById")
                         .OnDelete(DeleteBehavior.NoAction)
                         .HasConstraintName("fk_users_users_created_by_id");
+
+                    b.HasOne("ONEVO.Domain.Features.InfrastructureModule.Entities.Tenant", null)
+                        .WithMany()
+                        .HasForeignKey("TenantId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired()
+                        .HasConstraintName("fk_users_tenants_tenant_id");
                 });
 
             modelBuilder.Entity("ONEVO.Domain.Features.Leave.BalanceAudit.Entities.LeaveBalanceAudit", b =>
@@ -19078,6 +19601,13 @@ namespace ONEVO.Infrastructure.Migrations
                         .HasForeignKey("RelatedRequestId")
                         .OnDelete(DeleteBehavior.Restrict)
                         .HasConstraintName("fk_leave_balance_audits_leave_requests_related_request_id");
+
+                    b.HasOne("ONEVO.Domain.Features.InfrastructureModule.Entities.Tenant", null)
+                        .WithMany()
+                        .HasForeignKey("TenantId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired()
+                        .HasConstraintName("fk_leave_balance_audits_tenants_tenant_id");
                 });
 
             modelBuilder.Entity("ONEVO.Domain.Features.Leave.Entitlement.Entities.LeaveEntitlement", b =>
@@ -19107,6 +19637,13 @@ namespace ONEVO.Infrastructure.Migrations
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired()
                         .HasConstraintName("fk_leave_entitlements_leave_types_leave_type_id");
+
+                    b.HasOne("ONEVO.Domain.Features.InfrastructureModule.Entities.Tenant", null)
+                        .WithMany()
+                        .HasForeignKey("TenantId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired()
+                        .HasConstraintName("fk_leave_entitlements_tenants_tenant_id");
                 });
 
             modelBuilder.Entity("ONEVO.Domain.Features.Leave.Policy.Entities.LeavePolicy", b =>
@@ -19117,6 +19654,13 @@ namespace ONEVO.Infrastructure.Migrations
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired()
                         .HasConstraintName("fk_leave_policies_leave_types_leave_type_id");
+
+                    b.HasOne("ONEVO.Domain.Features.InfrastructureModule.Entities.Tenant", null)
+                        .WithMany()
+                        .HasForeignKey("TenantId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired()
+                        .HasConstraintName("fk_leave_policies_tenants_tenant_id");
                 });
 
             modelBuilder.Entity("ONEVO.Domain.Features.Leave.Policy.Entities.LeavePolicyAssignment", b =>
@@ -19134,6 +19678,13 @@ namespace ONEVO.Infrastructure.Migrations
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired()
                         .HasConstraintName("fk_leave_policy_assignments_leave_types_leave_type_id");
+
+                    b.HasOne("ONEVO.Domain.Features.InfrastructureModule.Entities.Tenant", null)
+                        .WithMany()
+                        .HasForeignKey("TenantId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired()
+                        .HasConstraintName("fk_leave_policy_assignments_tenants_tenant_id");
                 });
 
             modelBuilder.Entity("ONEVO.Domain.Features.Leave.Policy.Entities.LeavePolicyBlackoutPeriod", b =>
@@ -19144,6 +19695,13 @@ namespace ONEVO.Infrastructure.Migrations
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired()
                         .HasConstraintName("fk_leave_policy_blackout_periods_leave_policy_versions_leave_policy_version_id");
+
+                    b.HasOne("ONEVO.Domain.Features.InfrastructureModule.Entities.Tenant", null)
+                        .WithMany()
+                        .HasForeignKey("TenantId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired()
+                        .HasConstraintName("fk_leave_policy_blackout_periods_tenants_tenant_id");
                 });
 
             modelBuilder.Entity("ONEVO.Domain.Features.Leave.Policy.Entities.LeavePolicyVersion", b =>
@@ -19154,6 +19712,13 @@ namespace ONEVO.Infrastructure.Migrations
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired()
                         .HasConstraintName("fk_leave_policy_versions_leave_policies_leave_policy_id");
+
+                    b.HasOne("ONEVO.Domain.Features.InfrastructureModule.Entities.Tenant", null)
+                        .WithMany()
+                        .HasForeignKey("TenantId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired()
+                        .HasConstraintName("fk_leave_policy_versions_tenants_tenant_id");
                 });
 
             modelBuilder.Entity("ONEVO.Domain.Features.Leave.Request.Entities.LeaveApprovalDelegate", b =>
@@ -19171,6 +19736,13 @@ namespace ONEVO.Infrastructure.Migrations
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired()
                         .HasConstraintName("fk_leave_approval_delegates_employees_delegate_employee_id");
+
+                    b.HasOne("ONEVO.Domain.Features.InfrastructureModule.Entities.Tenant", null)
+                        .WithMany()
+                        .HasForeignKey("TenantId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired()
+                        .HasConstraintName("fk_leave_approval_delegates_tenants_tenant_id");
                 });
 
             modelBuilder.Entity("ONEVO.Domain.Features.Leave.Request.Entities.LeaveRequest", b =>
@@ -19194,6 +19766,13 @@ namespace ONEVO.Infrastructure.Migrations
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired()
                         .HasConstraintName("fk_leave_requests_leave_types_leave_type_id");
+
+                    b.HasOne("ONEVO.Domain.Features.InfrastructureModule.Entities.Tenant", null)
+                        .WithMany()
+                        .HasForeignKey("TenantId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired()
+                        .HasConstraintName("fk_leave_requests_tenants_tenant_id");
                 });
 
             modelBuilder.Entity("ONEVO.Domain.Features.Leave.Request.Entities.LeaveRequestApprover", b =>
@@ -19217,6 +19796,13 @@ namespace ONEVO.Infrastructure.Migrations
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired()
                         .HasConstraintName("fk_leave_request_approvers_leave_requests_leave_request_id");
+
+                    b.HasOne("ONEVO.Domain.Features.InfrastructureModule.Entities.Tenant", null)
+                        .WithMany()
+                        .HasForeignKey("TenantId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired()
+                        .HasConstraintName("fk_leave_request_approvers_tenants_tenant_id");
                 });
 
             modelBuilder.Entity("ONEVO.Domain.Features.Leave.Request.Entities.LeaveRequestDayAllocation", b =>
@@ -19227,6 +19813,13 @@ namespace ONEVO.Infrastructure.Migrations
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired()
                         .HasConstraintName("fk_leave_request_day_allocations_leave_requests_leave_request_id");
+
+                    b.HasOne("ONEVO.Domain.Features.InfrastructureModule.Entities.Tenant", null)
+                        .WithMany()
+                        .HasForeignKey("TenantId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired()
+                        .HasConstraintName("fk_leave_request_day_allocations_tenants_tenant_id");
                 });
 
             modelBuilder.Entity("ONEVO.Domain.Features.Leave.Request.Entities.LeaveRequestDocument", b =>
@@ -19244,6 +19837,83 @@ namespace ONEVO.Infrastructure.Migrations
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired()
                         .HasConstraintName("fk_leave_request_documents_leave_requests_leave_request_id");
+
+                    b.HasOne("ONEVO.Domain.Features.InfrastructureModule.Entities.Tenant", null)
+                        .WithMany()
+                        .HasForeignKey("TenantId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired()
+                        .HasConstraintName("fk_leave_request_documents_tenants_tenant_id");
+                });
+
+            modelBuilder.Entity("ONEVO.Domain.Features.Leave.Type.Entities.LeaveType", b =>
+                {
+                    b.HasOne("ONEVO.Domain.Features.InfrastructureModule.Entities.Tenant", null)
+                        .WithMany()
+                        .HasForeignKey("TenantId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired()
+                        .HasConstraintName("fk_leave_types_tenants_tenant_id");
+                });
+
+            modelBuilder.Entity("ONEVO.Domain.Features.Monitoring.ActivityMonitoring.Entities.ActivityDailySummary", b =>
+                {
+                    b.HasOne("ONEVO.Domain.Features.InfrastructureModule.Entities.Tenant", null)
+                        .WithMany()
+                        .HasForeignKey("TenantId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired()
+                        .HasConstraintName("fk_activity_daily_summary_tenants_tenant_id");
+                });
+
+            modelBuilder.Entity("ONEVO.Domain.Features.Monitoring.ActivityMonitoring.Entities.ActivityRawBuffer", b =>
+                {
+                    b.HasOne("ONEVO.Domain.Features.InfrastructureModule.Entities.Tenant", null)
+                        .WithMany()
+                        .HasForeignKey("TenantId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired()
+                        .HasConstraintName("fk_activity_raw_buffer_tenants_tenant_id");
+                });
+
+            modelBuilder.Entity("ONEVO.Domain.Features.Monitoring.ActivityMonitoring.Entities.ActivitySnapshot", b =>
+                {
+                    b.HasOne("ONEVO.Domain.Features.InfrastructureModule.Entities.Tenant", null)
+                        .WithMany()
+                        .HasForeignKey("TenantId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired()
+                        .HasConstraintName("fk_activity_snapshots_tenants_tenant_id");
+                });
+
+            modelBuilder.Entity("ONEVO.Domain.Features.Monitoring.AppUsage.Entities.AppUsageSnapshot", b =>
+                {
+                    b.HasOne("ONEVO.Domain.Features.InfrastructureModule.Entities.Tenant", null)
+                        .WithMany()
+                        .HasForeignKey("TenantId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired()
+                        .HasConstraintName("fk_app_usage_snapshots_tenants_tenant_id");
+                });
+
+            modelBuilder.Entity("ONEVO.Domain.Features.Monitoring.Biometrics.Entities.BiometricEnrollmentAttempt", b =>
+                {
+                    b.HasOne("ONEVO.Domain.Features.InfrastructureModule.Entities.Tenant", null)
+                        .WithMany()
+                        .HasForeignKey("TenantId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired()
+                        .HasConstraintName("fk_biometric_enrollment_attempts_tenants_tenant_id");
+                });
+
+            modelBuilder.Entity("ONEVO.Domain.Features.Monitoring.Biometrics.Entities.BiometricProfile", b =>
+                {
+                    b.HasOne("ONEVO.Domain.Features.InfrastructureModule.Entities.Tenant", null)
+                        .WithMany()
+                        .HasForeignKey("TenantId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired()
+                        .HasConstraintName("fk_biometric_profiles_tenants_tenant_id");
                 });
 
             modelBuilder.Entity("ONEVO.Domain.Features.Monitoring.CheckIn.Entities.EmployeeCheckIn", b =>
@@ -19254,7 +19924,84 @@ namespace ONEVO.Infrastructure.Migrations
                         .OnDelete(DeleteBehavior.SetNull)
                         .HasConstraintName("fk_employee_check_ins_monitoring_face_scans_face_scan_id");
 
+                    b.HasOne("ONEVO.Domain.Features.InfrastructureModule.Entities.Tenant", null)
+                        .WithMany()
+                        .HasForeignKey("TenantId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired()
+                        .HasConstraintName("fk_employee_check_ins_tenants_tenant_id");
+
                     b.Navigation("FaceScan");
+                });
+
+            modelBuilder.Entity("ONEVO.Domain.Features.Monitoring.CheckIn.Entities.FaceVerificationAttempt", b =>
+                {
+                    b.HasOne("ONEVO.Domain.Features.InfrastructureModule.Entities.Tenant", null)
+                        .WithMany()
+                        .HasForeignKey("TenantId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired()
+                        .HasConstraintName("fk_face_verification_attempts_tenants_tenant_id");
+                });
+
+            modelBuilder.Entity("ONEVO.Domain.Features.Monitoring.CheckIn.Entities.MonitoringFaceScan", b =>
+                {
+                    b.HasOne("ONEVO.Domain.Features.InfrastructureModule.Entities.Tenant", null)
+                        .WithMany()
+                        .HasForeignKey("TenantId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired()
+                        .HasConstraintName("fk_monitoring_face_scans_tenants_tenant_id");
+                });
+
+            modelBuilder.Entity("ONEVO.Domain.Features.Monitoring.DeviceState.Entities.DeviceStateSnapshot", b =>
+                {
+                    b.HasOne("ONEVO.Domain.Features.InfrastructureModule.Entities.Tenant", null)
+                        .WithMany()
+                        .HasForeignKey("TenantId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired()
+                        .HasConstraintName("fk_device_state_snapshots_tenants_tenant_id");
+                });
+
+            modelBuilder.Entity("ONEVO.Domain.Features.Monitoring.Exceptions.Entities.Exception", b =>
+                {
+                    b.HasOne("ONEVO.Domain.Features.InfrastructureModule.Entities.Tenant", null)
+                        .WithMany()
+                        .HasForeignKey("TenantId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired()
+                        .HasConstraintName("fk_exceptions_tenants_tenant_id");
+                });
+
+            modelBuilder.Entity("ONEVO.Domain.Features.Monitoring.Meetings.Entities.MeetingSignal", b =>
+                {
+                    b.HasOne("ONEVO.Domain.Features.InfrastructureModule.Entities.Tenant", null)
+                        .WithMany()
+                        .HasForeignKey("TenantId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired()
+                        .HasConstraintName("fk_meeting_signals_tenants_tenant_id");
+                });
+
+            modelBuilder.Entity("ONEVO.Domain.Features.Monitoring.Notifications.Entities.Notification", b =>
+                {
+                    b.HasOne("ONEVO.Domain.Features.InfrastructureModule.Entities.Tenant", null)
+                        .WithMany()
+                        .HasForeignKey("TenantId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired()
+                        .HasConstraintName("fk_monitoring_notifications_tenants_tenant_id");
+                });
+
+            modelBuilder.Entity("ONEVO.Domain.Features.Monitoring.PermissionConsent.Entities.MonitoringPermissionConsent", b =>
+                {
+                    b.HasOne("ONEVO.Domain.Features.InfrastructureModule.Entities.Tenant", null)
+                        .WithMany()
+                        .HasForeignKey("TenantId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired()
+                        .HasConstraintName("fk_monitoring_permission_consents_tenants_tenant_id");
                 });
 
             modelBuilder.Entity("ONEVO.Domain.Features.Monitoring.Screenshots.Entities.AgentCommand", b =>
@@ -19265,6 +20012,13 @@ namespace ONEVO.Infrastructure.Migrations
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired()
                         .HasConstraintName("fk_agent_commands_tray_device_registrations_agent_device_id");
+
+                    b.HasOne("ONEVO.Domain.Features.InfrastructureModule.Entities.Tenant", null)
+                        .WithMany()
+                        .HasForeignKey("TenantId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired()
+                        .HasConstraintName("fk_agent_commands_tenants_tenant_id");
                 });
 
             modelBuilder.Entity("ONEVO.Domain.Features.Monitoring.Screenshots.Entities.InactivityCaptureAttempt", b =>
@@ -19281,6 +20035,13 @@ namespace ONEVO.Infrastructure.Migrations
                         .HasForeignKey("EvidenceAssetId")
                         .OnDelete(DeleteBehavior.Restrict)
                         .HasConstraintName("fk_inactivity_capture_attempts_monitoring_evidence_assets_evidence_asset_id");
+
+                    b.HasOne("ONEVO.Domain.Features.InfrastructureModule.Entities.Tenant", null)
+                        .WithMany()
+                        .HasForeignKey("TenantId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired()
+                        .HasConstraintName("fk_inactivity_capture_attempts_tenants_tenant_id");
                 });
 
             modelBuilder.Entity("ONEVO.Domain.Features.Monitoring.Screenshots.Entities.MonitoringEvidenceAsset", b =>
@@ -19309,6 +20070,23 @@ namespace ONEVO.Infrastructure.Migrations
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired()
                         .HasConstraintName("fk_monitoring_evidence_assets_file_records_file_record_id");
+
+                    b.HasOne("ONEVO.Domain.Features.InfrastructureModule.Entities.Tenant", null)
+                        .WithMany()
+                        .HasForeignKey("TenantId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired()
+                        .HasConstraintName("fk_monitoring_evidence_assets_tenants_tenant_id");
+                });
+
+            modelBuilder.Entity("ONEVO.Domain.Features.Monitoring.Settings.Entities.EmployeeMonitoringOverride", b =>
+                {
+                    b.HasOne("ONEVO.Domain.Features.InfrastructureModule.Entities.Tenant", null)
+                        .WithMany()
+                        .HasForeignKey("TenantId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired()
+                        .HasConstraintName("fk_employee_monitoring_overrides_tenants_tenant_id");
                 });
 
             modelBuilder.Entity("ONEVO.Domain.Features.Monitoring.Settings.Entities.MonitoringFeatureToggles", b =>
@@ -19318,6 +20096,23 @@ namespace ONEVO.Infrastructure.Migrations
                         .HasForeignKey("LegalEntityId")
                         .OnDelete(DeleteBehavior.Restrict)
                         .HasConstraintName("fk_monitoring_feature_toggles_legal_entities_legal_entity_id");
+
+                    b.HasOne("ONEVO.Domain.Features.InfrastructureModule.Entities.Tenant", null)
+                        .WithMany()
+                        .HasForeignKey("TenantId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired()
+                        .HasConstraintName("fk_monitoring_feature_toggles_tenants_tenant_id");
+                });
+
+            modelBuilder.Entity("ONEVO.Domain.Features.Monitoring.Settings.Entities.MonitoringPolicyOverride", b =>
+                {
+                    b.HasOne("ONEVO.Domain.Features.InfrastructureModule.Entities.Tenant", null)
+                        .WithMany()
+                        .HasForeignKey("TenantId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired()
+                        .HasConstraintName("fk_monitoring_policy_overrides_tenants_tenant_id");
                 });
 
             modelBuilder.Entity("ONEVO.Domain.Features.Monitoring.TrayActivation.Entities.DeviceChangeRequest", b =>
@@ -19333,6 +20128,13 @@ namespace ONEVO.Infrastructure.Migrations
                         .HasForeignKey("ReviewedById")
                         .OnDelete(DeleteBehavior.Restrict)
                         .HasConstraintName("fk_device_change_requests_users_reviewed_by_id");
+
+                    b.HasOne("ONEVO.Domain.Features.InfrastructureModule.Entities.Tenant", null)
+                        .WithMany()
+                        .HasForeignKey("TenantId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired()
+                        .HasConstraintName("fk_device_change_requests_tenants_tenant_id");
                 });
 
             modelBuilder.Entity("ONEVO.Domain.Features.Monitoring.TrayActivation.Entities.TrayActivationCode", b =>
@@ -19342,6 +20144,13 @@ namespace ONEVO.Infrastructure.Migrations
                         .HasForeignKey("LegalEntityId")
                         .OnDelete(DeleteBehavior.Restrict)
                         .HasConstraintName("fk_tray_activation_codes_legal_entities_legal_entity_id");
+
+                    b.HasOne("ONEVO.Domain.Features.InfrastructureModule.Entities.Tenant", null)
+                        .WithMany()
+                        .HasForeignKey("TenantId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired()
+                        .HasConstraintName("fk_tray_activation_codes_tenants_tenant_id");
                 });
 
             modelBuilder.Entity("ONEVO.Domain.Features.Monitoring.TrayActivation.Entities.TrayDeviceAuthorization", b =>
@@ -19353,6 +20162,16 @@ namespace ONEVO.Infrastructure.Migrations
                         .HasConstraintName("fk_tray_device_authorizations_legal_entities_approved_legal_entity_id");
                 });
 
+            modelBuilder.Entity("ONEVO.Domain.Features.Monitoring.TrayActivation.Entities.TrayDeviceRefreshToken", b =>
+                {
+                    b.HasOne("ONEVO.Domain.Features.InfrastructureModule.Entities.Tenant", null)
+                        .WithMany()
+                        .HasForeignKey("TenantId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired()
+                        .HasConstraintName("fk_tray_device_refresh_tokens_tenants_tenant_id");
+                });
+
             modelBuilder.Entity("ONEVO.Domain.Features.Monitoring.TrayActivation.Entities.TrayDeviceRegistration", b =>
                 {
                     b.HasOne("ONEVO.Domain.Features.OrgStructure.Entities.LegalEntity", null)
@@ -19360,6 +20179,23 @@ namespace ONEVO.Infrastructure.Migrations
                         .HasForeignKey("LegalEntityId")
                         .OnDelete(DeleteBehavior.Restrict)
                         .HasConstraintName("fk_tray_device_registrations_legal_entities_legal_entity_id");
+
+                    b.HasOne("ONEVO.Domain.Features.InfrastructureModule.Entities.Tenant", null)
+                        .WithMany()
+                        .HasForeignKey("TenantId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired()
+                        .HasConstraintName("fk_tray_device_registrations_tenants_tenant_id");
+                });
+
+            modelBuilder.Entity("ONEVO.Domain.Features.Monitoring.WorkSessions.Entities.EmployeeWorkSession", b =>
+                {
+                    b.HasOne("ONEVO.Domain.Features.InfrastructureModule.Entities.Tenant", null)
+                        .WithMany()
+                        .HasForeignKey("TenantId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired()
+                        .HasConstraintName("fk_employee_work_sessions_tenants_tenant_id");
                 });
 
             modelBuilder.Entity("ONEVO.Domain.Features.OrgStructure.Entities.Department", b =>
@@ -19382,6 +20218,13 @@ namespace ONEVO.Infrastructure.Migrations
                         .HasForeignKey("ParentDepartmentId")
                         .OnDelete(DeleteBehavior.Restrict)
                         .HasConstraintName("fk_departments_departments_parent_department_id");
+
+                    b.HasOne("ONEVO.Domain.Features.InfrastructureModule.Entities.Tenant", null)
+                        .WithMany()
+                        .HasForeignKey("TenantId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired()
+                        .HasConstraintName("fk_departments_tenants_tenant_id");
                 });
 
             modelBuilder.Entity("ONEVO.Domain.Features.OrgStructure.Entities.LegalEntity", b =>
@@ -19391,6 +20234,13 @@ namespace ONEVO.Infrastructure.Migrations
                         .HasForeignKey("ParentLegalEntityId")
                         .OnDelete(DeleteBehavior.Restrict)
                         .HasConstraintName("fk_legal_entities_legal_entities_parent_legal_entity_id");
+
+                    b.HasOne("ONEVO.Domain.Features.InfrastructureModule.Entities.Tenant", null)
+                        .WithMany()
+                        .HasForeignKey("TenantId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired()
+                        .HasConstraintName("fk_legal_entities_tenants_tenant_id");
                 });
 
             modelBuilder.Entity("ONEVO.Domain.Features.OrgStructure.Entities.ManagementCoverageRecord", b =>
@@ -19426,6 +20276,13 @@ namespace ONEVO.Infrastructure.Migrations
                         .HasForeignKey("ResponsibleEmployeeId")
                         .OnDelete(DeleteBehavior.Restrict)
                         .HasConstraintName("fk_management_coverage_records_employees_responsible_employee_id");
+
+                    b.HasOne("ONEVO.Domain.Features.InfrastructureModule.Entities.Tenant", null)
+                        .WithMany()
+                        .HasForeignKey("TenantId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired()
+                        .HasConstraintName("fk_management_coverage_records_tenants_tenant_id");
                 });
 
             modelBuilder.Entity("ONEVO.Domain.Features.OrgStructure.Entities.Position", b =>
@@ -19459,6 +20316,13 @@ namespace ONEVO.Infrastructure.Migrations
                         .HasForeignKey("ReportsToPositionId")
                         .OnDelete(DeleteBehavior.Restrict)
                         .HasConstraintName("fk_positions_positions_reports_to_position_id");
+
+                    b.HasOne("ONEVO.Domain.Features.InfrastructureModule.Entities.Tenant", null)
+                        .WithMany()
+                        .HasForeignKey("TenantId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired()
+                        .HasConstraintName("fk_positions_tenants_tenant_id");
                 });
 
             modelBuilder.Entity("ONEVO.Domain.Features.OrgStructure.Entities.PositionAccessTemplate", b =>
@@ -19476,6 +20340,13 @@ namespace ONEVO.Infrastructure.Migrations
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired()
                         .HasConstraintName("fk_position_access_templates_roles_role_id");
+
+                    b.HasOne("ONEVO.Domain.Features.InfrastructureModule.Entities.Tenant", null)
+                        .WithMany()
+                        .HasForeignKey("TenantId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired()
+                        .HasConstraintName("fk_position_access_templates_tenants_tenant_id");
                 });
 
             modelBuilder.Entity("ONEVO.Domain.Features.OrgStructure.Entities.PositionReportingHistory", b =>
@@ -19498,6 +20369,13 @@ namespace ONEVO.Infrastructure.Migrations
                         .HasForeignKey("ReportsToPositionId")
                         .OnDelete(DeleteBehavior.Restrict)
                         .HasConstraintName("fk_position_reporting_history_positions_reports_to_position_id");
+
+                    b.HasOne("ONEVO.Domain.Features.InfrastructureModule.Entities.Tenant", null)
+                        .WithMany()
+                        .HasForeignKey("TenantId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired()
+                        .HasConstraintName("fk_position_reporting_history_tenants_tenant_id");
                 });
 
             modelBuilder.Entity("ONEVO.Domain.Features.SharedPlatform.Entities.BillingAuditLog", b =>
@@ -19557,6 +20435,15 @@ namespace ONEVO.Infrastructure.Migrations
                     b.Navigation("Module");
                 });
 
+            modelBuilder.Entity("ONEVO.Domain.Features.SharedPlatform.Entities.OutboxMessage", b =>
+                {
+                    b.HasOne("ONEVO.Domain.Features.InfrastructureModule.Entities.Tenant", null)
+                        .WithMany()
+                        .HasForeignKey("TenantId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .HasConstraintName("fk_outbox_messages_tenants_tenant_id");
+                });
+
             modelBuilder.Entity("ONEVO.Domain.Features.SharedPlatform.Entities.SubscriptionInvoice", b =>
                 {
                     b.HasOne("ONEVO.Domain.Features.InfrastructureModule.Entities.Tenant", null)
@@ -19580,6 +20467,33 @@ namespace ONEVO.Infrastructure.Migrations
                         .HasForeignKey("CreatedById")
                         .OnDelete(DeleteBehavior.NoAction)
                         .HasConstraintName("fk_tenant_one_time_charges_users_created_by_id");
+
+                    b.HasOne("ONEVO.Domain.Features.InfrastructureModule.Entities.Tenant", null)
+                        .WithMany()
+                        .HasForeignKey("TenantId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired()
+                        .HasConstraintName("fk_tenant_one_time_charges_tenants_tenant_id");
+                });
+
+            modelBuilder.Entity("ONEVO.Domain.Features.SharedPlatform.Entities.TenantProvisioningState", b =>
+                {
+                    b.HasOne("ONEVO.Domain.Features.InfrastructureModule.Entities.Tenant", null)
+                        .WithMany()
+                        .HasForeignKey("TenantId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired()
+                        .HasConstraintName("fk_tenant_provisioning_states_tenants_tenant_id");
+                });
+
+            modelBuilder.Entity("ONEVO.Domain.Features.SharedPlatform.Entities.TenantSetupSelection", b =>
+                {
+                    b.HasOne("ONEVO.Domain.Features.InfrastructureModule.Entities.Tenant", null)
+                        .WithMany()
+                        .HasForeignKey("TenantId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired()
+                        .HasConstraintName("fk_tenant_setup_selections_tenants_tenant_id");
                 });
 
             modelBuilder.Entity("ONEVO.Domain.Features.SharedPlatform.Entities.TenantSubscription", b =>
@@ -19589,6 +20503,33 @@ namespace ONEVO.Infrastructure.Migrations
                         .HasForeignKey("CreatedById")
                         .OnDelete(DeleteBehavior.NoAction)
                         .HasConstraintName("fk_tenant_subscriptions_platform_users_created_by_id");
+
+                    b.HasOne("ONEVO.Domain.Features.InfrastructureModule.Entities.Tenant", null)
+                        .WithMany()
+                        .HasForeignKey("TenantId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired()
+                        .HasConstraintName("fk_tenant_subscriptions_tenants_tenant_id");
+                });
+
+            modelBuilder.Entity("ONEVO.Domain.Features.SharedPlatform.Notifications.Entities.Notification", b =>
+                {
+                    b.HasOne("ONEVO.Domain.Features.InfrastructureModule.Entities.Tenant", null)
+                        .WithMany()
+                        .HasForeignKey("TenantId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired()
+                        .HasConstraintName("fk_notifications_tenants_tenant_id");
+                });
+
+            modelBuilder.Entity("ONEVO.Domain.Features.SharedPlatform.Notifications.Entities.NotificationDelivery", b =>
+                {
+                    b.HasOne("ONEVO.Domain.Features.InfrastructureModule.Entities.Tenant", null)
+                        .WithMany()
+                        .HasForeignKey("TenantId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired()
+                        .HasConstraintName("fk_notification_deliveries_tenants_tenant_id");
                 });
 
             modelBuilder.Entity("ONEVO.Domain.Features.SharedPlatform.Notifications.Entities.NotificationTemplateVersion", b =>
@@ -19608,6 +20549,13 @@ namespace ONEVO.Infrastructure.Migrations
                         .HasForeignKey("TemplateId")
                         .OnDelete(DeleteBehavior.Restrict)
                         .HasConstraintName("fk_tenant_notification_rules_notification_templates_template_id");
+
+                    b.HasOne("ONEVO.Domain.Features.InfrastructureModule.Entities.Tenant", null)
+                        .WithMany()
+                        .HasForeignKey("TenantId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired()
+                        .HasConstraintName("fk_tenant_notification_rules_tenants_tenant_id");
                 });
 
             modelBuilder.Entity("ONEVO.Domain.Features.SharedPlatform.PaymentGateway.Entities.PaymentGatewayConfig", b =>
@@ -19719,6 +20667,13 @@ namespace ONEVO.Infrastructure.Migrations
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired()
                         .HasConstraintName("fk_entity_assets_file_records_file_record_id");
+
+                    b.HasOne("ONEVO.Domain.Features.InfrastructureModule.Entities.Tenant", null)
+                        .WithMany()
+                        .HasForeignKey("TenantId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired()
+                        .HasConstraintName("fk_entity_assets_tenants_tenant_id");
                 });
 
             modelBuilder.Entity("ONEVO.Domain.Features.Storage.File.Entities.FileRecord", b =>
@@ -19803,6 +20758,13 @@ namespace ONEVO.Infrastructure.Migrations
                         .HasForeignKey("ResolvedByEmployeeId")
                         .OnDelete(DeleteBehavior.NoAction)
                         .HasConstraintName("fk_attendance_alerts_employees_resolved_by_employee_id");
+
+                    b.HasOne("ONEVO.Domain.Features.InfrastructureModule.Entities.Tenant", null)
+                        .WithMany()
+                        .HasForeignKey("TenantId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired()
+                        .HasConstraintName("fk_attendance_alerts_tenants_tenant_id");
                 });
 
             modelBuilder.Entity("ONEVO.Domain.Features.TimeAttendance.Alerts.AttendanceAlertDeduction", b =>
@@ -19838,6 +20800,13 @@ namespace ONEVO.Infrastructure.Migrations
                         .HasForeignKey("RefundAuditId")
                         .OnDelete(DeleteBehavior.NoAction)
                         .HasConstraintName("fk_attendance_alert_deductions_leave_balance_audits_refund_audit_id");
+
+                    b.HasOne("ONEVO.Domain.Features.InfrastructureModule.Entities.Tenant", null)
+                        .WithMany()
+                        .HasForeignKey("TenantId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired()
+                        .HasConstraintName("fk_attendance_alert_deductions_tenants_tenant_id");
                 });
 
             modelBuilder.Entity("ONEVO.Domain.Features.TimeAttendance.Entities.AttendanceCorrection", b =>
@@ -19880,6 +20849,13 @@ namespace ONEVO.Infrastructure.Migrations
                         .HasForeignKey("ReviewedById")
                         .OnDelete(DeleteBehavior.Restrict)
                         .HasConstraintName("fk_attendance_corrections_users_reviewed_by_id");
+
+                    b.HasOne("ONEVO.Domain.Features.InfrastructureModule.Entities.Tenant", null)
+                        .WithMany()
+                        .HasForeignKey("TenantId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired()
+                        .HasConstraintName("fk_attendance_corrections_tenants_tenant_id");
                 });
 
             modelBuilder.Entity("ONEVO.Domain.Features.TimeAttendance.Entities.AttendanceRecord", b =>
@@ -19896,6 +20872,13 @@ namespace ONEVO.Infrastructure.Migrations
                         .HasForeignKey("ExpectedWorkModeId")
                         .OnDelete(DeleteBehavior.NoAction)
                         .HasConstraintName("fk_attendance_records_tenant_work_modes_expected_work_mode_id");
+
+                    b.HasOne("ONEVO.Domain.Features.InfrastructureModule.Entities.Tenant", null)
+                        .WithMany()
+                        .HasForeignKey("TenantId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired()
+                        .HasConstraintName("fk_attendance_records_tenants_tenant_id");
                 });
 
             modelBuilder.Entity("ONEVO.Domain.Features.TimeAttendance.Entities.BreakRecord", b =>
@@ -19906,6 +20889,13 @@ namespace ONEVO.Infrastructure.Migrations
                         .OnDelete(DeleteBehavior.NoAction)
                         .IsRequired()
                         .HasConstraintName("fk_break_records_employees_employee_id");
+
+                    b.HasOne("ONEVO.Domain.Features.InfrastructureModule.Entities.Tenant", null)
+                        .WithMany()
+                        .HasForeignKey("TenantId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired()
+                        .HasConstraintName("fk_break_records_tenants_tenant_id");
                 });
 
             modelBuilder.Entity("ONEVO.Domain.Features.TimeAttendance.Entities.ClockInLateDeductionRule", b =>
@@ -19916,6 +20906,13 @@ namespace ONEVO.Infrastructure.Migrations
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired()
                         .HasConstraintName("fk_clock_in_late_deduction_rules_clock_in_policies_clock_in_policy_id");
+
+                    b.HasOne("ONEVO.Domain.Features.InfrastructureModule.Entities.Tenant", null)
+                        .WithMany()
+                        .HasForeignKey("TenantId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired()
+                        .HasConstraintName("fk_clock_in_late_deduction_rules_tenants_tenant_id");
 
                     b.HasOne("ONEVO.Domain.Features.Leave.Type.Entities.LeaveType", null)
                         .WithMany()
@@ -19941,6 +20938,13 @@ namespace ONEVO.Infrastructure.Migrations
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired()
                         .HasConstraintName("fk_clock_in_policies_legal_entities_legal_entity_id");
+
+                    b.HasOne("ONEVO.Domain.Features.InfrastructureModule.Entities.Tenant", null)
+                        .WithMany()
+                        .HasForeignKey("TenantId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired()
+                        .HasConstraintName("fk_clock_in_policies_tenants_tenant_id");
                 });
 
             modelBuilder.Entity("ONEVO.Domain.Features.TimeAttendance.Entities.DailyWorkLocationConfirmation", b =>
@@ -19951,6 +20955,13 @@ namespace ONEVO.Infrastructure.Migrations
                         .OnDelete(DeleteBehavior.NoAction)
                         .IsRequired()
                         .HasConstraintName("fk_daily_work_location_confirmations_employees_employee_id");
+
+                    b.HasOne("ONEVO.Domain.Features.InfrastructureModule.Entities.Tenant", null)
+                        .WithMany()
+                        .HasForeignKey("TenantId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired()
+                        .HasConstraintName("fk_daily_work_location_confirmations_tenants_tenant_id");
                 });
 
             modelBuilder.Entity("ONEVO.Domain.Features.TimeAttendance.Entities.EmployeeWorkLocation", b =>
@@ -19961,6 +20972,13 @@ namespace ONEVO.Infrastructure.Migrations
                         .OnDelete(DeleteBehavior.NoAction)
                         .IsRequired()
                         .HasConstraintName("fk_employee_work_locations_employees_employee_id");
+
+                    b.HasOne("ONEVO.Domain.Features.InfrastructureModule.Entities.Tenant", null)
+                        .WithMany()
+                        .HasForeignKey("TenantId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired()
+                        .HasConstraintName("fk_employee_work_locations_tenants_tenant_id");
                 });
 
             modelBuilder.Entity("ONEVO.Domain.Features.TimeAttendance.Entities.LocationChangeRequest", b =>
@@ -19984,6 +21002,13 @@ namespace ONEVO.Infrastructure.Migrations
                         .HasForeignKey("ReviewedById")
                         .OnDelete(DeleteBehavior.Restrict)
                         .HasConstraintName("fk_location_change_requests_users_reviewed_by_id");
+
+                    b.HasOne("ONEVO.Domain.Features.InfrastructureModule.Entities.Tenant", null)
+                        .WithMany()
+                        .HasForeignKey("TenantId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired()
+                        .HasConstraintName("fk_location_change_requests_tenants_tenant_id");
                 });
 
             modelBuilder.Entity("ONEVO.Domain.Features.TimeAttendance.Entities.PresenceSession", b =>
@@ -19994,6 +21019,13 @@ namespace ONEVO.Infrastructure.Migrations
                         .OnDelete(DeleteBehavior.NoAction)
                         .IsRequired()
                         .HasConstraintName("fk_presence_sessions_employees_employee_id");
+
+                    b.HasOne("ONEVO.Domain.Features.InfrastructureModule.Entities.Tenant", null)
+                        .WithMany()
+                        .HasForeignKey("TenantId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired()
+                        .HasConstraintName("fk_presence_sessions_tenants_tenant_id");
                 });
 
             modelBuilder.Entity("ONEVO.Domain.Features.TimeAttendance.Entities.WorkAreaChangeRequest", b =>
@@ -20029,6 +21061,13 @@ namespace ONEVO.Infrastructure.Migrations
                         .HasForeignKey("ReviewedById")
                         .OnDelete(DeleteBehavior.Restrict)
                         .HasConstraintName("fk_work_area_change_requests_users_reviewed_by_id");
+
+                    b.HasOne("ONEVO.Domain.Features.InfrastructureModule.Entities.Tenant", null)
+                        .WithMany()
+                        .HasForeignKey("TenantId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired()
+                        .HasConstraintName("fk_work_area_change_requests_tenants_tenant_id");
                 });
 
             modelBuilder.Entity("ONEVO.Domain.Features.TimeAttendance.Entities.WorkMode", b =>
@@ -20039,6 +21078,13 @@ namespace ONEVO.Infrastructure.Migrations
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired()
                         .HasConstraintName("fk_tenant_work_modes_legal_entities_legal_entity_id");
+
+                    b.HasOne("ONEVO.Domain.Features.InfrastructureModule.Entities.Tenant", null)
+                        .WithMany()
+                        .HasForeignKey("TenantId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired()
+                        .HasConstraintName("fk_tenant_work_modes_tenants_tenant_id");
                 });
 
             modelBuilder.Entity("ONEVO.Domain.Features.WorkManagement.Approvals.Entities.WorkApprovalRequest", b =>
@@ -20087,6 +21133,13 @@ namespace ONEVO.Infrastructure.Migrations
                         .HasForeignKey("RevertedByEmployeeId")
                         .OnDelete(DeleteBehavior.NoAction)
                         .HasConstraintName("fk_wm_approval_requests_employees_reverted_by_employee_id");
+
+                    b.HasOne("ONEVO.Domain.Features.InfrastructureModule.Entities.Tenant", null)
+                        .WithMany()
+                        .HasForeignKey("TenantId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired()
+                        .HasConstraintName("fk_wm_approval_requests_tenants_tenant_id");
                 });
 
             modelBuilder.Entity("ONEVO.Domain.Features.WorkManagement.CalendarEvents.Entities.CalendarEvent", b =>
@@ -20109,6 +21162,13 @@ namespace ONEVO.Infrastructure.Migrations
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired()
                         .HasConstraintName("fk_calendar_events_projects_project_id");
+
+                    b.HasOne("ONEVO.Domain.Features.InfrastructureModule.Entities.Tenant", null)
+                        .WithMany()
+                        .HasForeignKey("TenantId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired()
+                        .HasConstraintName("fk_calendar_events_tenants_tenant_id");
                 });
 
             modelBuilder.Entity("ONEVO.Domain.Features.WorkManagement.CalendarEvents.Entities.CalendarEventActivityLog", b =>
@@ -20126,6 +21186,13 @@ namespace ONEVO.Infrastructure.Migrations
                         .OnDelete(DeleteBehavior.NoAction)
                         .IsRequired()
                         .HasConstraintName("fk_calendar_event_activity_logs_employees_performed_by_id");
+
+                    b.HasOne("ONEVO.Domain.Features.InfrastructureModule.Entities.Tenant", null)
+                        .WithMany()
+                        .HasForeignKey("TenantId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired()
+                        .HasConstraintName("fk_calendar_event_activity_logs_tenants_tenant_id");
                 });
 
             modelBuilder.Entity("ONEVO.Domain.Features.WorkManagement.CalendarEvents.Entities.CalendarEventObjective", b =>
@@ -20176,6 +21243,13 @@ namespace ONEVO.Infrastructure.Migrations
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired()
                         .HasConstraintName("fk_labels_projects_project_id");
+
+                    b.HasOne("ONEVO.Domain.Features.InfrastructureModule.Entities.Tenant", null)
+                        .WithMany()
+                        .HasForeignKey("TenantId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired()
+                        .HasConstraintName("fk_labels_tenants_tenant_id");
                 });
 
             modelBuilder.Entity("ONEVO.Domain.Features.WorkManagement.Meetings.Entities.MeetingActionItem", b =>
@@ -20200,6 +21274,13 @@ namespace ONEVO.Infrastructure.Migrations
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired()
                         .HasConstraintName("fk_meeting_action_items_work_tasks_task_id");
+
+                    b.HasOne("ONEVO.Domain.Features.InfrastructureModule.Entities.Tenant", null)
+                        .WithMany()
+                        .HasForeignKey("TenantId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired()
+                        .HasConstraintName("fk_meeting_action_items_tenants_tenant_id");
                 });
 
             modelBuilder.Entity("ONEVO.Domain.Features.WorkManagement.Meetings.Entities.MeetingAttendanceSession", b =>
@@ -20216,6 +21297,13 @@ namespace ONEVO.Infrastructure.Migrations
                         .HasForeignKey("OccurrenceTaskId")
                         .OnDelete(DeleteBehavior.Restrict)
                         .HasConstraintName("fk_meeting_attendance_sessions_meeting_details_occurrence_task_id");
+
+                    b.HasOne("ONEVO.Domain.Features.InfrastructureModule.Entities.Tenant", null)
+                        .WithMany()
+                        .HasForeignKey("TenantId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired()
+                        .HasConstraintName("fk_meeting_attendance_sessions_tenants_tenant_id");
                 });
 
             modelBuilder.Entity("ONEVO.Domain.Features.WorkManagement.Meetings.Entities.MeetingDetails", b =>
@@ -20239,6 +21327,13 @@ namespace ONEVO.Infrastructure.Migrations
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired()
                         .HasConstraintName("fk_meeting_details_work_tasks_task_id");
+
+                    b.HasOne("ONEVO.Domain.Features.InfrastructureModule.Entities.Tenant", null)
+                        .WithMany()
+                        .HasForeignKey("TenantId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired()
+                        .HasConstraintName("fk_meeting_details_tenants_tenant_id");
                 });
 
             modelBuilder.Entity("ONEVO.Domain.Features.WorkManagement.Meetings.Entities.MeetingOccurrenceAttendee", b =>
@@ -20255,6 +21350,13 @@ namespace ONEVO.Infrastructure.Migrations
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired()
                         .HasConstraintName("fk_meeting_occurrence_attendees_meeting_details_occurrence_task_id");
+
+                    b.HasOne("ONEVO.Domain.Features.InfrastructureModule.Entities.Tenant", null)
+                        .WithMany()
+                        .HasForeignKey("TenantId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired()
+                        .HasConstraintName("fk_meeting_occurrence_attendees_tenants_tenant_id");
                 });
 
             modelBuilder.Entity("ONEVO.Domain.Features.WorkManagement.Meetings.Entities.MeetingOccurrenceSuppression", b =>
@@ -20279,6 +21381,13 @@ namespace ONEVO.Infrastructure.Migrations
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired()
                         .HasConstraintName("fk_meeting_occurrence_suppressions_meeting_series_series_id");
+
+                    b.HasOne("ONEVO.Domain.Features.InfrastructureModule.Entities.Tenant", null)
+                        .WithMany()
+                        .HasForeignKey("TenantId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired()
+                        .HasConstraintName("fk_meeting_occurrence_suppressions_tenants_tenant_id");
                 });
 
             modelBuilder.Entity("ONEVO.Domain.Features.WorkManagement.Meetings.Entities.MeetingSeries", b =>
@@ -20321,6 +21430,13 @@ namespace ONEVO.Infrastructure.Migrations
                         .HasForeignKey("SplitFromSeriesId")
                         .OnDelete(DeleteBehavior.Restrict)
                         .HasConstraintName("fk_meeting_series_meeting_series_split_from_series_id");
+
+                    b.HasOne("ONEVO.Domain.Features.InfrastructureModule.Entities.Tenant", null)
+                        .WithMany()
+                        .HasForeignKey("TenantId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired()
+                        .HasConstraintName("fk_meeting_series_tenants_tenant_id");
                 });
 
             modelBuilder.Entity("ONEVO.Domain.Features.WorkManagement.Meetings.Entities.MeetingSeriesLink", b =>
@@ -20338,6 +21454,13 @@ namespace ONEVO.Infrastructure.Migrations
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired()
                         .HasConstraintName("fk_meeting_series_links_meeting_series_series_id");
+
+                    b.HasOne("ONEVO.Domain.Features.InfrastructureModule.Entities.Tenant", null)
+                        .WithMany()
+                        .HasForeignKey("TenantId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired()
+                        .HasConstraintName("fk_meeting_series_links_tenants_tenant_id");
                 });
 
             modelBuilder.Entity("ONEVO.Domain.Features.WorkManagement.Monitoring.Entities.MonitorAlert", b =>
@@ -20360,6 +21483,13 @@ namespace ONEVO.Infrastructure.Migrations
                         .HasForeignKey("SubjectEmployeeId")
                         .OnDelete(DeleteBehavior.NoAction)
                         .HasConstraintName("fk_wm_monitor_alerts_employees_subject_employee_id");
+
+                    b.HasOne("ONEVO.Domain.Features.InfrastructureModule.Entities.Tenant", null)
+                        .WithMany()
+                        .HasForeignKey("TenantId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired()
+                        .HasConstraintName("fk_wm_monitor_alerts_tenants_tenant_id");
                 });
 
             modelBuilder.Entity("ONEVO.Domain.Features.WorkManagement.Monitoring.Entities.TaskRateSetting", b =>
@@ -20376,6 +21506,13 @@ namespace ONEVO.Infrastructure.Migrations
                         .OnDelete(DeleteBehavior.NoAction)
                         .IsRequired()
                         .HasConstraintName("fk_wm_task_rate_settings_legal_entities_legal_entity_id");
+
+                    b.HasOne("ONEVO.Domain.Features.InfrastructureModule.Entities.Tenant", null)
+                        .WithMany()
+                        .HasForeignKey("TenantId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired()
+                        .HasConstraintName("fk_wm_task_rate_settings_tenants_tenant_id");
 
                     b.HasOne("ONEVO.Domain.Features.CoreHr.Entities.Employee", null)
                         .WithMany()
@@ -20418,6 +21555,13 @@ namespace ONEVO.Infrastructure.Migrations
                         .OnDelete(DeleteBehavior.NoAction)
                         .IsRequired()
                         .HasConstraintName("fk_wm_notification_log_employees_recipient_employee_id");
+
+                    b.HasOne("ONEVO.Domain.Features.InfrastructureModule.Entities.Tenant", null)
+                        .WithMany()
+                        .HasForeignKey("TenantId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired()
+                        .HasConstraintName("fk_wm_notification_log_tenants_tenant_id");
                 });
 
             modelBuilder.Entity("ONEVO.Domain.Features.WorkManagement.Objectives.Entities.ModuleHourSummary", b =>
@@ -20434,6 +21578,13 @@ namespace ONEVO.Infrastructure.Migrations
                         .OnDelete(DeleteBehavior.NoAction)
                         .IsRequired()
                         .HasConstraintName("fk_wm_module_hour_summaries_projects_project_id");
+
+                    b.HasOne("ONEVO.Domain.Features.InfrastructureModule.Entities.Tenant", null)
+                        .WithMany()
+                        .HasForeignKey("TenantId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired()
+                        .HasConstraintName("fk_wm_module_hour_summaries_tenants_tenant_id");
                 });
 
             modelBuilder.Entity("ONEVO.Domain.Features.WorkManagement.Objectives.Entities.Objective", b =>
@@ -20475,6 +21626,13 @@ namespace ONEVO.Infrastructure.Migrations
                         .HasForeignKey("ReportingManagerId")
                         .OnDelete(DeleteBehavior.NoAction)
                         .HasConstraintName("fk_objectives_employees_reporting_manager_id");
+
+                    b.HasOne("ONEVO.Domain.Features.InfrastructureModule.Entities.Tenant", null)
+                        .WithMany()
+                        .HasForeignKey("TenantId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired()
+                        .HasConstraintName("fk_objectives_tenants_tenant_id");
                 });
 
             modelBuilder.Entity("ONEVO.Domain.Features.WorkManagement.Planner.Entities.PlannedTaskBlock", b =>
@@ -20498,6 +21656,13 @@ namespace ONEVO.Infrastructure.Migrations
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired()
                         .HasConstraintName("fk_planned_task_blocks_work_tasks_task_id");
+
+                    b.HasOne("ONEVO.Domain.Features.InfrastructureModule.Entities.Tenant", null)
+                        .WithMany()
+                        .HasForeignKey("TenantId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired()
+                        .HasConstraintName("fk_planned_task_blocks_tenants_tenant_id");
                 });
 
             modelBuilder.Entity("ONEVO.Domain.Features.WorkManagement.ProjectInvitations.Entities.ProjectMemberInvitation", b =>
@@ -20535,6 +21700,13 @@ namespace ONEVO.Infrastructure.Migrations
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired()
                         .HasConstraintName("fk_project_member_invitations_projects_project_id");
+
+                    b.HasOne("ONEVO.Domain.Features.InfrastructureModule.Entities.Tenant", null)
+                        .WithMany()
+                        .HasForeignKey("TenantId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired()
+                        .HasConstraintName("fk_project_member_invitations_tenants_tenant_id");
                 });
 
             modelBuilder.Entity("ONEVO.Domain.Features.WorkManagement.ProjectMembers.Entities.ProjectMember", b =>
@@ -20565,6 +21737,13 @@ namespace ONEVO.Infrastructure.Migrations
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired()
                         .HasConstraintName("fk_project_members_projects_project_id");
+
+                    b.HasOne("ONEVO.Domain.Features.InfrastructureModule.Entities.Tenant", null)
+                        .WithMany()
+                        .HasForeignKey("TenantId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired()
+                        .HasConstraintName("fk_project_members_tenants_tenant_id");
                 });
 
             modelBuilder.Entity("ONEVO.Domain.Features.WorkManagement.Projects.Entities.Project", b =>
@@ -20595,6 +21774,13 @@ namespace ONEVO.Infrastructure.Migrations
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired()
                         .HasConstraintName("fk_projects_legal_entities_owning_legal_entity_id");
+
+                    b.HasOne("ONEVO.Domain.Features.InfrastructureModule.Entities.Tenant", null)
+                        .WithMany()
+                        .HasForeignKey("TenantId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired()
+                        .HasConstraintName("fk_projects_tenants_tenant_id");
                 });
 
             modelBuilder.Entity("ONEVO.Domain.Features.WorkManagement.Projects.Entities.ProjectCategory", b =>
@@ -20604,6 +21790,13 @@ namespace ONEVO.Infrastructure.Migrations
                         .HasForeignKey("CreatedById")
                         .OnDelete(DeleteBehavior.NoAction)
                         .HasConstraintName("fk_project_categories_users_created_by_id");
+
+                    b.HasOne("ONEVO.Domain.Features.InfrastructureModule.Entities.Tenant", null)
+                        .WithMany()
+                        .HasForeignKey("TenantId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired()
+                        .HasConstraintName("fk_project_categories_tenants_tenant_id");
                 });
 
             modelBuilder.Entity("ONEVO.Domain.Features.WorkManagement.ReleaseCalendar.Entities.ReleaseCalendarEntry", b =>
@@ -20627,6 +21820,13 @@ namespace ONEVO.Infrastructure.Migrations
                         .OnDelete(DeleteBehavior.NoAction)
                         .IsRequired()
                         .HasConstraintName("fk_release_calendar_users_recipient_user_id");
+
+                    b.HasOne("ONEVO.Domain.Features.InfrastructureModule.Entities.Tenant", null)
+                        .WithMany()
+                        .HasForeignKey("TenantId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired()
+                        .HasConstraintName("fk_release_calendar_tenants_tenant_id");
 
                     b.HasOne("ONEVO.Domain.Features.WorkManagement.Versions.Entities.ProjectVersion", null)
                         .WithMany()
@@ -20656,6 +21856,13 @@ namespace ONEVO.Infrastructure.Migrations
                         .OnDelete(DeleteBehavior.NoAction)
                         .IsRequired()
                         .HasConstraintName("fk_sprints_projects_project_id");
+
+                    b.HasOne("ONEVO.Domain.Features.InfrastructureModule.Entities.Tenant", null)
+                        .WithMany()
+                        .HasForeignKey("TenantId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired()
+                        .HasConstraintName("fk_sprints_tenants_tenant_id");
                 });
 
             modelBuilder.Entity("ONEVO.Domain.Features.WorkManagement.Sprints.Entities.SprintActivityLog", b =>
@@ -20679,6 +21886,13 @@ namespace ONEVO.Infrastructure.Migrations
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired()
                         .HasConstraintName("fk_sprint_activity_logs_sprints_sprint_id");
+
+                    b.HasOne("ONEVO.Domain.Features.InfrastructureModule.Entities.Tenant", null)
+                        .WithMany()
+                        .HasForeignKey("TenantId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired()
+                        .HasConstraintName("fk_sprint_activity_logs_tenants_tenant_id");
                 });
 
             modelBuilder.Entity("ONEVO.Domain.Features.WorkManagement.Tasks.Entities.TaskAssignment", b =>
@@ -20726,6 +21940,13 @@ namespace ONEVO.Infrastructure.Migrations
                         .OnDelete(DeleteBehavior.NoAction)
                         .IsRequired()
                         .HasConstraintName("fk_task_categories_projects_project_id");
+
+                    b.HasOne("ONEVO.Domain.Features.InfrastructureModule.Entities.Tenant", null)
+                        .WithMany()
+                        .HasForeignKey("TenantId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired()
+                        .HasConstraintName("fk_task_categories_tenants_tenant_id");
                 });
 
             modelBuilder.Entity("ONEVO.Domain.Features.WorkManagement.Tasks.Entities.TaskClockingSession", b =>
@@ -20749,6 +21970,13 @@ namespace ONEVO.Infrastructure.Migrations
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired()
                         .HasConstraintName("fk_task_clocking_sessions_work_tasks_task_id");
+
+                    b.HasOne("ONEVO.Domain.Features.InfrastructureModule.Entities.Tenant", null)
+                        .WithMany()
+                        .HasForeignKey("TenantId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired()
+                        .HasConstraintName("fk_task_clocking_sessions_tenants_tenant_id");
                 });
 
             modelBuilder.Entity("ONEVO.Domain.Features.WorkManagement.Tasks.Entities.TaskComment", b =>
@@ -20778,6 +22006,13 @@ namespace ONEVO.Infrastructure.Migrations
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired()
                         .HasConstraintName("fk_task_comments_work_tasks_task_id");
+
+                    b.HasOne("ONEVO.Domain.Features.InfrastructureModule.Entities.Tenant", null)
+                        .WithMany()
+                        .HasForeignKey("TenantId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired()
+                        .HasConstraintName("fk_task_comments_tenants_tenant_id");
                 });
 
             modelBuilder.Entity("ONEVO.Domain.Features.WorkManagement.Tasks.Entities.TaskCommentLog", b =>
@@ -20808,6 +22043,13 @@ namespace ONEVO.Infrastructure.Migrations
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired()
                         .HasConstraintName("fk_task_comment_logs_work_tasks_task_id");
+
+                    b.HasOne("ONEVO.Domain.Features.InfrastructureModule.Entities.Tenant", null)
+                        .WithMany()
+                        .HasForeignKey("TenantId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired()
+                        .HasConstraintName("fk_task_comment_logs_tenants_tenant_id");
                 });
 
             modelBuilder.Entity("ONEVO.Domain.Features.WorkManagement.Tasks.Entities.TaskCommentReaction", b =>
@@ -20831,6 +22073,13 @@ namespace ONEVO.Infrastructure.Migrations
                         .OnDelete(DeleteBehavior.NoAction)
                         .IsRequired()
                         .HasConstraintName("fk_task_comment_reactions_employees_employee_id");
+
+                    b.HasOne("ONEVO.Domain.Features.InfrastructureModule.Entities.Tenant", null)
+                        .WithMany()
+                        .HasForeignKey("TenantId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired()
+                        .HasConstraintName("fk_task_comment_reactions_tenants_tenant_id");
                 });
 
             modelBuilder.Entity("ONEVO.Domain.Features.WorkManagement.Tasks.Entities.TaskDraft", b =>
@@ -20854,6 +22103,13 @@ namespace ONEVO.Infrastructure.Migrations
                         .OnDelete(DeleteBehavior.NoAction)
                         .IsRequired()
                         .HasConstraintName("fk_task_drafts_projects_project_id");
+
+                    b.HasOne("ONEVO.Domain.Features.InfrastructureModule.Entities.Tenant", null)
+                        .WithMany()
+                        .HasForeignKey("TenantId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired()
+                        .HasConstraintName("fk_task_drafts_tenants_tenant_id");
                 });
 
             modelBuilder.Entity("ONEVO.Domain.Features.WorkManagement.Tasks.Entities.TaskEditLog", b =>
@@ -20883,6 +22139,13 @@ namespace ONEVO.Infrastructure.Migrations
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired()
                         .HasConstraintName("fk_task_edit_logs_work_tasks_task_id");
+
+                    b.HasOne("ONEVO.Domain.Features.InfrastructureModule.Entities.Tenant", null)
+                        .WithMany()
+                        .HasForeignKey("TenantId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired()
+                        .HasConstraintName("fk_task_edit_logs_tenants_tenant_id");
                 });
 
             modelBuilder.Entity("ONEVO.Domain.Features.WorkManagement.Tasks.Entities.TaskPercentageLog", b =>
@@ -20912,6 +22175,13 @@ namespace ONEVO.Infrastructure.Migrations
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired()
                         .HasConstraintName("fk_task_percentage_logs_work_tasks_task_id");
+
+                    b.HasOne("ONEVO.Domain.Features.InfrastructureModule.Entities.Tenant", null)
+                        .WithMany()
+                        .HasForeignKey("TenantId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired()
+                        .HasConstraintName("fk_task_percentage_logs_tenants_tenant_id");
                 });
 
             modelBuilder.Entity("ONEVO.Domain.Features.WorkManagement.Tasks.Entities.TaskStatus", b =>
@@ -20934,6 +22204,13 @@ namespace ONEVO.Infrastructure.Migrations
                         .OnDelete(DeleteBehavior.NoAction)
                         .IsRequired()
                         .HasConstraintName("fk_task_statuses_projects_project_id");
+
+                    b.HasOne("ONEVO.Domain.Features.InfrastructureModule.Entities.Tenant", null)
+                        .WithMany()
+                        .HasForeignKey("TenantId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired()
+                        .HasConstraintName("fk_task_statuses_tenants_tenant_id");
                 });
 
             modelBuilder.Entity("ONEVO.Domain.Features.WorkManagement.Tasks.Entities.TaskStatusChangeLog", b =>
@@ -20964,6 +22241,13 @@ namespace ONEVO.Infrastructure.Migrations
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired()
                         .HasConstraintName("fk_task_status_change_logs_work_tasks_task_id");
+
+                    b.HasOne("ONEVO.Domain.Features.InfrastructureModule.Entities.Tenant", null)
+                        .WithMany()
+                        .HasForeignKey("TenantId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired()
+                        .HasConstraintName("fk_task_status_change_logs_tenants_tenant_id");
 
                     b.HasOne("ONEVO.Domain.Features.WorkManagement.Tasks.Entities.TaskStatus", null)
                         .WithMany()
@@ -21026,6 +22310,13 @@ namespace ONEVO.Infrastructure.Migrations
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired()
                         .HasConstraintName("fk_tasks_task_statuses_status_id");
+
+                    b.HasOne("ONEVO.Domain.Features.InfrastructureModule.Entities.Tenant", null)
+                        .WithMany()
+                        .HasForeignKey("TenantId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired()
+                        .HasConstraintName("fk_tasks_tenants_tenant_id");
                 });
 
             modelBuilder.Entity("ONEVO.Domain.Features.WorkManagement.Versions.Entities.ProjectVersion", b =>
@@ -21049,6 +22340,13 @@ namespace ONEVO.Infrastructure.Migrations
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired()
                         .HasConstraintName("fk_versions_version_statuses_status_id");
+
+                    b.HasOne("ONEVO.Domain.Features.InfrastructureModule.Entities.Tenant", null)
+                        .WithMany()
+                        .HasForeignKey("TenantId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired()
+                        .HasConstraintName("fk_versions_tenants_tenant_id");
                 });
 
             modelBuilder.Entity("ONEVO.Domain.Features.Auth.Entities.Permission", b =>
