@@ -304,6 +304,24 @@ public class GetInvitationByTokenQueryHandlerTests
         result.Value!.RequiresPassword.Should().BeFalse();
     }
 
+    [Theory]
+    [InlineData("general")]
+    [InlineData(InvitationToken.EmployeeOnboardingPurpose)]
+    public async Task Handle_ReturnsThePurpose_SoTheClientPicksTheAcceptEndpoint(string purpose)
+    {
+        var invitation = MakeInvitation();
+        invitation.Purpose = purpose;
+        _invitations.Setup(r => r.GetByTokenHashAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(invitation);
+        _tenants.Setup(t => t.GetByIdAsync(TenantId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(MakeTenant());
+
+        var result = await BuildSut().Handle(new GetInvitationByTokenQuery(RawToken), CancellationToken.None);
+
+        result.IsSuccess.Should().BeTrue();
+        result.Value!.Purpose.Should().Be(purpose);
+    }
+
     [Fact]
     public async Task Handle_BrandNewUser_SetsRequiresPasswordTrue()
     {
