@@ -10,7 +10,7 @@ namespace ONEVO.Infrastructure.ExternalServices.Email;
 /// </summary>
 public interface IEmailProviderAdapter
 {
-    /// <summary>Platform service key slug this adapter serves ("sendgrid" or "resend").</summary>
+    /// <summary>Platform service key slug this adapter serves ("sendgrid", "resend" or "brevo").</summary>
     string Provider { get; }
 
     Task<TransactionalEmailResult> SendAsync(

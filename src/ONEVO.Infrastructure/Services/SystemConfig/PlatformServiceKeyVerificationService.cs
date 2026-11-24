@@ -12,7 +12,7 @@ namespace ONEVO.Infrastructure.Services.SystemConfig;
 /// <summary>
 /// Platform service key verification.
 ///
-/// Resend, SendGrid, AWS Rekognition, and Cloudflare R2 are verified with a live
+/// Resend, SendGrid, Brevo, AWS Rekognition, and Cloudflare R2 are verified with a live
 /// provider call. Other supported services remain local format-only checks.
 ///
 /// SECURITY: the plaintext key is inspected in memory only and is NEVER logged.
@@ -22,6 +22,10 @@ public sealed class PlatformServiceKeyVerificationService : IPlatformServiceKeyV
 {
     private const string ResendVerifyUrl = "https://api.resend.com/domains";
     private const string SendGridVerifyUrl = "https://api.sendgrid.com/v3/scopes";
+
+    // A read inside Brevo's "Transactional email" permission, so a key restricted to sending
+    // email (the recommended setup) still verifies. /v3/account needs account permissions.
+    private const string BrevoVerifyUrl = "https://api.brevo.com/v3/smtp/statistics/aggregatedReport";
 
     private readonly IHttpClientFactory _httpClientFactory;
     private readonly IAwsRekognitionConnectionProbe _rekognitionProbe;
@@ -76,6 +80,15 @@ public sealed class PlatformServiceKeyVerificationService : IPlatformServiceKeyV
                 apiKeyPlaintext,
                 checkedAt,
                 ct),
+            PlatformServiceKeyCatalog.Brevo => await VerifyLiveProviderAsync(
+                BrevoEmailAdapter.HttpClientName,
+                BrevoVerifyUrl,
+                "Brevo",
+                apiKeyPlaintext,
+                checkedAt,
+                ct,
+                // Brevo authenticates with an api-key header, not a Bearer token.
+                applyKey: (request, key) => request.Headers.TryAddWithoutValidation(BrevoEmailAdapter.ApiKeyHeader, key)),
             PlatformServiceKeyCatalog.Cloudflare => FormatOnlyResult(
                 serviceKey, apiKeyPlaintext, checkedAt),
             PlatformServiceKeyCatalog.CloudflareR2 => await VerifyCloudflareR2Async(
@@ -194,10 +207,14 @@ public sealed class PlatformServiceKeyVerificationService : IPlatformServiceKeyV
         string providerDisplayName,
         string apiKeyPlaintext,
         DateTimeOffset checkedAt,
-        CancellationToken ct)
+        CancellationToken ct,
+        Func<HttpRequestMessage, string, bool>? applyKey = null)
     {
         using var httpRequest = new HttpRequestMessage(HttpMethod.Get, verifyUrl);
-        httpRequest.Headers.Authorization = new AuthenticationHeaderValue("Bearer", apiKeyPlaintext);
+        if (applyKey is null)
+            httpRequest.Headers.Authorization = new AuthenticationHeaderValue("Bearer", apiKeyPlaintext);
+        else
+            applyKey(httpRequest, apiKeyPlaintext);
 
         HttpResponseMessage response;
         try
