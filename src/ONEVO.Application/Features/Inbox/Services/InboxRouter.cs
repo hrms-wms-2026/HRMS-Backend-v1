@@ -48,13 +48,16 @@ public sealed class InboxRouter : IInboxRouter
     private readonly IInboxStepsBuilder _steps;
     private readonly IUnitOfWork _unitOfWork;
     private readonly IDateTimeProvider _clock;
+    private readonly IReadOnlyList<IInboxHeaderCountSource> _headerCounts;
 
     public InboxRouter(
         IEnumerable<IInboxSourceProvider> providers, IConversationUnreadCounts unread, IInboxRealtimePublisher realtime,
         ILogger<InboxRouter> logger, IInboxKindRegistry kinds, IInboxDecisionJournal journal,
-        IEnumerable<IInboxDecisionReverter> reverters, IInboxStepsBuilder steps, IUnitOfWork unitOfWork, IDateTimeProvider clock)
+        IEnumerable<IInboxDecisionReverter> reverters, IInboxStepsBuilder steps, IUnitOfWork unitOfWork, IDateTimeProvider clock,
+        IEnumerable<IInboxHeaderCountSource> headerCounts)
     {
         _providers = providers.ToList();
+        _headerCounts = headerCounts.ToList();
         _unread = unread;
         _realtime = realtime;
         _logger = logger;
@@ -112,15 +115,40 @@ public sealed class InboxRouter : IInboxRouter
 
     public async Task<InboxCounts> GetCountsAsync(Guid tenantId, Guid callerEmployeeId, CancellationToken ct)
     {
-        var items = await CollectAsync(tenantId, callerEmployeeId, new InboxQuery(), ct);
-        var needsMe = items.Where(i => i.IsPending
-            && (i.Category == InboxCategories.Alert || (i.Category == InboxCategories.Request && i.Direction == InboxDirections.Received))).ToList();
+        // Task 37: sources converted to inbox_items count there; every other source counts itself (task 00a).
+        var headerSources = _headerCounts.Select(h => h.Source).ToHashSet(StringComparer.Ordinal);
+        var pendingReceived = 0;
+        var openAlerts = 0;
+        var bySource = new Dictionary<string, int>();
+        var byKind = new Dictionary<string, int>();
+        void Add(string source, InboxSourceCounts counts)
+        {
+            pendingReceived += counts.PendingReceived;
+            openAlerts += counts.OpenAlerts;
+            var sourceTotal = counts.PendingReceived + counts.OpenAlerts;
+            if (sourceTotal > 0)
+                bySource[source] = bySource.GetValueOrDefault(source) + sourceTotal;
+            foreach (var (kind, count) in counts.ByKind)
+            {
+                if (count > 0)
+                {
+                    var key = $"{source}:{kind}";
+                    byKind[key] = byKind.GetValueOrDefault(key) + count;
+                }
+            }
+        }
+
+        foreach (var provider in _providers.Where(p => !headerSources.Contains(p.Source)))
+            Add(provider.Source, await provider.CountAsync(tenantId, callerEmployeeId, ct));
+        foreach (var source in _headerCounts)
+            Add(source.Source, await source.CountAsync(tenantId, callerEmployeeId, ct));
+
         return new InboxCounts(
-            PendingReceived: items.Count(i => i.IsPending && i.Category == InboxCategories.Request && i.Direction == InboxDirections.Received),
+            PendingReceived: pendingReceived,
             UnreadMessages: await _unread.TotalInChatsAsync(tenantId, callerEmployeeId, ct),
-            OpenAlerts: items.Count(i => i.IsPending && i.Category == InboxCategories.Alert),
-            BySource: needsMe.GroupBy(i => i.Source).ToDictionary(g => g.Key, g => g.Count()),
-            ByKind: needsMe.GroupBy(i => $"{i.Source}:{i.Kind}").ToDictionary(g => g.Key, g => g.Count()));
+            OpenAlerts: openAlerts,
+            BySource: bySource,
+            ByKind: byKind);
     }
 
     public async Task<Result<InboxItemDetail>> GetDetailAsync(

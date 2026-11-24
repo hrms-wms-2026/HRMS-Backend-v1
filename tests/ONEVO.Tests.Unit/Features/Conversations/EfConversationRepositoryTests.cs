@@ -4,6 +4,7 @@ using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 using ONEVO.Application.Common.ServiceInterfaces;
 using ONEVO.Application.Features.Conversations.Contracts;
+using ONEVO.Application.Features.Conversations.Services;
 using ONEVO.Domain.Features.Conversations.Entities;
 using ONEVO.Domain.Features.CoreHr.Entities;
 using ONEVO.Domain.Lookups;
@@ -89,6 +90,68 @@ public sealed class EfConversationRepositoryTests : IDisposable
             await db.SaveChangesAsync();
             (await repo.ListReactionsAsync(TenantId, [message.Id]))[message.Id].Should().ContainSingle().Which.EmployeeId.Should().Be(Other);
         }
+    }
+
+    [Fact]
+    public async Task CountUnreadInListedChats_matches_the_listing_rules_in_one_query()
+    {
+        var direct = NewConversation(new ItemRef(ConversationSources.Direct, "pair", Guid.NewGuid()));
+        var group = NewConversation(new ItemRef(ConversationSources.Group, "group", Guid.NewGuid()));
+        var mutedGroup = NewConversation(new ItemRef(ConversationSources.Group, "group", Guid.NewGuid()));
+        var plainCase = NewConversation(NewRef());
+        var caseGroup = NewConversation(NewRef());
+        var leftChat = NewConversation(new ItemRef(ConversationSources.Direct, "pair", Guid.NewGuid()));
+        var lastRead = _clock.UtcNow.AddMinutes(5);
+        ConversationParticipant Member(Conversation c, DateTimeOffset? read = null, DateTimeOffset? left = null) => new()
+        {
+            Id = Guid.NewGuid(), TenantId = TenantId, ConversationId = c.Id, EmployeeId = Me,
+            JoinReason = ConversationJoinReasons.Base, AddedAt = _clock.UtcNow, LastReadAt = read, LeftAt = left
+        };
+        var hidden = NewMessage(direct.Id, Other);
+        var caseGroupEvent = NewMessage(caseGroup.Id, null);
+        caseGroupEvent.SystemEventJson = ConversationUnreadCounts.CaseGroupEventPrefix + ",\"id\":\"x\"}";
+        var evidence = NewMessage(direct.Id, Other);
+        evidence.Kind = ConversationMessageKinds.Evidence;
+
+        await using (var db = CreateContext())
+        {
+            db.Conversations.AddRange(direct, group, mutedGroup, plainCase, caseGroup, leftChat);
+            db.ConversationParticipants.AddRange(
+                Member(direct, read: lastRead), Member(group), Member(mutedGroup), Member(plainCase), Member(caseGroup),
+                Member(leftChat, left: _clock.UtcNow));
+            db.ConversationMessages.Add(NewMessage(direct.Id, Other));   // before LastReadAt: read
+            await db.SaveChangesAsync();
+            _clock.UtcNow = lastRead.AddMinutes(1);
+            db.ConversationMessages.AddRange(
+                NewMessage(direct.Id, Other),                            // unread
+                NewMessage(direct.Id, Me),                               // own
+                evidence, hidden,
+                NewMessage(group.Id, Other),                             // unread
+                NewMessage(mutedGroup.Id, Other),                        // muted
+                NewMessage(plainCase.Id, Other),                         // a case chat that is not a group is not listed
+                caseGroupEvent, NewMessage(caseGroup.Id, Other),         // a case group: the event and the message
+                NewMessage(leftChat.Id, Other));                         // left
+            db.ConversationMessageHides.Add(new ConversationMessageHide { Id = Guid.NewGuid(), TenantId = TenantId, MessageId = hidden.Id, EmployeeId = Me });
+            db.ConversationMutes.Add(new ConversationMute { Id = Guid.NewGuid(), TenantId = TenantId, ConversationId = mutedGroup.Id, EmployeeId = Me });
+            await db.SaveChangesAsync();
+        }
+
+        await using var read = CreateContext();
+        var repo = new EfConversationRepository(read);
+        var total = await repo.CountUnreadInListedChatsAsync(TenantId, Me, ConversationUnreadCounts.CaseGroupEventPrefix);
+
+        // The listing-based rules this aggregate replaces, over the same data.
+        var members = await repo.ListMemberConversationsAsync(TenantId, Me);
+        var caseIds = members.Where(m => !ConversationSources.IsPeopleChat(m.Conversation.SubjectSource)).Select(m => m.Conversation.Id).ToList();
+        var groups = await repo.LatestSystemEventsAsync(TenantId, caseIds, [PeopleChatEvents.CaseGroup]);
+        var muted = await repo.ListMutedConversationIdsAsync(TenantId, Me);
+        var listed = members.Where(m => ConversationSources.IsPeopleChat(m.Conversation.SubjectSource) || groups.ContainsKey(m.Conversation.Id))
+            .Where(m => !muted.Contains(m.Conversation.Id)).Select(m => m.Conversation.Id).ToList();
+        var expected = (await repo.CountUnreadByConversationAsync(TenantId, Me, listed)).Values.Sum();
+
+        total.Should().Be(expected);
+        total.Should().Be(4, "direct 1 + group 1 + case group 2 (its event and the message)");
+        (await repo.CountUnreadInListedChatsAsync(Guid.NewGuid(), Me, ConversationUnreadCounts.CaseGroupEventPrefix)).Should().Be(0);
     }
 
     [Fact]

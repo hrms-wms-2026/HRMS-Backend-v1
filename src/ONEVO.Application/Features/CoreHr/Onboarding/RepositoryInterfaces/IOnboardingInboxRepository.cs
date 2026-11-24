@@ -17,8 +17,14 @@ public static class OnboardingInboxRowKinds
     public const string SeatIncrease = "seat_increase";
 }
 
+public sealed record OnboardingPendingCounts(int PositionApprovals, int SeatIncreases);
+
 public interface IOnboardingInboxRepository
 {
+    /// <summary>Pending approvals addressed to this user, excluding requests they raised themselves.</summary>
+    Task<OnboardingPendingCounts> CountPendingReceivedAsync(
+        Guid tenantId, Guid userId, bool positionApprover, bool seatApprover, CancellationToken ct = default);
+
     /// <summary>The onboarding approvals that involve the user: every pending one of a kind they approve
     /// (<paramref name="positionApprover"/>, <paramref name="seatApprover"/>), the ones they requested, and the
     /// ones they decided since <paramref name="decidedSince"/>.</summary>

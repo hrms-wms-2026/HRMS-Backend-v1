@@ -20,13 +20,13 @@ public class TrayConnectionTrackerTests
     {
         var sut = new TrayConnectionTracker();
 
-        sut.Connected(_tenantId, _userId);
-        sut.Connected(_tenantId, _userId); // new connection up before the old one's disconnect
-        sut.Disconnected(_tenantId, _userId);
+        sut.Connected(_tenantId, _userId, "old");
+        sut.Connected(_tenantId, _userId, "new"); // new connection up before the old one's disconnect
+        sut.Disconnected(_tenantId, _userId, "old");
 
         sut.IsConnected(_tenantId, _userId).Should().BeTrue();
 
-        sut.Disconnected(_tenantId, _userId);
+        sut.Disconnected(_tenantId, _userId, "new");
         sut.IsConnected(_tenantId, _userId).Should().BeFalse();
     }
 
@@ -34,7 +34,7 @@ public class TrayConnectionTrackerTests
     public void Connections_AreScopedPerTenantAndUser()
     {
         var sut = new TrayConnectionTracker();
-        sut.Connected(_tenantId, _userId);
+        sut.Connected(_tenantId, _userId, "c1");
 
         sut.IsConnected(Guid.NewGuid(), _userId).Should().BeFalse();
         sut.IsConnected(_tenantId, Guid.NewGuid()).Should().BeFalse();
@@ -44,8 +44,8 @@ public class TrayConnectionTrackerTests
     public void ExtraDisconnect_NeverGoesNegative()
     {
         var sut = new TrayConnectionTracker();
-        sut.Disconnected(_tenantId, _userId);
-        sut.Connected(_tenantId, _userId);
+        sut.Disconnected(_tenantId, _userId, "unknown");
+        sut.Connected(_tenantId, _userId, "c1");
 
         sut.IsConnected(_tenantId, _userId).Should().BeTrue();
     }

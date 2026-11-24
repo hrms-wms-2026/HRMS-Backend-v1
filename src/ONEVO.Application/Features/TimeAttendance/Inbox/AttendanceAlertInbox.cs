@@ -89,6 +89,21 @@ public sealed class AttendanceAlertInbox
 
     // ---- list -----------------------------------------------------------------------------------
 
+    public async Task<int> CountAsync(
+        Guid tenantId, Guid callerEmployeeId, IReadOnlyList<Guid> callerLegalEntities, CancellationToken ct)
+    {
+        if (!_currentUser.HasPermission(AttendanceInboxKinds.ApprovePermission))
+            return 0;
+        var count = 0;
+        foreach (var legalEntityId in callerLegalEntities)
+        {
+            var candidates = await _alerts.ListOpenEmployeeIdsAsync(tenantId, legalEntityId, ct);
+            var scoped = (await ScopeAsync(legalEntityId, candidates, ct)).Where(e => e != callerEmployeeId).ToList();
+            count += await _alerts.CountOpenAsync(tenantId, legalEntityId, scoped, ct);
+        }
+        return count;
+    }
+
     public async Task<IReadOnlyList<InboxItem>> ListAsync(
         Guid tenantId, Guid callerEmployeeId, IReadOnlyList<Guid> callerLegalEntities, CancellationToken ct)
     {

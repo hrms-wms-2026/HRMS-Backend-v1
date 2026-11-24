@@ -20,6 +20,6 @@ public class EmployeeBankDetailConfiguration : IEntityTypeConfiguration<Employee
         builder.Property(b => b.EmployeeId).HasColumnName("employee_id").IsRequired();
         builder.HasIndex(b => new { b.TenantId, b.EmployeeId });
         builder.HasOne<ONEVO.Domain.Features.CoreHr.Entities.Employee>()
-            .WithMany().HasForeignKey(b => b.EmployeeId).OnDelete(DeleteBehavior.Cascade);
+            .WithMany().HasForeignKey(b => b.EmployeeId).OnDelete(DeleteBehavior.NoAction);
     }
 }

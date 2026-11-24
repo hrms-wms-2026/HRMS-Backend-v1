@@ -13,6 +13,8 @@ public interface IWorkAreaChangeRequestRepository
     Task<IReadOnlyList<Guid>> ListPendingEmployeeIdsAsync(
         Guid tenantId, Guid legalEntityId, DateOnly? from, DateOnly? to,
         CancellationToken ct = default);
+    Task<int> CountPendingAsync(
+        Guid tenantId, Guid legalEntityId, IReadOnlyCollection<Guid> employeeIds, CancellationToken ct = default);
 
     Task<(IReadOnlyList<WorkAreaChangeRequest> Items, int TotalCount)> ListApprovalInboxAsync(
         Guid tenantId, Guid legalEntityId, IReadOnlyCollection<Guid> employeeIds,

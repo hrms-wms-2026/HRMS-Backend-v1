@@ -22,7 +22,9 @@ using ONEVO.Application.Features.WorkManagement.ProjectInvitations.RepositoryInt
 using ONEVO.Application.Features.WorkManagement.Projects.RepositoryInterfaces;
 using ONEVO.Application.Features.WorkManagement.Tasks.RepositoryInterfaces;
 using ONEVO.Domain.Features.Inbox.Entities;
+using ONEVO.Domain.Features.WorkManagement.Approvals.Entities;
 using ONEVO.Domain.Features.WorkManagement.Monitoring.Entities;
+using ONEVO.Domain.Features.WorkManagement.ProjectInvitations.Entities;
 using ONEVO.Domain.Features.WorkManagement.Projects.Entities;
 
 namespace ONEVO.Application.Features.WorkManagement.Inbox;
@@ -78,6 +80,63 @@ public sealed class WorkInboxSourceProvider : IInboxSourceProvider
 
     public string Source => WorkInboxKinds.Source;
     public string Label => "Work";
+
+    public async Task<InboxSourceCounts> CountAsync(Guid tenantId, Guid callerEmployeeId, CancellationToken ct)
+    {
+        // One read per kind across every visible project, instead of four to seven reads per project. A project's tree
+        // is loaded only when it has a pending request or an open alert to evaluate, and at most once.
+        var byKind = new Dictionary<string, int>();
+        var (projects, myPendingInvitations) = await VisibleProjectsAndInvitationsAsync(tenantId, callerEmployeeId, ct);
+        if (projects.Count == 0)
+            return new InboxSourceCounts(0, 0, byKind);
+
+        var projectsById = projects.GroupBy(p => p.Id).ToDictionary(g => g.Key, g => g.First());
+        var projectIds = projectsById.Keys.ToList();
+        var trees = new Dictionary<Guid, ProjectModuleTree>();
+        async Task<ProjectModuleTree> TreeAsync(Guid projectId)
+        {
+            if (!trees.TryGetValue(projectId, out var tree))
+                trees[projectId] = tree = await _hierarchy.LoadTreeAsync(tenantId, projectId, ct);
+            return tree;
+        }
+
+        var approvals = 0;
+        foreach (var request in await _requests.ListPendingForProjectsAsync(tenantId, projectIds, ct))
+        {
+            // The caller's own request is never received (IsReceiver's first rule); checking it first skips a tree load.
+            if (request.Status == WorkApprovalRequestStatuses.Pending
+                && request.RequestedByEmployeeId != callerEmployeeId
+                && ApprovalFeedParticipants.IsReceiver(await TreeAsync(request.ProjectId), request, callerEmployeeId))
+                approvals++;
+        }
+        if (approvals > 0)
+            byKind[WorkInboxKinds.Approval] = approvals;
+
+        // The caller's pending invitations sent by someone else - the rows ListForProjectAndEmployeeAsync would give per
+        // project, already read to find the invited projects.
+        var invitations = myPendingInvitations.Count(i => projectsById.ContainsKey(i.ProjectId)
+            && i.Status == ProjectInvitationStatuses.Pending && i.InvitedById != callerEmployeeId);
+        if (invitations > 0)
+            byKind[WorkInboxKinds.Invitation] = invitations;
+
+        var alertCount = 0;
+        foreach (var projectAlerts in (await _alerts.ListOpenForProjectsAsync(tenantId, projectIds, ct)).GroupBy(a => a.ProjectId))
+        {
+            if (!projectsById.TryGetValue(projectAlerts.Key, out var project))
+                continue;
+            var openAlerts = projectAlerts.ToList();
+            var audience = await _audience.ResolveAsync(tenantId, project.Id, openAlerts, ct);
+            var mine = openAlerts.Where(a => audience.GetValueOrDefault(a.Id)?.Contains(callerEmployeeId) == true).ToList();
+            if (mine.Count == 0)
+                continue;
+            var contexts = await AlertContextsAsync(tenantId, project, mine, await TreeAsync(project.Id), ct);
+            alertCount += mine.Count(a => !contexts[a.Id].Context.InAchievedModule);
+        }
+        if (alertCount > 0)
+            byKind[WorkInboxKinds.MonitorAlert] = alertCount;
+
+        return new InboxSourceCounts(approvals + invitations, alertCount, byKind);
+    }
 
     public async Task<IReadOnlyList<InboxItem>> ListAsync(Guid tenantId, InboxQuery query, Guid callerEmployeeId, CancellationToken ct)
         => (await CollectAsync(tenantId, callerEmployeeId, query, ct)).Items;
@@ -226,21 +285,29 @@ public sealed class WorkInboxSourceProvider : IInboxSourceProvider
     /// <summary>The project list's visibility (active membership) plus projects the caller has a pending
     /// module invitation in - an invitee is not a member until they accept.</summary>
     private async Task<IReadOnlyList<Project>> VisibleProjectsAsync(Guid tenantId, Guid caller, CancellationToken ct)
+        => (await VisibleProjectsAndInvitationsAsync(tenantId, caller, ct)).Projects;
+
+    /// <summary><see cref="VisibleProjectsAsync"/> plus the caller's pending invitations it read on the way.</summary>
+    private async Task<(IReadOnlyList<Project> Projects, IReadOnlyList<ProjectMemberInvitation> PendingInvitations)>
+        VisibleProjectsAndInvitationsAsync(Guid tenantId, Guid caller, CancellationToken ct)
     {
         var (memberProjects, _) = await _projects.ListForMemberAsync(tenantId, caller, 0, int.MaxValue, null, "asc", ct);
         var known = memberProjects.Select(p => p.Id).ToHashSet();
-        var invitedProjectIds = (await _invitations.ListPendingForEmployeeAsync(tenantId, caller, ct))
-            .Select(i => i.ProjectId).Where(id => !known.Contains(id)).Distinct().ToList();
+        var pending = await _invitations.ListPendingForEmployeeAsync(tenantId, caller, ct);
+        var invitedProjectIds = pending.Select(i => i.ProjectId).Where(id => !known.Contains(id)).Distinct().ToList();
         if (invitedProjectIds.Count == 0)
-            return memberProjects;
+            return (memberProjects, pending);
         var invited = await _projects.ListByIdsAsync(tenantId, invitedProjectIds, ct);
-        return memberProjects.Concat(invited).ToList();
+        return (memberProjects.Concat(invited).ToList(), pending);
     }
 
     private async Task<IReadOnlyDictionary<Guid, (WorkAlertContext Context, string? ModuleTitle)>> AlertContextsAsync(
         Guid tenantId, Project project, IReadOnlyList<MonitorAlert> alerts, CancellationToken ct)
+        => await AlertContextsAsync(tenantId, project, alerts, await _hierarchy.LoadTreeAsync(tenantId, project.Id, ct), ct);
+
+    private async Task<IReadOnlyDictionary<Guid, (WorkAlertContext Context, string? ModuleTitle)>> AlertContextsAsync(
+        Guid tenantId, Project project, IReadOnlyList<MonitorAlert> alerts, ProjectModuleTree tree, CancellationToken ct)
     {
-        var tree = await _hierarchy.LoadTreeAsync(tenantId, project.Id, ct);
         var taskIds = alerts.Where(a => a.TargetType == MonitorTargetTypes.Task).Select(a => a.TargetId).Distinct().ToList();
         var moduleByTask = taskIds.Count == 0
             ? new Dictionary<Guid, Guid>()

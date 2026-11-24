@@ -4,6 +4,7 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
+using ONEVO.Application.Common.Authorization;
 using ONEVO.Application.Common.ServiceInterfaces;
 using ONEVO.Application.Features.Auth.Login.ServiceInterfaces;
 using ONEVO.Application.Features.DevPlatform.Compliance.Helpers;
@@ -81,7 +82,7 @@ public sealed class DevSmokeTestTenantSeeder : IHostedService
     private const string DapiSlug = "dapi";
     private const string DapiTenantName = "Dapi Test";
     private const string SmokeUserPassword = "Password123!";
-    private const string FullAccessPermissionCode = "*";
+    private const string FullAccessPermissionCode = PermissionCatalog.SuperAdmin;
 
     private const string AcmeOwnerEmail = "siyasiyamala932@gmail.com";
     private const string AcmeHrManagerEmail = "paramanathanmuthaiya@gmail.com";
@@ -117,13 +118,13 @@ public sealed class DevSmokeTestTenantSeeder : IHostedService
 
     private static readonly IReadOnlyList<string> HrManagerPermissionCodes =
     [
-        "org:read", "org:manage", "employees:write", "checklists:manage", "roles:read",
-        "calendar:read", "leave:read", "leave:manage", "leave:approve"
+        PermissionCatalog.Org.Read, PermissionCatalog.Org.Manage, PermissionCatalog.Employees.Write, PermissionCatalog.Checklists.Manage, PermissionCatalog.Roles.Read,
+        PermissionCatalog.Calendar.Read, PermissionCatalog.Leave.Read, PermissionCatalog.Leave.Manage, PermissionCatalog.Leave.Approve
     ];
 
     private static readonly IReadOnlyList<string> WorkManagerPermissionCodes =
     [
-        "org:read", "projects:create"
+        PermissionCatalog.Org.Read, PermissionCatalog.Projects.Create
     ];
 
     private readonly IServiceProvider _services;

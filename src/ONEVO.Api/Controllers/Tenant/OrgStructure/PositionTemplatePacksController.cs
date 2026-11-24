@@ -2,6 +2,7 @@ using MediatR;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using ONEVO.Api.Filters;
+using ONEVO.Application.Common.Authorization;
 using ONEVO.Application.Features.OrgStructure.PositionTemplatePacks.Queries.ListPositionTemplatePacks;
 
 namespace ONEVO.Api.Controllers.Tenant.OrgStructure;
@@ -24,7 +25,7 @@ public class PositionTemplatePacksController : ControllerBase
 
     /// <summary>List active system Position Template Packs available to this tenant.</summary>
     [HttpGet]
-    [RequirePermission("org:read")]
+    [RequirePermission(PermissionCatalog.Org.Read)]
     public async Task<IActionResult> List(CancellationToken ct = default)
     {
         var result = await _mediator.Send(new ListPositionTemplatePacksQuery(), ct);

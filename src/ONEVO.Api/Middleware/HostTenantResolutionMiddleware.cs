@@ -47,6 +47,15 @@ public sealed class HostTenantResolutionMiddleware
         var tenants = context.RequestServices
             .GetRequiredService<ITenantRepository>();
 
+        // Health probes come from the container runtime (localhost) or the load balancer (often by IP),
+        // never through a tenant host. They read no tenant data, so they run in System mode on any host.
+        if (IsHealthProbe(context.Request.Path))
+        {
+            writableCtx.SetSystemMode();
+            await _next(context);
+            return;
+        }
+
         var host = context.Request.Host.Host.ToLowerInvariant().Trim();
 
         if (host != _rootDomain && !host.EndsWith("." + _rootDomain, StringComparison.Ordinal))
@@ -107,6 +116,11 @@ public sealed class HostTenantResolutionMiddleware
 
         await _next(context);
     }
+
+    /// <summary>Exactly the two health endpoints mapped in Program.cs; nothing below or beside them.</summary>
+    internal static bool IsHealthProbe(PathString path)
+        => path.Equals("/health", StringComparison.OrdinalIgnoreCase)
+            || path.Equals("/health/ready", StringComparison.OrdinalIgnoreCase);
 
     private async Task InvokeSingleHostAsync(
         HttpContext context,

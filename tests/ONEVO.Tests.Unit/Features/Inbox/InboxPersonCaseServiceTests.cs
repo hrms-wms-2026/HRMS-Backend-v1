@@ -150,6 +150,8 @@ public class InboxPersonCaseServiceTests
         public string Label => source;
         public Task<IReadOnlyList<InboxItem>> ListAsync(Guid tenantId, InboxQuery query, Guid callerEmployeeId, CancellationToken ct)
             => Task.FromResult<IReadOnlyList<InboxItem>>([]);
+        public Task<InboxSourceCounts> CountAsync(Guid tenantId, Guid callerEmployeeId, CancellationToken ct)
+            => Task.FromResult(new InboxSourceCounts(0, 0, new Dictionary<string, int>()));
         public Task<InboxItemDetail?> GetDetailAsync(Guid tenantId, string kind, Guid id, Guid callerEmployeeId, CancellationToken ct)
             => Task.FromResult<InboxItemDetail?>(null);
         public Task<IReadOnlyList<InboxFilterField>> GetFilterFieldsAsync(Guid tenantId, Guid callerEmployeeId, CancellationToken ct)

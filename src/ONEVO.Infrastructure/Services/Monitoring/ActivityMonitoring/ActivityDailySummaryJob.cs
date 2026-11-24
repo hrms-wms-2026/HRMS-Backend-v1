@@ -1,6 +1,7 @@
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
+using ONEVO.Infrastructure.Services.SharedPlatform.Jobs;
 using ONEVO.Application.Common.RepositoryInterfaces;
 using ONEVO.Application.Common.ServiceInterfaces;
 using ONEVO.Application.Features.DevPlatform.Tenancy.RepositoryInterfaces;
@@ -20,6 +21,7 @@ public sealed class ActivityDailySummaryJob : BackgroundService
 {
     private static readonly TimeSpan CheckInterval = TimeSpan.FromMinutes(15);
     private static readonly TimeOnly TargetUtcTime = new(23, 0);
+    public static readonly JobSchedule Schedule = JobSchedule.Daily("activity-daily-summary", TimeSpan.FromMinutes(30));
 
     private readonly IServiceProvider _services;
     private readonly ILogger<ActivityDailySummaryJob> _logger;
@@ -47,8 +49,11 @@ public sealed class ActivityDailySummaryJob : BackgroundService
                 {
                     // Aggregate previous calendar day (complete data)
                     var targetDate = today.AddDays(-1);
-                    await RunAggregationAsync(targetDate, stoppingToken);
-                    _lastRunDateUtc = today;
+                    // Skipped = another instance holds the daily lease and is running or ran today's aggregation.
+                    var outcome = await _services.RunExclusiveAsync(
+                        Schedule, ct => RunAggregationAsync(targetDate, ct), stoppingToken);
+                    if (outcome != JobRunOutcome.TimedOut)
+                        _lastRunDateUtc = today;
                 }
             }
             catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)

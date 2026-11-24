@@ -1,4 +1,5 @@
 using MediatR;
+using ONEVO.Application.Common.Authorization;
 using ONEVO.Application.Common.Models;
 using ONEVO.Application.Common.RepositoryInterfaces;
 using ONEVO.Application.Common.ServiceInterfaces;
@@ -16,6 +17,7 @@ using ONEVO.Application.Features.Leave.Request.Services;
 using ONEVO.Domain.Features.Leave.BalanceAudit.Entities;
 using ONEVO.Domain.Features.Leave.Common;
 using ONEVO.Domain.Features.Leave.Request.Entities;
+using ONEVO.Application.Features.Leave.Inbox;
 
 namespace ONEVO.Application.Features.Leave.Approval.Commands;
 
@@ -32,7 +34,7 @@ public sealed record CreateApproverBackdatedLeaveCommand(Guid EmployeeId, Guid L
 
 public sealed class CreateApproverBackdatedLeaveCommandHandler : IRequestHandler<CreateApproverBackdatedLeaveCommand, Result<Guid>>
 {
-    public const string ApprovePermission = "leave:approve";
+    public const string ApprovePermission = PermissionCatalog.Leave.Approve;
     public const string NotAnApprover = "Only a leave approver of this employee can turn a day into leave.";
     public const string NotPast = "Only a past day can be turned into leave.";
 
@@ -47,11 +49,13 @@ public sealed class CreateApproverBackdatedLeaveCommandHandler : IRequestHandler
     private readonly IOutboxWriter _outbox;
     private readonly INotificationDispatcher _notifications;
     private readonly IUnitOfWork _unitOfWork;
+    private readonly LeaveInboxEntrySync _inboxEntries;
 
     public CreateApproverBackdatedLeaveCommandHandler(
         ICurrentUser currentUser, IDateTimeProvider clock, IEmployeeRepository employees, ILeavePolicyRepository policies,
         LeaveRequestSubmissionEvaluator evaluator, ILeaveRequestRepository requests, LeaveRequestDayAllocationBuilder allocationBuilder,
-        ILeaveApprovalRepository approvals, IOutboxWriter outbox, INotificationDispatcher notifications, IUnitOfWork unitOfWork)
+        ILeaveApprovalRepository approvals, IOutboxWriter outbox, INotificationDispatcher notifications, IUnitOfWork unitOfWork,
+        LeaveInboxEntrySync inboxEntries)
     {
         _currentUser = currentUser;
         _clock = clock;
@@ -64,6 +68,7 @@ public sealed class CreateApproverBackdatedLeaveCommandHandler : IRequestHandler
         _outbox = outbox;
         _notifications = notifications;
         _unitOfWork = unitOfWork;
+        _inboxEntries = inboxEntries;
     }
 
     public async Task<Result<Guid>> Handle(CreateApproverBackdatedLeaveCommand command, CancellationToken ct)
@@ -169,6 +174,9 @@ public sealed class CreateApproverBackdatedLeaveCommandHandler : IRequestHandler
             _allocationBuilder.Build(draft.CountedDates, draft.HoursByDate, draft.PaidHours, draft.UnpaidHours), now);
 
         // Written as a pending request first (overlap check + reserved hours), then the reserve moves to used at once.
+        // Task 37: staged first, so the request's own save writes the inbox header with it.
+        await _inboxEntries.StageAsync(new LeaveApprovalState(request, draft.Entitlement, draft.TargetEmployee,
+            draft.LeaveType.Name, draft.LeaveType.Code, draft.ApprovalMode, approvers), ct);
         await _requests.AddPendingRequestAsync(new LeaveRequestWriteSet(request, approvers, [], allocations, draft.Entitlement), ct);
         var entitlement = draft.Entitlement;
         entitlement.PendingHours -= request.PaidHours;

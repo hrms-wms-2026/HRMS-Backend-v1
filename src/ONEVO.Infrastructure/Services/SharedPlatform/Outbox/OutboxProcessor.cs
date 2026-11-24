@@ -95,8 +95,7 @@ public sealed class OutboxProcessor : BackgroundService
         var writableTenantContext = scope.ServiceProvider.GetRequiredService<IWritableTenantContext>();
         var tenantRepository = scope.ServiceProvider.GetRequiredService<ITenantRepository>();
         var dispatchContext = scope.ServiceProvider.GetRequiredService<OutboxDispatchContext>();
-        var handlers = scope.ServiceProvider.GetServices<IOutboxMessageHandler>()
-            .ToDictionary(h => h.Type, StringComparer.Ordinal);
+        var handlers = OutboxHandlerMap.Build(scope.ServiceProvider.GetServices<IOutboxMessageHandler>());
 
         // The scope's connection starts in system mode, as the unclaimed SELECT used to.
         var claimed = await OutboxClaimStore.ClaimBatchAsync(db, InstanceId, LeaseSettings.Lease, BatchSize, ct);

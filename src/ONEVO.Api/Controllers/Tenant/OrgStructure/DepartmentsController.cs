@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using ONEVO.Api.Contracts.OrgStructure.Departments;
 using ONEVO.Api.Filters;
+using ONEVO.Application.Common.Authorization;
 using ONEVO.Application.Features.OrgStructure.Commands.ArchiveDepartment;
 using ONEVO.Application.Features.OrgStructure.Commands.CreateDepartment;
 using ONEVO.Application.Features.OrgStructure.Commands.RestoreDepartment;
@@ -31,7 +32,7 @@ public class DepartmentsController : ControllerBase
     /// parentDepartmentId, page, and pageSize are ignored in tree mode - see
     /// DEPARTMENT_HARDENING_PART3_LIST_SEARCH_PAGINATION_REPORT.md for the documented decision.</summary>
     [HttpGet]
-    [RequirePermission("org:read")]
+    [RequirePermission(PermissionCatalog.Org.Read)]
     public async Task<IActionResult> List(
         Guid legalEntityId,
         [FromQuery] string? search = null,
@@ -58,7 +59,7 @@ public class DepartmentsController : ControllerBase
 
     /// <summary>Get a single department by Legal Entity ID and Department ID.</summary>
     [HttpGet("{departmentId:guid}")]
-    [RequirePermission("org:read")]
+    [RequirePermission(PermissionCatalog.Org.Read)]
     public async Task<IActionResult> Get(
         Guid legalEntityId,
         Guid departmentId,
@@ -72,7 +73,7 @@ public class DepartmentsController : ControllerBase
 
     /// <summary>Create a department under a specific legal entity.</summary>
     [HttpPost]
-    [RequirePermission("org:manage")]
+    [RequirePermission(PermissionCatalog.Org.Manage)]
     public async Task<IActionResult> Create(
         Guid legalEntityId,
         [FromBody] CreateDepartmentRequest request,
@@ -94,7 +95,7 @@ public class DepartmentsController : ControllerBase
 
     /// <summary>Update department details. Legal Entity ID and Department ID are sourced from the route.</summary>
     [HttpPut("{departmentId:guid}")]
-    [RequirePermission("org:manage")]
+    [RequirePermission(PermissionCatalog.Org.Manage)]
     public async Task<IActionResult> Update(
         Guid legalEntityId,
         Guid departmentId,
@@ -108,7 +109,8 @@ public class DepartmentsController : ControllerBase
                 request.Name,
                 request.Code,
                 request.ParentDepartmentId,
-                request.HeadPositionId),
+                request.HeadPositionId,
+                request.Version),
             ct);
 
         return result.IsSuccess
@@ -120,7 +122,7 @@ public class DepartmentsController : ControllerBase
     /// deactivation, not a physical delete - audit history and hierarchy references
     /// remain intact. Prefer this endpoint for new integrations.</summary>
     [HttpPost("{departmentId:guid}/archive")]
-    [RequirePermission("org:manage")]
+    [RequirePermission(PermissionCatalog.Org.Manage)]
     public async Task<IActionResult> Archive(
         Guid legalEntityId,
         Guid departmentId,
@@ -137,7 +139,7 @@ public class DepartmentsController : ControllerBase
     /// yet (Position has no DepartmentId column) and are reported as unsupported. Read-only -
     /// does not mutate the department.</summary>
     [HttpPost("{departmentId:guid}/archive-check")]
-    [RequirePermission("org:read")]
+    [RequirePermission(PermissionCatalog.Org.Read)]
     public async Task<IActionResult> ArchiveCheck(
         Guid legalEntityId,
         Guid departmentId,
@@ -154,7 +156,7 @@ public class DepartmentsController : ControllerBase
     /// the parent department is missing or inactive. Never touches children, HeadPositionId,
     /// code, or name.</summary>
     [HttpPost("{departmentId:guid}/restore")]
-    [RequirePermission("org:manage")]
+    [RequirePermission(PermissionCatalog.Org.Manage)]
     public async Task<IActionResult> Restore(
         Guid legalEntityId,
         Guid departmentId,
@@ -172,7 +174,7 @@ public class DepartmentsController : ControllerBase
     /// (IsActive = false) - never a physical delete. Prefer POST .../archive for new
     /// integrations.</summary>
     [HttpDelete("{departmentId:guid}")]
-    [RequirePermission("org:manage")]
+    [RequirePermission(PermissionCatalog.Org.Manage)]
     public async Task<IActionResult> Delete(
         Guid legalEntityId,
         Guid departmentId,

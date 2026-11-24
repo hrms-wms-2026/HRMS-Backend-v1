@@ -24,7 +24,8 @@ public sealed record LeavePolicyResponse(
     bool IsActive,
     LeavePolicyVersionResponse Current,
     IReadOnlyList<LeavePolicyVersionResponse> Versions,
-    IReadOnlyList<LeavePolicyAssignmentResponse> Assignments);
+    IReadOnlyList<LeavePolicyAssignmentResponse> Assignments,
+    string? Version = null);
 
 public sealed record LeavePolicyVersionResponse(
     Guid Id,

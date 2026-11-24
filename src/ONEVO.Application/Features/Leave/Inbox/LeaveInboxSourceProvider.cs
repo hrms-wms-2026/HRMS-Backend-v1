@@ -1,6 +1,7 @@
 using System.Globalization;
 using System.Text.Json;
 using MediatR;
+using ONEVO.Application.Common.Authorization;
 using ONEVO.Application.Common.Models;
 using ONEVO.Application.Common.RepositoryInterfaces;
 using ONEVO.Application.Common.ServiceInterfaces;
@@ -36,10 +37,10 @@ public sealed class LeaveInboxSourceProvider : IInboxSourceProvider, IInboxPerso
 {
     public const int DecidedHistoryDays = 90;
     public const int DecidedHistoryLimit = 500;
-    public const string LeaveReadPermission = "leave:read";
-    public const string LeaveApprovePermission = "leave:approve";
-    public const string LeaveManagePermission = "leave:manage";
-    public const string LeaveReadOwnPermission = "leave:read-own";
+    public const string LeaveReadPermission = PermissionCatalog.Leave.Read;
+    public const string LeaveApprovePermission = PermissionCatalog.Leave.Approve;
+    public const string LeaveManagePermission = PermissionCatalog.Leave.Manage;
+    public const string LeaveReadOwnPermission = PermissionCatalog.Leave.ReadOwn;
     public const string MissingPermission = "You do not have permission to do this.";
     private const string UnknownAction = "This action is not available for this item.";
 
@@ -83,6 +84,17 @@ public sealed class LeaveInboxSourceProvider : IInboxSourceProvider, IInboxPerso
 
     public string Source => LeaveInboxKinds.Source;
     public string Label => "Leave";
+
+    public async Task<InboxSourceCounts> CountAsync(Guid tenantId, Guid callerEmployeeId, CancellationToken ct)
+    {
+        if (!_currentUser.HasPermission(LeaveApprovePermission))
+            return new InboxSourceCounts(0, 0, new Dictionary<string, int>());
+
+        var count = await _approvals.CountActionableAsync(tenantId, callerEmployeeId, ct);
+        return new InboxSourceCounts(count, 0, count == 0
+            ? new Dictionary<string, int>()
+            : new Dictionary<string, int> { [LeaveInboxKinds.Request] = count });
+    }
 
     // ---- list -----------------------------------------------------------------------------------
 

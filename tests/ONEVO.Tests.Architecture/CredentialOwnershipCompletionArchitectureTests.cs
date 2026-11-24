@@ -263,7 +263,7 @@ public sealed class CredentialOwnershipCompletionArchitectureTests
     [Fact]
     public void DependencyInjection_HasNoDirectProviderOptionsBindings()
     {
-        var source = File.ReadAllText(FindRepositoryPath(
+        var source = ReadInfrastructureRegistrations(FindRepositoryPath(
             "src", "ONEVO.Infrastructure", "DependencyInjection.cs"));
 
         Assert.DoesNotContain("Configure<GoogleAuthOptions>", source, StringComparison.Ordinal);
@@ -306,5 +306,16 @@ public sealed class CredentialOwnershipCompletionArchitectureTests
         }
 
         throw new DirectoryNotFoundException("Could not locate the repository root.");
+    }
+
+    /// <summary>AddInfrastructure and every per-area registration file it calls (task 25 split them into Registration/).</summary>
+    private static string ReadInfrastructureRegistrations(string dependencyInjectionPath)
+    {
+        var registrationDirectory = Path.Combine(Path.GetDirectoryName(dependencyInjectionPath)!, "Registration");
+        var files = new[] { dependencyInjectionPath }
+            .Concat(Directory.Exists(registrationDirectory)
+                ? Directory.GetFiles(registrationDirectory, "*.cs").OrderBy(f => f, StringComparer.Ordinal)
+                : []);
+        return string.Join(Environment.NewLine, files.Select(File.ReadAllText));
     }
 }

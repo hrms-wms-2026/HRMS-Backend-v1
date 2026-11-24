@@ -2,6 +2,7 @@ using MediatR;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using ONEVO.Api.Filters;
+using ONEVO.Application.Common.Authorization;
 using ONEVO.Application.Features.Auth.Roles.Commands.ArchiveRole;
 using ONEVO.Application.Features.Auth.Roles.Commands.AssignRolePermissions;
 using ONEVO.Application.Features.Auth.Roles.Commands.CreateRole;
@@ -23,7 +24,7 @@ public class RolesController : ControllerBase
 
     /// <summary>List all roles for the current tenant.</summary>
     [HttpGet]
-    [RequirePermission("roles:read")]
+    [RequirePermission(PermissionCatalog.Roles.Read)]
     public async Task<IActionResult> List(CancellationToken ct)
     {
         var result = await _mediator.Send(new ListRolesQuery(), ct);
@@ -34,7 +35,7 @@ public class RolesController : ControllerBase
 
     /// <summary>Get one role with its assigned permissions.</summary>
     [HttpGet("{id:guid}")]
-    [RequirePermission("roles:read")]
+    [RequirePermission(PermissionCatalog.Roles.Read)]
     public async Task<IActionResult> Get(Guid id, CancellationToken ct)
     {
         var result = await _mediator.Send(new GetRoleByIdQuery(id), ct);
@@ -45,7 +46,7 @@ public class RolesController : ControllerBase
 
     /// <summary>Create a tenant-scoped role with optional initial permissions.</summary>
     [HttpPost]
-    [RequirePermission("roles:manage")]
+    [RequirePermission(PermissionCatalog.Roles.Manage)]
     public async Task<IActionResult> Create([FromBody] CreateRoleRequest request, CancellationToken ct)
     {
         var result = await _mediator.Send(
@@ -58,14 +59,14 @@ public class RolesController : ControllerBase
 
     /// <summary>Update a non-system role's name and description.</summary>
     [HttpPatch("{id:guid}")]
-    [RequirePermission("roles:manage")]
+    [RequirePermission(PermissionCatalog.Roles.Manage)]
     public async Task<IActionResult> Update(
         Guid id,
         [FromBody] UpdateRoleRequest request,
         CancellationToken ct)
     {
         var result = await _mediator.Send(
-            new UpdateRoleCommand(id, request.Name, request.Description), ct);
+            new UpdateRoleCommand(id, request.Name, request.Description, request.Version), ct);
 
         return result.IsSuccess
             ? Ok(result.Value)
@@ -74,7 +75,7 @@ public class RolesController : ControllerBase
 
     /// <summary>Soft-archive a non-system role.</summary>
     [HttpDelete("{id:guid}")]
-    [RequirePermission("roles:manage")]
+    [RequirePermission(PermissionCatalog.Roles.Manage)]
     public async Task<IActionResult> Archive(Guid id, CancellationToken ct)
     {
         var result = await _mediator.Send(new ArchiveRoleCommand(id), ct);
@@ -85,7 +86,7 @@ public class RolesController : ControllerBase
 
     /// <summary>Replace the permission set assigned to a non-system role.</summary>
     [HttpPut("{id:guid}/permissions")]
-    [RequirePermission("roles:manage")]
+    [RequirePermission(PermissionCatalog.Roles.Manage)]
     public async Task<IActionResult> AssignPermissions(
         Guid id,
         [FromBody] AssignRolePermissionsRequest request,
