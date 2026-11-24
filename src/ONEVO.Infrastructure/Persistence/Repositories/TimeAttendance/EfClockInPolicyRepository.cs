@@ -1,4 +1,7 @@
 using Microsoft.EntityFrameworkCore;
+using ONEVO.Application.Common.Caching;
+using ONEVO.Application.Common.ServiceInterfaces;
+using ONEVO.Infrastructure.Services.SharedPlatform;
 using ONEVO.Application.Features.TimeAttendance.RepositoryInterfaces;
 using ONEVO.Domain.Features.TimeAttendance.Entities;
 
@@ -7,10 +10,12 @@ namespace ONEVO.Infrastructure.Persistence.Repositories.TimeAttendance;
 public class EfClockInPolicyRepository : IClockInPolicyRepository
 {
     private readonly ApplicationDbContext _db;
+    private readonly ITenantCache _cache;
 
-    public EfClockInPolicyRepository(ApplicationDbContext db)
+    public EfClockInPolicyRepository(ApplicationDbContext db, ITenantCache? cache = null)
     {
         _db = db;
+        _cache = cache ?? PassThroughTenantCache.Instance;
     }
 
     public async Task<IReadOnlyList<ClockInPolicy>> ListByLegalEntityAsync(
@@ -142,13 +147,20 @@ public class EfClockInPolicyRepository : IClockInPolicyRepository
         await _db.ClockInPolicies.AddAsync(policy, ct);
     }
 
+    /// <summary>Read on clock-in and attendance views; cached per tenant, legal entity and day (task 22).</summary>
     public async Task<IReadOnlyList<ClockInPolicy>> ListActiveOnDateAsync(
         Guid tenantId, Guid legalEntityId, DateOnly date, CancellationToken ct = default)
-        => await _db.ClockInPolicies.AsNoTracking()
-            .Include(p => p.LateDeductionRules)
-            .Where(p => p.TenantId == tenantId && p.LegalEntityId == legalEntityId && p.IsActive
-                && p.EffectiveFrom <= date && (p.EffectiveTo == null || p.EffectiveTo >= date))
-            .ToListAsync(ct);
+    {
+        var policies = await _cache.GetOrCreateAsync<IReadOnlyList<ClockInPolicy>>(
+            tenantId, ReferenceDataCacheKeys.ClockInPolicies, $"{legalEntityId:N}:{date:yyyy-MM-dd}",
+            async token => await _db.ClockInPolicies.AsNoTracking()
+                .Include(p => p.LateDeductionRules)
+                .Where(p => p.TenantId == tenantId && p.LegalEntityId == legalEntityId && p.IsActive
+                    && p.EffectiveFrom <= date && (p.EffectiveTo == null || p.EffectiveTo >= date))
+                .ToListAsync(token),
+            ct);
+        return ReferenceDataCopy.All(policies);
+    }
 
     public void Update(ClockInPolicy policy)
     {

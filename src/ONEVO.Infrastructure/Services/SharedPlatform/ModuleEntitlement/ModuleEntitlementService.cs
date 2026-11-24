@@ -1,6 +1,7 @@
 using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
 using ONEVO.Application.Common.Authorization;
+using ONEVO.Application.Common.Caching;
 using ONEVO.Application.Common.RepositoryInterfaces;
 using ONEVO.Application.Common.ServiceInterfaces;
 using ONEVO.Application.Features.Auth.Permission;
@@ -16,8 +17,13 @@ public sealed class ModuleEntitlementService : IModuleEntitlementService
             StringComparer.OrdinalIgnoreCase);
 
     private readonly ApplicationDbContext _db;
+    private readonly ITenantCache _cache;
 
-    public ModuleEntitlementService(ApplicationDbContext db) => _db = db;
+    public ModuleEntitlementService(ApplicationDbContext db, ITenantCache? cache = null)
+    {
+        _db = db;
+        _cache = cache ?? PassThroughTenantCache.Instance;
+    }
 
     public async Task<bool> IsModuleEnabledAsync(
         Guid tenantId,
@@ -41,9 +47,18 @@ public sealed class ModuleEntitlementService : IModuleEntitlementService
             .ToListAsync(ct);
     }
 
+    /// <summary>Read on most requests (module filters, tray presence, dashboards); cached per tenant (task 22).</summary>
     public async Task<IReadOnlyList<string>> GetActiveModuleKeysForTenantAsync(
         Guid tenantId,
         CancellationToken ct = default)
+    {
+        var keys = await _cache.GetOrCreateAsync(
+            tenantId, ReferenceDataCacheKeys.ActiveModules, string.Empty,
+            async token => (await LoadActiveModuleKeysAsync(tenantId, token)).ToArray(), ct);
+        return Array.AsReadOnly(keys);
+    }
+
+    private async Task<IReadOnlyList<string>> LoadActiveModuleKeysAsync(Guid tenantId, CancellationToken ct)
     {
         var subscription = await _db.TenantSubscriptions
             .AsNoTracking()
@@ -74,6 +89,14 @@ public sealed class ModuleEntitlementService : IModuleEntitlementService
     public async Task<IReadOnlyList<Permission>> GetAssignablePermissionsForTenantAsync(
         Guid tenantId,
         CancellationToken ct = default)
+    {
+        var permissions = await _cache.GetOrCreateAsync(
+            tenantId, ReferenceDataCacheKeys.AssignablePermissions, string.Empty,
+            token => LoadAssignablePermissionsAsync(tenantId, token), ct);
+        return ReferenceDataCopy.All(permissions);
+    }
+
+    private async Task<IReadOnlyList<Permission>> LoadAssignablePermissionsAsync(Guid tenantId, CancellationToken ct)
     {
         var moduleKeys = await GetActiveModuleKeysForTenantAsync(tenantId, ct);
         if (moduleKeys.Count == 0)

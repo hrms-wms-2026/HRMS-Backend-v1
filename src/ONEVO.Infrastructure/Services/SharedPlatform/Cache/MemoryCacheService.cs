@@ -14,6 +14,7 @@ public sealed class MemoryCacheService : ICacheService
     private readonly IMemoryCache _cache;
     private readonly ISharedInvalidationBus _bus;
     private readonly ConcurrentDictionary<string, bool> _keys = new();
+    private long _generation;
 
     public MemoryCacheService(IMemoryCache cache, ISharedInvalidationBus? bus = null)
     {
@@ -53,9 +54,17 @@ public sealed class MemoryCacheService : ICacheService
         return Task.CompletedTask;
     }
 
+    /// <summary>
+    /// Goes up on every removal on this instance (local or published by another instance). A caller that loads a value
+    /// reads it first and stores only if it is unchanged afterwards, so a removal that happened during the load cannot
+    /// be undone by storing the value read before it (task 22).
+    /// </summary>
+    public long InvalidationGeneration => Interlocked.Read(ref _generation);
+
     /// <summary>This instance only; used for removals published by other instances.</summary>
     public void RemoveLocal(string key)
     {
+        Interlocked.Increment(ref _generation);
         _cache.Remove(key);
         _keys.TryRemove(key, out _);
     }
@@ -63,6 +72,8 @@ public sealed class MemoryCacheService : ICacheService
     /// <summary>This instance only. An empty prefix removes every entry this service stored.</summary>
     public void RemoveByPrefixLocal(string prefix)
     {
+        // Counted even when nothing matches: a load for a key not stored yet must not store a stale value.
+        Interlocked.Increment(ref _generation);
         foreach (var key in _keys.Keys.Where(k => k.StartsWith(prefix, StringComparison.Ordinal)).ToList())
             RemoveLocal(key);
     }

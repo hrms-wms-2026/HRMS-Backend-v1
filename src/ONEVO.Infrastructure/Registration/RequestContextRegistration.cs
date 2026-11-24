@@ -22,6 +22,12 @@ internal static class RequestContextRegistration
         services.AddScoped<ICurrentPlatformUserContext, CurrentPlatformUserContext>();
         services.AddSingleton<MemoryCacheService>();
         services.AddSingleton<ICacheService>(sp => sp.GetRequiredService<MemoryCacheService>());
+        // Task 22: tenant-keyed reference-data cache; Caching:ReferenceData:Enabled=false sends every read to the DB.
+        services.AddOptions<ReferenceDataCacheOptions>()
+            .Bind(configuration.GetSection(ReferenceDataCacheOptions.SectionName))
+            .Validate(options => options.LifetimeMinutes > 0, "Caching:ReferenceData:LifetimeMinutes must be positive.")
+            .ValidateOnStart();
+        services.AddScoped<ITenantCache, TenantCache>();
         services.AddSingleton<IDateTimeProvider, SystemDateTimeProvider>();
 
         return services;

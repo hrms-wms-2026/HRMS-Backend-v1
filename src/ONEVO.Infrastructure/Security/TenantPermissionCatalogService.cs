@@ -1,4 +1,6 @@
 using Microsoft.EntityFrameworkCore;
+using ONEVO.Application.Common.Caching;
+using ONEVO.Infrastructure.Services.SharedPlatform;
 using ONEVO.Application.Common.RepositoryInterfaces;
 using ONEVO.Application.Common.ServiceInterfaces;
 using ONEVO.Application.Features.Auth.Permission.ServiceInterfaces;
@@ -13,13 +15,16 @@ public sealed class TenantPermissionCatalogService : ITenantPermissionCatalogSer
 {
     private readonly IModuleEntitlementService _entitlements;
     private readonly ApplicationDbContext _db;
+    private readonly ITenantCache _cache;
 
     public TenantPermissionCatalogService(
         IModuleEntitlementService entitlements,
-        ApplicationDbContext db)
+        ApplicationDbContext db,
+        ITenantCache? cache = null)
     {
         _entitlements = entitlements;
         _db = db;
+        _cache = cache ?? PassThroughTenantCache.Instance;
     }
 
     public async Task<PermissionCatalogDto> GetCatalogAsync(Guid tenantId, CancellationToken ct = default)
@@ -36,10 +41,14 @@ public sealed class TenantPermissionCatalogService : ITenantPermissionCatalogSer
             .ToList();
 
         var universalCodes = ModuleAutoGrants.ByModule.Values.SelectMany(v => v).Distinct(StringComparer.Ordinal).ToList();
-        var dbUniversalRows = await _db.Permissions
-            .AsNoTracking()
-            .Where(p => universalCodes.Contains(p.Code))
-            .ToListAsync(ct);
+        // Platform-wide rows (no tenant column), the same for every tenant: one global entry (task 22).
+        var dbUniversalRows = ReferenceDataCopy.All(await _cache.GetOrCreateGlobalAsync<IReadOnlyList<ONEVO.Domain.Features.Auth.Entities.Permission>>(
+            ReferenceDataCacheKeys.UniversalPermissions,
+            async token => await _db.Permissions
+                .AsNoTracking()
+                .Where(p => universalCodes.Contains(p.Code))
+                .ToListAsync(token),
+            ct));
         var dbByCode = dbUniversalRows.ToDictionary(p => p.Code, StringComparer.Ordinal);
 
         var universalDtos = new List<PermissionCatalogItemDto>(universalCodes.Count);

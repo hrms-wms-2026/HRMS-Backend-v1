@@ -21,6 +21,7 @@ internal static class DatabaseRegistration
         services.AddScoped<DomainEventDispatchInterceptor>();
         services.AddScoped<TenantRlsInterceptor>();
         services.AddSingleton<SessionTicketCacheInvalidationInterceptor>();
+        services.AddSingleton<ReferenceDataCacheInvalidationInterceptor>(); // task 22
         // Task 06: SQL command count and time per request, read by the request log line.
         services.AddScoped<ONEVO.Infrastructure.Persistence.Diagnostics.RequestSqlMetrics>();
         services.AddScoped<ONEVO.Application.Common.ServiceInterfaces.IRequestSqlMetrics>(sp =>
@@ -38,6 +39,7 @@ internal static class DatabaseRegistration
                 .UseSnakeCaseNamingConvention()
                 .AddInterceptors(sp.GetRequiredService<TenantRlsInterceptor>())
                 .AddInterceptors(sp.GetRequiredService<SessionTicketCacheInvalidationInterceptor>())
+                .AddInterceptors(sp.GetRequiredService<ReferenceDataCacheInvalidationInterceptor>())
                 .AddInterceptors(sp.GetRequiredService<SqlCommandMetricsInterceptor>());
         });
 

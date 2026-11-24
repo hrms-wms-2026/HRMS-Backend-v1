@@ -1,4 +1,7 @@
 using Microsoft.EntityFrameworkCore;
+using ONEVO.Application.Common.Caching;
+using ONEVO.Application.Common.ServiceInterfaces;
+using ONEVO.Infrastructure.Services.SharedPlatform;
 using ONEVO.Application.Features.Leave.Type.RepositoryInterfaces;
 using ONEVO.Domain.Features.Leave.Common;
 using ONEVO.Domain.Features.Leave.Type.Entities;
@@ -8,18 +11,28 @@ namespace ONEVO.Infrastructure.Persistence.Repositories.Leave.Type;
 public class EfLeaveTypeRepository : ILeaveTypeRepository
 {
     private readonly ApplicationDbContext _db;
+    private readonly ITenantCache _cache;
 
-    public EfLeaveTypeRepository(ApplicationDbContext db)
+    public EfLeaveTypeRepository(ApplicationDbContext db, ITenantCache? cache = null)
     {
         _db = db;
+        _cache = cache ?? PassThroughTenantCache.Instance;
     }
 
+    /// <summary>Cached per tenant (task 22); every caller gets its own copies.</summary>
     public async Task<IReadOnlyList<LeaveType>> ListAsync(Guid tenantId, bool includeInactive, CancellationToken ct = default)
     {
-        var query = _db.LeaveTypes.AsNoTracking().Where(t => t.TenantId == tenantId);
-        if (!includeInactive)
-            query = query.Where(t => t.IsActive);
-        return await query.OrderBy(t => t.Name).ToListAsync(ct);
+        var types = await _cache.GetOrCreateAsync<IReadOnlyList<LeaveType>>(
+            tenantId, ReferenceDataCacheKeys.LeaveTypes, includeInactive ? "all" : "active",
+            async token =>
+            {
+                var query = _db.LeaveTypes.AsNoTracking().Where(t => t.TenantId == tenantId);
+                if (!includeInactive)
+                    query = query.Where(t => t.IsActive);
+                return await query.OrderBy(t => t.Name).ToListAsync(token);
+            },
+            ct);
+        return ReferenceDataCopy.All(types);
     }
 
     public async Task<LeaveType?> GetByIdAsync(Guid tenantId, Guid leaveTypeId, CancellationToken ct = default)
