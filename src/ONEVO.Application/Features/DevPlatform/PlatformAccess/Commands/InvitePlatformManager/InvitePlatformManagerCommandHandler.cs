@@ -65,26 +65,41 @@ public sealed class InvitePlatformManagerCommandHandler : IRequestHandler<Invite
 
         var email = request.Email.Trim().ToLowerInvariant();
         var existing = await _users.GetByEmailAsync(email, ct);
-        if (existing is not null)
+
+        // A revoked invite never reached acceptance (no credential, no session), so the
+        // same row is reused for a fresh invite instead of blocking the email forever.
+        // Any other existing row (pending, active, or deactivated after acceptance) still conflicts.
+        if (existing is not null && existing.InviteStatus != PlatformUser.InviteRevoked)
             return Result.Conflict($"A platform user with email '{email}' already exists or has a pending invite.");
 
         var now = _clock.UtcNow;
         var fullName = request.FullName.Trim();
 
-        var user = new PlatformUser
+        PlatformUser user;
+        if (existing is not null)
         {
-            Id = Guid.NewGuid(),
-            Email = email,
-            FullName = fullName,
-            Status = PlatformUser.StatusPending,
-            InviteStatus = PlatformUser.InvitePending,
-            CreatedAt = now
-        };
-        await _users.AddAsync(user, ct);
+            user = existing;
+            user.FullName = fullName;
+            user.Status = PlatformUser.StatusPending;
+            user.InviteStatus = PlatformUser.InvitePending;
+            _users.UpdateUser(user);
+        }
+        else
+        {
+            user = new PlatformUser
+            {
+                Id = Guid.NewGuid(),
+                Email = email,
+                FullName = fullName,
+                Status = PlatformUser.StatusPending,
+                InviteStatus = PlatformUser.InvitePending,
+                CreatedAt = now
+            };
+            await _users.AddAsync(user, ct);
+        }
 
-        // ReplaceRolesAsync removes any existing roles for the user then adds the
-        // given set; on this brand-new user there's nothing to remove, so it's
-        // equivalent to a plain bulk-add without needing a separate repository method.
+        // ReplaceRolesAsync removes any existing roles for the user then adds the given
+        // set: a no-op removal for a new user, and a role reset for a re-invited one.
         await _users.ReplaceRolesAsync(user.Id, request.RoleIds, ct);
 
         var invitedById = _currentUser.UserId

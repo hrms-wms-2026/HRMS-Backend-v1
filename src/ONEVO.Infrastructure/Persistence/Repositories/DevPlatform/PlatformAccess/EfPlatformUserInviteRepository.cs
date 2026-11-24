@@ -19,8 +19,12 @@ public sealed class EfPlatformUserInviteRepository : IPlatformUserInviteReposito
     public Task<PlatformUserInvite?> GetByTokenHashAsync(string tokenHash, CancellationToken ct = default) =>
         _db.PlatformUserInvites.FirstOrDefaultAsync(i => i.InviteTokenHash == tokenHash, ct);
 
+    // A re-invited user has one invite row per invite, so the latest one is the live invite.
     public Task<PlatformUserInvite?> GetByPlatformUserIdAsync(Guid platformUserId, CancellationToken ct = default) =>
-        _db.PlatformUserInvites.FirstOrDefaultAsync(i => i.PlatformUserId == platformUserId, ct);
+        _db.PlatformUserInvites
+            .Where(i => i.PlatformUserId == platformUserId)
+            .OrderByDescending(i => i.CreatedAt)
+            .FirstOrDefaultAsync(ct);
 
     public void Update(PlatformUserInvite invite) =>
         _db.PlatformUserInvites.Update(invite);
