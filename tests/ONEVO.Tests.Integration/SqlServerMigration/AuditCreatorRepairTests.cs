@@ -1,4 +1,5 @@
 using FluentAssertions;
+using ONEVO.Domain.Features.SharedPlatform.Entities;
 using ONEVO.Infrastructure.Migrations;
 using ONEVO.Tests.Integration.MyTeam;
 using ONEVO.Tests.Integration.Support;
@@ -48,6 +49,50 @@ public sealed class AuditCreatorRepairTests
         thrown.Message.Should().Contain("project_categories=1");
         (await CreatedByAsync(db, categoryId)).Should().Be(unknown, "an unknown value is never guessed or removed");
     }
+
+    [Fact]
+    public async Task Repair_clears_a_tenant_users_id_the_old_seeder_wrote_into_a_subscription()
+    {
+        var helper = await MyTeamDb.CreateAsync();
+        Guid ownerUserId, subscriptionId;
+        await using (var db = helper.NewContext())
+        {
+            ownerUserId = helper.AddEmployee(db).UserId;
+            var plan = new SubscriptionPlan
+            {
+                Id = Guid.NewGuid(), Name = "Repair Plan", Code = "repair-plan", Tier = "standard",
+                IncludedModulesJson = "[]", CompanySizeRange = "11-50", Currency = "USD", IsActive = true,
+            };
+            var today = DateOnly.FromDateTime(DateTime.UtcNow);
+            var subscription = new TenantSubscription
+            {
+                Id = Guid.NewGuid(), TenantId = helper.TenantId, PlanId = plan.Id, Status = "active",
+                CurrentPeriodStart = today, CurrentPeriodEnd = today.AddDays(30), ContractStartDate = today,
+            };
+            db.SubscriptionPlans.Add(plan);
+            db.TenantSubscriptions.Add(subscription);
+            await db.SaveChangesAsync();
+            subscriptionId = subscription.Id;
+        }
+        // What DevSmokeTestTenantSeeder wrote before task 39c: the tenant owner's users id, not a platform user.
+        await ExecAsync(helper, $"""
+            ALTER TABLE dbo.tenant_subscriptions NOCHECK CONSTRAINT {SubscriptionForeignKey};
+            UPDATE dbo.tenant_subscriptions SET created_by_id = '{ownerUserId}' WHERE id = '{subscriptionId}';
+            """);
+
+        await ExecAsync(helper, AddAuditColumnForeignKeys39c.RepairAuditCreatorsSql);
+
+        await using var connection = TestDb.CreateConnection(helper.ConnectionString);
+        await connection.OpenAsync();
+        await using var command = connection.CreateCommand();
+        command.CommandText = $"SELECT created_by_id FROM dbo.tenant_subscriptions WHERE id = '{subscriptionId}';";
+        (await command.ExecuteScalarAsync()).Should().Be(DBNull.Value);
+        var recheck = () => ExecAsync(helper,
+            $"ALTER TABLE dbo.tenant_subscriptions WITH CHECK CHECK CONSTRAINT {SubscriptionForeignKey};");
+        await recheck.Should().NotThrowAsync();
+    }
+
+    private const string SubscriptionForeignKey = "fk_tenant_subscriptions_platform_users_created_by_id";
 
     private static async Task<(MyTeamDb Db, Guid CategoryId)> SeedAsync()
     {
