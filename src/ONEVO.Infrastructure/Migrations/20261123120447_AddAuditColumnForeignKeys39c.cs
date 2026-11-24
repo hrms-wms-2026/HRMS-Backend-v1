@@ -15,7 +15,9 @@ namespace ONEVO.Infrastructure.Migrations
         /// Hand-written, runs after the columns become nullable and before any key is added. Changes Guid.Empty to
         /// NULL, then counts every value that is not a row of its parent and stops with error 50039 if there is one.
         /// It deletes nothing and guesses nothing. The tables are under tenant RLS, which applies to every login on
-        /// SQL Server, so it runs in the 'admin' tenant context mode.
+        /// SQL Server, so it runs in the 'admin' tenant context mode. The two payment-gateway tables are left out on
+        /// purpose: no hand-written SQL may touch them (CredentialOwnershipCompletionArchitectureTests). Their
+        /// created_by_id was already nullable and is always the acting platform admin, so their keys need no repair.
         /// </summary>
         public const string RepairAuditCreatorsSql = """
             EXEC sp_set_session_context N'app.tenant_context_mode', N'admin';
@@ -59,8 +61,6 @@ namespace ONEVO.Infrastructure.Migrations
             UPDATE dbo.meeting_series SET created_by_id = NULL WHERE created_by_id = '00000000-0000-0000-0000-000000000000';
             UPDATE dbo.objectives SET created_by_id = NULL WHERE created_by_id = '00000000-0000-0000-0000-000000000000';
             UPDATE dbo.onboarding_drafts SET created_by_id = NULL WHERE created_by_id = '00000000-0000-0000-0000-000000000000';
-            UPDATE dbo.payment_gateway_configs SET created_by_id = NULL WHERE created_by_id = '00000000-0000-0000-0000-000000000000';
-            UPDATE dbo.payment_gateway_country_routes SET created_by_id = NULL WHERE created_by_id = '00000000-0000-0000-0000-000000000000';
             UPDATE dbo.personal_calendar_events SET created_by_id = NULL WHERE created_by_id = '00000000-0000-0000-0000-000000000000';
             UPDATE dbo.planned_task_blocks SET created_by_id = NULL WHERE created_by_id = '00000000-0000-0000-0000-000000000000';
             UPDATE dbo.position_assignments SET created_by_id = NULL WHERE created_by_id = '00000000-0000-0000-0000-000000000000';
@@ -174,10 +174,6 @@ namespace ONEVO.Infrastructure.Migrations
             IF @n > 0 SET @orphans = CONCAT(@orphans, N' objectives=', @n);
             SELECT @n = COUNT(*) FROM dbo.onboarding_drafts c WHERE c.created_by_id IS NOT NULL AND NOT EXISTS (SELECT 1 FROM dbo.users p WHERE p.id = c.created_by_id);
             IF @n > 0 SET @orphans = CONCAT(@orphans, N' onboarding_drafts=', @n);
-            SELECT @n = COUNT(*) FROM dbo.payment_gateway_configs c WHERE c.created_by_id IS NOT NULL AND NOT EXISTS (SELECT 1 FROM dbo.platform_users p WHERE p.id = c.created_by_id);
-            IF @n > 0 SET @orphans = CONCAT(@orphans, N' payment_gateway_configs=', @n);
-            SELECT @n = COUNT(*) FROM dbo.payment_gateway_country_routes c WHERE c.created_by_id IS NOT NULL AND NOT EXISTS (SELECT 1 FROM dbo.platform_users p WHERE p.id = c.created_by_id);
-            IF @n > 0 SET @orphans = CONCAT(@orphans, N' payment_gateway_country_routes=', @n);
             SELECT @n = COUNT(*) FROM dbo.personal_calendar_events c WHERE c.created_by_id IS NOT NULL AND NOT EXISTS (SELECT 1 FROM dbo.users p WHERE p.id = c.created_by_id);
             IF @n > 0 SET @orphans = CONCAT(@orphans, N' personal_calendar_events=', @n);
             SELECT @n = COUNT(*) FROM dbo.planned_task_blocks c WHERE c.created_by_id IS NOT NULL AND NOT EXISTS (SELECT 1 FROM dbo.users p WHERE p.id = c.created_by_id);

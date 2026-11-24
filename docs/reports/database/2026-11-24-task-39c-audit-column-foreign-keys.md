@@ -46,9 +46,11 @@ The 69 `users` tables: `attendance_alert_deductions`, `attendance_alerts`, `bulk
 | Constant | When | What |
 |---|---|---|
 | `ModuleHourSummaryProcedureSql` | Up, before the first key | `CREATE OR ALTER` of `wm_refresh_module_hour_summary` (from `AddAuthLookupAndTriggers`). It inserted the literal `Guid.Empty` as `created_by_id`; it now inserts `NULL`. Nothing else changes. The trigger `trg_tasks_module_hour_summary` calls it on every task write, so without this every task write would fail on the new key. |
-| `RepairAuditCreatorsSql` | Up, after the columns become nullable, before the first key | In `admin` tenant context mode (SQL Server RLS applies to every login): `Guid.Empty` → `NULL` on all 75 columns. Then counts, per key, every value that is not a row of its parent. If any is found it stops with error 50039 and the counts (`table=rows`). It deletes nothing and guesses nothing; the migration's transaction rolls back. |
+| `RepairAuditCreatorsSql` | Up, after the columns become nullable, before the first key | In `admin` tenant context mode (SQL Server RLS applies to every login): `Guid.Empty` → `NULL` on 73 columns. Then counts, per key, every value that is not a row of its parent. If any is found it stops with error 50039 and the counts (`table=rows`). It deletes nothing and guesses nothing; the migration's transaction rolls back. |
 | `ModuleHourSummaryProcedureDownSql` | Down | The procedure as it was. |
 | `RestoreGuidEmptyDownSql` | Down, before the columns become `NOT NULL` again | `NULL` → `Guid.Empty` on the 70 altered columns. |
+
+The repair leaves out `payment_gateway_configs` and `payment_gateway_country_routes`. `CredentialOwnershipCompletionArchitectureTests` allows no hand-written SQL on those tables, and the test was not loosened. Their `created_by_id` was already nullable and both writers (`CreatePaymentGateway`, `UpdatePaymentGatewayMetadata`) always set the acting platform admin's id, so there is nothing to repair. If a bad value did exist, adding the key would fail and the migration would roll back.
 
 `AuditCreatorRepairTests` (integration) covers both repair paths on `project_categories`: `Guid.Empty` becomes `NULL` and the key's `WITH CHECK` succeeds; an unknown id stops the repair with 50039, names `project_categories=1`, and stays as it is.
 
