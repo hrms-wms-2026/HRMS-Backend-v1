@@ -38,6 +38,10 @@ public interface IPositionRepository
     Task<int> CountActiveByDepartmentAsync(
         Guid tenantId, Guid legalEntityId, Guid departmentId, CancellationToken ct = default);
 
+    /// <summary>True when the company has at least one active position inside a department - the minimum
+    /// the Add Employee wizard needs, so "Add yourself as an employee" is offered only then.</summary>
+    Task<bool> AnyActiveWithDepartmentAsync(Guid tenantId, CancellationToken ct = default);
+
     // Batched variant of CountActiveByDepartmentAsync: single grouped query for a page/tree of
     // departments instead of one query per department. Missing keys mean zero active positions.
     Task<IReadOnlyDictionary<Guid, int>> CountActiveByDepartmentIdsAsync(
