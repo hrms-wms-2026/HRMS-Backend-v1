@@ -267,6 +267,69 @@ public sealed class ApiRateLimitingTests
     }
 
     [Fact]
+    public async Task Rejection_is_counted_for_the_right_tenant_and_kind()
+    {
+        await using var app = await StartAsync(new()
+        {
+            ["RateLimiting:SignedIn:TokenLimit"] = "2",
+            ["RateLimiting:SignedIn:TokensPerPeriod"] = "1",
+            ["RateLimiting:SignedIn:ReplenishmentPeriodSeconds"] = "60",
+        });
+        var client = app.GetTestClient();
+        var user = Guid.NewGuid();
+
+        for (var i = 0; i < 2; i++)
+            (await SendAsync(client, "/api/v1/ping", OfficeIp, user: user)).StatusCode.Should().Be(HttpStatusCode.OK);
+        (await SendAsync(client, "/api/v1/ping", OfficeIp, user: user)).StatusCode.Should().Be(HttpStatusCode.TooManyRequests);
+
+        var counts = app.Services.GetRequiredService<IRateLimitRejectionStats>().Read(60).Counts;
+        counts.Should().ContainSingle().Which.Should().Be(new RateLimitRejectionCount(TenantA, "User", 1));
+    }
+
+    [Fact]
+    public async Task Anonymous_and_admin_rejections_are_counted_with_no_tenant()
+    {
+        await using var app = await StartAsync(new()
+        {
+            ["RateLimiting:Anonymous:PermitLimit"] = "1",
+            ["RateLimiting:AdminSignedIn:TokenLimit"] = "1",
+            ["RateLimiting:AdminSignedIn:TokensPerPeriod"] = "1",
+            ["RateLimiting:AdminSignedIn:ReplenishmentPeriodSeconds"] = "60",
+        });
+        var client = app.GetTestClient();
+        var admin = Guid.NewGuid();
+
+        await SendAsync(client, "/api/v1/ping", OfficeIp);
+        (await SendAsync(client, "/api/v1/ping", OfficeIp)).StatusCode.Should().Be(HttpStatusCode.TooManyRequests);
+        await SendAsync(client, "/admin/v1/ping", OfficeIp, admin: admin);
+        (await SendAsync(client, "/admin/v1/ping", OfficeIp, admin: admin)).StatusCode.Should().Be(HttpStatusCode.TooManyRequests);
+
+        var counts = app.Services.GetRequiredService<IRateLimitRejectionStats>().Read(60).Counts;
+        counts.Should().BeEquivalentTo(new[]
+        {
+            new RateLimitRejectionCount(null, "Anonymous", 1),
+            new RateLimitRejectionCount(null, "Admin", 1),
+        });
+    }
+
+    [Fact]
+    public async Task Pre_authentication_rejection_is_counted_with_no_tenant()
+    {
+        await using var app = await StartAsync(new()
+        {
+            ["RateLimiting:PreAuthentication:PermitLimit"] = "1",
+        });
+        var client = app.GetTestClient();
+
+        await SendAsync(client, "/api/v1/ping", OfficeIp, device: Guid.NewGuid());
+        (await SendAsync(client, "/api/v1/ping", OfficeIp, device: Guid.NewGuid())).StatusCode
+            .Should().Be(HttpStatusCode.TooManyRequests);
+
+        var counts = app.Services.GetRequiredService<IRateLimitRejectionStats>().Read(60).Counts;
+        counts.Should().ContainSingle().Which.Should().Be(new RateLimitRejectionCount(null, "PreAuthentication", 1));
+    }
+
+    [Fact]
     public void PartitionKeys_CarryTheSettingsVersion()
     {
         var user = Guid.NewGuid();

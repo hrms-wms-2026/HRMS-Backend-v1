@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.ModelBinding;
 using ONEVO.Api.Filters;
+using ONEVO.Application.Common.ServiceInterfaces;
 using ONEVO.Application.Features.DevPlatform.PlatformAccess.Helpers;
 using ONEVO.Application.Features.DevPlatform.SystemConfig.RateLimits.Commands.RemoveGlobalRateLimit;
 using ONEVO.Application.Features.DevPlatform.SystemConfig.RateLimits.Commands.SetGlobalRateLimit;
@@ -10,6 +11,7 @@ using ONEVO.Application.Features.DevPlatform.SystemConfig.RateLimits.DTOs;
 using ONEVO.Application.Features.DevPlatform.SystemConfig.RateLimits.Helpers;
 using ONEVO.Application.Features.DevPlatform.SystemConfig.RateLimits.Queries.GetGlobalRateLimits;
 using ONEVO.Application.Features.DevPlatform.SystemConfig.RateLimits.Queries.GetRateLimitChanges;
+using ONEVO.Application.Features.DevPlatform.SystemConfig.RateLimits.Queries.GetRateLimitRejections;
 
 namespace ONEVO.Api.Controllers.Admin.DevPlatform.SystemConfig;
 
@@ -46,6 +48,20 @@ public sealed class RateLimitsController : ControllerBase
         CancellationToken ct = default)
     {
         var result = await _mediator.Send(new GetRateLimitChangesQuery(scope, tenantId, planId, page, pageSize), ct);
+        return result.IsSuccess ? Ok(result.Value) : Problem(result.Error, statusCode: result.StatusCode ?? 400);
+    }
+
+    /// <summary>
+    /// Task 49: tenants with the most 429s on this API server in the last 1 to 60 minutes, so an
+    /// admin can check a tenant really hits its limits before raising them.
+    /// </summary>
+    [HttpGet("rejections")]
+    [RequirePlatformPermission(PlatformPermissionCatalog.SystemConfigRead)]
+    public async Task<IActionResult> Rejections(
+        [FromQuery] int minutes = IRateLimitRejectionStats.MaxWindowMinutes,
+        CancellationToken ct = default)
+    {
+        var result = await _mediator.Send(new GetRateLimitRejectionsQuery(minutes), ct);
         return result.IsSuccess ? Ok(result.Value) : Problem(result.Error, statusCode: result.StatusCode ?? 400);
     }
 

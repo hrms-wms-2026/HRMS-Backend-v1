@@ -62,6 +62,18 @@ public sealed class EfRateLimitSettingRepository : IRateLimitSettingRepository
             .Select(t => new RateLimitTenantRef(t.Id, t.SubscriptionPlanId, t.Status == TenantStatus.Cancelled))
             .FirstOrDefaultAsync(ct);
 
+    public async Task<IReadOnlyDictionary<Guid, string>> GetTenantNamesAsync(
+        IReadOnlyCollection<Guid> tenantIds, CancellationToken ct)
+    {
+        if (tenantIds.Count == 0)
+            return new Dictionary<Guid, string>();
+
+        return await _db.Tenants.AsNoTracking()
+            .Where(t => tenantIds.Contains(t.Id))
+            .Select(t => new { t.Id, t.Name })
+            .ToDictionaryAsync(t => t.Id, t => t.Name, ct);
+    }
+
     public bool SetExpectedVersion(RateLimitSetting setting, string rowVersion)
     {
         if (!RowVersionToken.TryParse(rowVersion, out var version))

@@ -1663,6 +1663,33 @@
         }
       }
     },
+    "/admin/v1/system-config/rate-limits/rejections": {
+      "get": {
+        "tags": [
+          "RateLimits"
+        ],
+        "parameters": [
+          {
+            "name": "minutes",
+            "in": "query",
+            "schema": {
+              "pattern": "^-?(?:0|[1-9]\\d*)$",
+              "type": [
+                "integer",
+                "string"
+              ],
+              "format": "int32",
+              "default": 60
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
     "/admin/v1/system-config/rate-limits/{limitName}": {
       "put": {
         "tags": [

@@ -75,6 +75,21 @@ public sealed class RateLimitAdminApiArchitectureTests
     }
 
     [Fact]
+    public void Rejection_counts_carry_no_personal_data()
+    {
+        // Task 49: the counts are per tenant and kind only, never per user, IP or session.
+        var types = new[]
+        {
+            typeof(RateLimitRejectionsDto), typeof(TenantRateLimitRejectionsDto),
+            typeof(RateLimitRejectionKindDto), typeof(RateLimitRejectionLimitDto),
+            typeof(ONEVO.Application.Common.ServiceInterfaces.RateLimitRejectionCount),
+        };
+        var forbidden = new[] { "User", "Ip", "Address", "Session", "Email", "Device" };
+        foreach (var property in types.SelectMany(t => t.GetProperties()))
+            Assert.DoesNotContain(forbidden, f => property.Name.Contains(f, StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
     public void Rate_limit_handlers_do_not_depend_on_the_db_context()
     {
         var handlers = typeof(SetRateLimitRequest).Assembly.GetTypes().Where(t =>

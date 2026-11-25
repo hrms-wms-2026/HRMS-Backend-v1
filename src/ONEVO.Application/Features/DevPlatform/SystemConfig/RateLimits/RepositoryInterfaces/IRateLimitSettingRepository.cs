@@ -26,6 +26,9 @@ public interface IRateLimitSettingRepository
 
     Task<RateLimitTenantRef?> GetTenantAsync(Guid tenantId, CancellationToken ct);
 
+    /// <summary>Names of the given tenants in one query; ids that do not exist are left out.</summary>
+    Task<IReadOnlyDictionary<Guid, string>> GetTenantNamesAsync(IReadOnlyCollection<Guid> tenantIds, CancellationToken ct);
+
     /// <summary>
     /// Sets the version the caller last read, so the save fails with
     /// <see cref="ONEVO.Application.Common.Exceptions.ConcurrencyConflictException"/> if the row changed.

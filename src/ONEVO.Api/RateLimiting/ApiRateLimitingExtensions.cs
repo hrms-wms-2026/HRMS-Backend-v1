@@ -24,6 +24,8 @@ public static class ApiRateLimitingExtensions
     {
         services.AddOptions<RateLimitSettings>().Bind(configuration.GetSection(RateLimitSettings.SectionName));
         services.TryAddSingleton<IRateLimitSettingsProvider, OptionsRateLimitSettingsProvider>();
+        services.TryAddSingleton<IRateLimitRejectionStats>(sp =>
+            new RateLimitRejectionStats(sp.GetService<TimeProvider>() ?? TimeProvider.System));
 
         services.AddRateLimiter(options =>
         {
@@ -128,6 +130,9 @@ public static class ApiRateLimitingExtensions
             : FallbackRetryAfterSeconds;
 
         ONEVO.Application.Common.Observability.CrownusMetrics.RecordRateLimitRejection("api", partition);
+        // Task 49: per-tenant counts for the admin rejections page. The metric above stays
+        // without a tenant tag (DEC-093).
+        context.RequestServices.GetRequiredService<IRateLimitRejectionStats>().Record(tenantId, partition);
         context.RequestServices.GetRequiredService<ILoggerFactory>()
             .CreateLogger(LoggerCategory)
             .LogWarning(

@@ -111,6 +111,13 @@ Since task 47, platform admins change the rows through the admin API (`admin/v1/
 and reloads the provider on that instance. The API cannot change `Enabled`, `PreAuthentication` or the
 auth endpoint limits below.
 
+Since task 49, `GET admin/v1/system-config/rate-limits/rejections?minutes=60` (`platform.system_config.read`)
+shows the 50 tenants with the most 429s in the last 1 to 60 minutes, with counts per partition kind and each
+tenant's effective `SignedIn`, `TrayDevice` and `TenantCeiling` limits. Requests with no tenant (signed-out,
+pre-authentication and admin) are one row with a null tenant. The counts are held in memory on each API
+server (60 one-minute buckets, at most 5,000 tenant keys), so they cover that server only and start again on a
+restart; the response says so (`scope: "instance"`). They hold no user id, IP or session.
+
 ## Rejected requests
 
 A rejected request gets HTTP 429 with a `Retry-After` header (in seconds) and this body, which
@@ -124,6 +131,9 @@ matches the earlier hand-written limiter:
   "detail": "Too many requests. Please try again later."
 }
 ```
+
+Each one also adds 1 to the in-memory rejections counts above, and to the `crownus.ratelimit.rejections`
+metric (tags `limiter` and `partition`; no tenant tag, DEC-093).
 
 The API also logs a warning, `API rate limit exceeded`, with the partition kind (`PreAuthentication`,
 `Anonymous`, `User`, `TrayDevice`, `AdminAnonymous`, `Admin`), the tenant id when there is one, the path and the
