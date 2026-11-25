@@ -123,6 +123,7 @@ Fast gate only (Execution's instruction: the full integration run happens on fea
 - `verify-20261125-123611`: build PASS, unit 8371 passed, architecture 1022 passed.
 - SqlServerMigration tests alone (Testcontainers SQL Server, all migrations applied to a fresh database): 305 of 305 passed, `OtherModuleRepairTests` 6 of 6 included.
 - The read-only desktop check was run once on a migrated test database to confirm it runs; that temporary test was not committed.
+- After the Dapi device fix (commit aa535975f): `verify-20261125-154107` build PASS, unit 8371 passed, architecture 1022 passed. SqlServerMigration alone: 307 of 307 passed, including the 2 new device repair tests. The first gate run that day (`verify-20261125-153523`) had one timing failure, `WidgetDataOrchestratorTests.Slow_provider_times_out_into_error`, while the main checkout's full gate ran at the same time. That test is outside this change, and it passed 3 of 3 times on its own and in the rerun.
 
 Earlier runs, both fixed without weakening a test:
 
