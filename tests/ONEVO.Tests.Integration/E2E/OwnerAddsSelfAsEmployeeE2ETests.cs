@@ -71,9 +71,10 @@ public class OwnerAddsSelfAsEmployeeE2ETests : IAsyncLifetime
     }
 
     [Theory]
-    [InlineData(false)]
-    [InlineData(true)]
-    public async Task Owner_can_add_themselves_as_an_employee(bool positionGrantsTheOwnersOwnRole)
+    [InlineData(false, false)]
+    [InlineData(true, false)]
+    [InlineData(false, true)]
+    public async Task Owner_can_add_themselves_as_an_employee(bool positionGrantsTheOwnersOwnRole, bool withOnboardingChecklist)
     {
         await SignInNewOwnerAsync();
 
@@ -102,6 +103,24 @@ public class OwnerAddsSelfAsEmployeeE2ETests : IAsyncLifetime
 
         var workModeId = FirstId(await GetJsonAsync($"/api/v1/attendance/legal-entities/{legalEntityId}/work-modes"));
 
+        Guid? templateId = null;
+        if (withOnboardingChecklist)
+        {
+            // The owner's checklist tasks become Work tasks in the Office project, which needs the
+            // person finalizing to be an employee - and here that is the very employee being created.
+            var template = await PostOkAsync("/api/v1/people/checklist-templates", new
+            {
+                name = "Welcome",
+                templateType = "onboarding",
+                legalEntityId,
+                tasks = new[]
+                {
+                    new { title = "Read the handbook", ownerType = "employee", dueOffsetDays = 1, sequence = 1, isRequired = true },
+                },
+            });
+            templateId = template.GetProperty("id").GetGuid();
+        }
+
         var draft = await PostOkAsync("/api/v1/onboarding/drafts", new
         {
             firstName = "Self",
@@ -114,6 +133,7 @@ public class OwnerAddsSelfAsEmployeeE2ETests : IAsyncLifetime
             startDate = DateOnly.FromDateTime(DateTime.UtcNow).ToString("yyyy-MM-dd"),
             employeeNumber = "SE-0001",
             workModeId,
+            selectedTemplateId = templateId,
             lastSavedStep = "review",
         });
         var draftId = draft.GetProperty("id").GetGuid();
@@ -126,8 +146,17 @@ public class OwnerAddsSelfAsEmployeeE2ETests : IAsyncLifetime
         var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
         var ownerUserId = await db.Users.IgnoreQueryFilters()
             .Where(user => user.Email == OwnerEmail).Select(user => user.Id).SingleAsync();
-        (await db.Employees.IgnoreQueryFilters().CountAsync(employee => employee.UserId == ownerUserId))
-            .Should().Be(1, "the owner's own login now has exactly one employee profile");
+        var employeeIds = await db.Employees.IgnoreQueryFilters()
+            .Where(employee => employee.UserId == ownerUserId).Select(employee => employee.Id).ToListAsync();
+        employeeIds.Should().HaveCount(1, "the owner's own login now has exactly one employee profile");
+
+        if (withOnboardingChecklist)
+        {
+            var checklist = await db.EmployeeChecklistTasks.IgnoreQueryFilters()
+                .Where(task => task.EmployeeId == employeeIds[0]).ToListAsync();
+            checklist.Should().ContainSingle();
+            checklist[0].WorkTaskId.Should().NotBeNull("the checklist task is also a Work task in the Office project");
+        }
     }
 
     private async Task SignInNewOwnerAsync()
