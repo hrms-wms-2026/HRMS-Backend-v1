@@ -38,6 +38,7 @@ None of them was applied to a shared database by the agent.
 
 1. `Guid.Empty` becomes `NULL` on the nullable columns.
 2. A value found in another identity table (`users`, `platform_users`, `employees`) but not in the key's target becomes `NULL` on a nullable column. The counts are printed.
+   - 2b. The Dapi demo seeder wrote one device id per employee into `activity_snapshots`, `app_usage_snapshots` and `device_state_snapshots` without creating its `tray_device_registrations` row. The bad-data check found 12281 of 12281 rows unknown in each, all in tenant `6b0874ab-71db-401f-859f-bdd50c1317fb`. For that demo tenant only, the repair adds the missing registration with the same id, for the employee's user (or the demo owner), named "Demo laptop", with first and last seen taken from the snapshots. The count is printed. `DapiHistorySeeder` now creates the same rows itself, so a fresh seed is clean.
 3. Any other value that is not a row of its parent stops the migration with 50039, naming each `table.column=rows`. Nothing is deleted.
 
 The `payment_gateway` tables are not touched by these migrations: `CredentialOwnershipCompletionArchitectureTests` allows a later migration on them only the 39c audit key. So `payment_gateway_credentials.rotated_by_id` and `deactivated_by_id` stay on the allow-list, and the two `payment_gateway` cascades stay as they are (configs are never removed, so they never fire). Changing them needs that test's owner to agree; the first gate run found this (the generated operations failed the test), and the test was not widened.
@@ -105,11 +106,15 @@ The agent cannot connect to the database (the connection needs the `sa` password
 - Part 2 (39f): the distinct values and row counts of every column that was `todo` (all 98), so the constrained ones can be checked and the remaining ones get their value lists.
 - Part 3 (39g): the foreign keys that cascade in the database, with child row counts, and the latest applied migration.
 
-It runs in the `admin` tenant context mode, resets it at the end, and changes nothing (its only `INSERT`s fill table variables). Result: to be filled in after the user runs it.
+It runs in the `admin` tenant context mode, resets it at the end, and changes nothing (its only `INSERT`s fill table variables). Result: the user ran it on the local database on 2026-11-25 (file `C:\Users\User\Desktop\orphans39efg-result.txt`).
+
+- Part 1: every key shows 0 unknown, 0 `Guid.Empty` and 0 wrong-kind ids, except `activity_snapshots`, `app_usage_snapshots` and `device_state_snapshots.agent_device_id`. Those have 12281 of 12281 rows unknown each, all `NOT NULL`, none in `tray_device_registrations`. The cause was the Dapi demo seeder (step 2b above). `NULL` was not possible and no row is deleted: the repair adds the missing demo registrations, and the seeder now creates them.
+- Part 2: all 38 values found in the 60 newly constrained columns are on their lists. SQL Server lets `NULL` through a check, and the 39f pre-check counts it the same way, so the 30 `NULL` rows of `sprint_activity_logs.from_status` are fine. `tenant_subscriptions.maintenance_status` (2 `NULL` rows) and the other 14 columns listed are still `todo`, without a check.
+- Part 3: informational, nothing unexpected.
 
 ## Tests
 
-`OtherModuleRepairTests` (integration, `SqlServerMigration`): the 39e repair passes on clean data, sets `Guid.Empty` and an employees id in `users.suspended_by_id` to `NULL`, and stops with 50039 naming `users.suspended_by_id=1` on an unknown id without changing it; the 39f check passes on clean data and stops naming `clock_in_policies.scope_type=1` without changing the row.
+`OtherModuleRepairTests` (integration, `SqlServerMigration`): the 39e repair passes on clean data, adds the missing registration for an unknown device of the Dapi demo tenant (the snapshot is kept), still stops naming `activity_snapshots.agent_device_id=1` for any other tenant without adding one, sets `Guid.Empty` and an employees id in `users.suspended_by_id` to `NULL`, and stops with 50039 naming `users.suspended_by_id=1` on an unknown id without changing it; the 39f check passes on clean data and stops naming `clock_in_policies.scope_type=1` without changing the row.
 
 ## Gate
 
