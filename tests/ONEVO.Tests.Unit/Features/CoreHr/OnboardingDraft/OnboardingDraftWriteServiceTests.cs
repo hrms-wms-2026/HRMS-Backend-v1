@@ -1,4 +1,5 @@
 using Moq;
+using ONEVO.Application.Common.Models;
 using ONEVO.Application.Common.ServiceInterfaces;
 using ONEVO.Application.Features.Auth.Invite.RepositoryInterfaces;
 using ONEVO.Application.Features.Auth.Login.RepositoryInterfaces;
@@ -210,13 +211,17 @@ public sealed class OnboardingDraftWriteServiceTests
 
     private sealed record SelfFinalize(
         OnboardingDraftWriteService Service, Guid TenantId, Guid DraftId, Guid ActingUserId, Guid ReservedId,
-        Mock<IInvitationTokenRepository> Invitations, Mock<IOutboxWriter> Outbox, Mock<IPositionAssignmentRepository> Assignments);
+        Mock<IInvitationTokenRepository> Invitations, Mock<IOutboxWriter> Outbox, Mock<IPositionAssignmentRepository> Assignments,
+        Mock<IUserRoleRepository> UserRoles, OnboardingDraftEntity Draft, IReadOnlyList<EmployeeChecklistTask> ChecklistTasks);
 
     /// <summary>A finalize with a position seat, where the acting user's login email is
     /// <paramref name="currentUserEmail"/> and the login found for the draft email has id <paramref name="foundUserId"/>
-    /// (null = the acting user).</summary>
+    /// (null = the acting user). <paramref name="templateRoleId"/> gives the position an access role that needs no
+    /// approval; <paramref name="userAlreadyHasTemplateRole"/> says the found login already holds it.</summary>
     private SelfFinalize BuildSelfFinalize(
-        string draftEmail, string currentUserEmail, Guid? foundUserId = null, bool templateRequiresApproval = false)
+        string draftEmail, string currentUserEmail, Guid? foundUserId = null, bool templateRequiresApproval = false,
+        Guid? templateRoleId = null, bool userAlreadyHasTemplateRole = false,
+        Mock<IEmployeeChecklistWorkTaskProvisioner>? workTaskProvisioner = null)
     {
         var tenantId = Guid.NewGuid();
         var actingUserId = Guid.NewGuid();
@@ -235,6 +240,40 @@ public sealed class OnboardingDraftWriteServiceTests
         {
             _positionRepository.Setup(r => r.GetAccessTemplateByPositionAsync(tenantId, positionId, It.IsAny<CancellationToken>()))
                 .ReturnsAsync(new PositionAccessTemplate { Id = Guid.NewGuid(), RoleId = Guid.NewGuid(), IsActive = true, RequiresApproval = true });
+        }
+        else if (templateRoleId is { } roleId)
+        {
+            _positionRepository.Setup(r => r.GetAccessTemplateByPositionAsync(tenantId, positionId, It.IsAny<CancellationToken>()))
+                .ReturnsAsync(new PositionAccessTemplate { Id = Guid.NewGuid(), RoleId = roleId, IsActive = true, RequiresApproval = false });
+        }
+        // With a provisioner, the draft carries an onboarding checklist of one task for the new hire.
+        var checklistTemplates = new Mock<IChecklistTemplateRepository>();
+        var checklistTaskRepository = new Mock<IEmployeeChecklistTaskRepository>();
+        IReadOnlyList<EmployeeChecklistTask> checklistTasks = Array.Empty<EmployeeChecklistTask>();
+        if (workTaskProvisioner is not null)
+        {
+            var template = new ChecklistTemplate { Id = Guid.NewGuid(), TenantId = tenantId, Name = "Welcome" };
+            draft.SelectedTemplateId = template.Id;
+            checklistTemplates.Setup(r => r.GetActiveOnboardingAsync(
+                    tenantId, template.Id, draft.LegalEntityId, It.IsAny<Guid?>(), positionId, It.IsAny<CancellationToken>()))
+                .ReturnsAsync(template);
+            checklistTasks = new[]
+            {
+                new EmployeeChecklistTask
+                {
+                    Id = Guid.NewGuid(), TenantId = tenantId, TaskTitle = "Read the handbook",
+                    AssignedToId = foundUserId ?? actingUserId, DueDate = DateOnly.FromDateTime(DateTime.UtcNow).AddDays(1),
+                },
+            };
+            checklistTaskRepository.Setup(r => r.InstantiateAsync(
+                    template, It.IsAny<Guid>(), It.IsAny<Guid>(), It.IsAny<string?>(), It.IsAny<DateOnly>(), It.IsAny<CancellationToken>()))
+                .ReturnsAsync(checklistTasks);
+        }
+        var userRoles = new Mock<IUserRoleRepository>();
+        if (templateRoleId is { } heldRoleId)
+        {
+            userRoles.Setup(r => r.ExistsAsync(foundUserId ?? actingUserId, heldRoleId, It.IsAny<CancellationToken>()))
+                .ReturnsAsync(userAlreadyHasTemplateRole);
         }
         _seatEntitlementService.Setup(s => s.EvaluateAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(new SeatDecision(SeatDecisionStatus.Approved, 10, 0, 0, 10, false, false, "ok"));
@@ -268,16 +307,94 @@ public sealed class OnboardingDraftWriteServiceTests
 
         var service = new OnboardingDraftWriteService(
             _draftRepository.Object, _employeeRepository.Object,
-            users.Object, Mock.Of<IUserRoleRepository>(),
+            users.Object, userRoles.Object,
             _positionRepository.Object, assignments.Object,
             _legalEntityRepository.Object, _departmentRepository.Object,
             employmentTypes.Object, _workModeRepository.Object,
             _seatEntitlementService.Object, Mock.Of<IAccessGrantRequestRepository>(),
-            permissions.Object, Mock.Of<IChecklistTemplateRepository>(),
-            Mock.Of<IEmployeeChecklistTaskRepository>(), invitations.Object,
+            permissions.Object, checklistTemplates.Object,
+            checklistTaskRepository.Object, invitations.Object,
             Mock.Of<ITenantRepository>(), outbox.Object,
-            tokens.Object, currentUser.Object, _clock.Object, unitOfWork.Object);
-        return new SelfFinalize(service, tenantId, draft.Id, actingUserId, reservedId, invitations, outbox, assignments);
+            tokens.Object, currentUser.Object, _clock.Object, unitOfWork.Object,
+            workTaskProvisioner: workTaskProvisioner?.Object);
+        return new SelfFinalize(service, tenantId, draft.Id, actingUserId, reservedId, invitations, outbox, assignments, userRoles,
+            draft, checklistTasks);
+    }
+
+    private static readonly OfficeProjectContext Office = new(
+        Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid(), new Dictionary<string, Guid> { ["onboarding"] = Guid.NewGuid() });
+
+    [Fact]
+    public async Task Finalize_SelfDraftWithChecklist_CreatesWorkTasksAfterYouAreAnEmployee()
+    {
+        // The Office project needs the person finalizing to be an active employee. Adding yourself,
+        // that is only true once finalize has committed, so the Work tasks must come after it.
+        var provisioner = new Mock<IEmployeeChecklistWorkTaskProvisioner>();
+        var s = BuildSelfFinalize(draftEmail: "owner@acme.test", currentUserEmail: "owner@acme.test",
+            workTaskProvisioner: provisioner);
+        string? statusWhenOfficeRequested = null;
+        provisioner.Setup(p => p.EnsureOfficeProjectAsync(s.TenantId, It.IsAny<Guid>(), s.ActingUserId, It.IsAny<DateOnly>(), It.IsAny<CancellationToken>()))
+            .Callback(() => statusWhenOfficeRequested = s.Draft.Status)
+            .ReturnsAsync(Result<OfficeProjectContext>.Success(Office));
+        provisioner.Setup(p => p.ProvisionAsync(Office, It.IsAny<ONEVO.Domain.Features.CoreHr.Entities.Employee>(), s.ChecklistTasks, s.ActingUserId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(Result<int>.Success(1));
+
+        var result = await s.Service.FinalizeAsync(s.TenantId, s.ActingUserId, s.DraftId, CancellationToken.None);
+
+        Assert.True(result.IsSuccess, result.Error);
+        Assert.Equal(OnboardingDraftStatus.Finalized, statusWhenOfficeRequested);
+        provisioner.Verify(p => p.ProvisionAsync(Office, It.Is<ONEVO.Domain.Features.CoreHr.Entities.Employee>(e => e.UserId == s.ActingUserId), s.ChecklistTasks, s.ActingUserId, It.IsAny<CancellationToken>()), Times.Once);
+        provisioner.Verify(p => p.CopyTemplateAttachmentsAsync(s.TenantId, s.ChecklistTasks, s.ActingUserId, It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Fact]
+    public async Task Finalize_SelfDraftWithChecklist_WorkTaskFailure_StillAddsYou()
+    {
+        var provisioner = new Mock<IEmployeeChecklistWorkTaskProvisioner>();
+        var s = BuildSelfFinalize(draftEmail: "owner@acme.test", currentUserEmail: "owner@acme.test",
+            workTaskProvisioner: provisioner);
+        provisioner.Setup(p => p.EnsureOfficeProjectAsync(s.TenantId, It.IsAny<Guid>(), s.ActingUserId, It.IsAny<DateOnly>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(Result<OfficeProjectContext>.Success(Office));
+        provisioner.Setup(p => p.ProvisionAsync(Office, It.IsAny<ONEVO.Domain.Features.CoreHr.Entities.Employee>(), s.ChecklistTasks, s.ActingUserId, It.IsAny<CancellationToken>()))
+            .Callback(() => s.ChecklistTasks[0].WorkTaskId = Guid.NewGuid())
+            .ReturnsAsync(Result<int>.UnprocessableEntity("no assignee"));
+
+        var result = await s.Service.FinalizeAsync(s.TenantId, s.ActingUserId, s.DraftId, CancellationToken.None);
+
+        Assert.True(result.IsSuccess, result.Error);
+        Assert.Equal("onboarding.finalize.self_employee_created", result.Value!.MessageKey);
+        Assert.Null(s.ChecklistTasks[0].WorkTaskId);
+        provisioner.Verify(p => p.CopyTemplateAttachmentsAsync(It.IsAny<Guid>(), It.IsAny<IReadOnlyList<EmployeeChecklistTask>>(), It.IsAny<Guid>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task Finalize_SelfDraft_PositionRoleAlreadyHeld_DoesNotAddItAgain()
+    {
+        // The owner's login already holds the role the position grants (user_roles is keyed on
+        // user + role), so adding it again would fail the whole finalize with a key conflict.
+        var s = BuildSelfFinalize(draftEmail: "owner@acme.test", currentUserEmail: "owner@acme.test",
+            templateRoleId: Guid.NewGuid(), userAlreadyHasTemplateRole: true);
+
+        var result = await s.Service.FinalizeAsync(s.TenantId, s.ActingUserId, s.DraftId, CancellationToken.None);
+
+        Assert.True(result.IsSuccess, result.Error);
+        s.UserRoles.Verify(r => r.AddAsync(It.IsAny<ONEVO.Domain.Features.Auth.Entities.UserRole>(), It.IsAny<CancellationToken>()), Times.Never);
+        Assert.Equal("onboarding.finalize.self_employee_created", result.Value!.MessageKey);
+    }
+
+    [Fact]
+    public async Task Finalize_SelfDraft_PositionRoleNotYetHeld_AddsIt()
+    {
+        var roleId = Guid.NewGuid();
+        var s = BuildSelfFinalize(draftEmail: "owner@acme.test", currentUserEmail: "owner@acme.test",
+            templateRoleId: roleId, userAlreadyHasTemplateRole: false);
+
+        var result = await s.Service.FinalizeAsync(s.TenantId, s.ActingUserId, s.DraftId, CancellationToken.None);
+
+        Assert.True(result.IsSuccess, result.Error);
+        s.UserRoles.Verify(r => r.AddAsync(
+            It.Is<ONEVO.Domain.Features.Auth.Entities.UserRole>(role => role.UserId == s.ActingUserId && role.RoleId == roleId),
+            It.IsAny<CancellationToken>()), Times.Once);
     }
 
     [Fact]
