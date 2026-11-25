@@ -38,6 +38,7 @@ public sealed class TenantContextSwitcher : ITenantContextSwitcher
                 connection, tenant.TenantId.ToString(), "tenant");
             command.Transaction = dbTransaction;
             await command.ExecuteNonQueryAsync(ct);
+            _rlsInterceptor.ForgetAppliedContext();
             return;
         }
 
