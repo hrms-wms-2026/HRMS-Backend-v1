@@ -40,7 +40,7 @@ public sealed class GetTeamScheduleQueryHandler(
             ? await identity.ResolveCallerEmployeeIdAsync(currentUser.TenantId, currentUser.UserId, ct)
             : null;
         if (caller is not Guid callerId)
-            return Result<TeamScheduleResponse>.Failure("Team schedule not found.", 404, PlannerErrorCodes.NotFound);
+            return Result<TeamScheduleResponse>.Failure("You have no employee profile in this organization.", 404, PlannerErrorCodes.NoEmployeeProfile);
         var tenantId = currentUser.TenantId;
         var now = clock.UtcNow;
         var plannerEnabled = options.Value.Enabled;

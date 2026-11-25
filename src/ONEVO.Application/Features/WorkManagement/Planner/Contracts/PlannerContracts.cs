@@ -12,6 +12,8 @@ public static class PlannerErrorCodes
     public const string InvalidTime = "planner_invalid_time";
     public const string NotFound = "planner_not_found";
     public const string InvalidRange = "planner_invalid_range";
+    /// <summary>The signed-in user has no employee profile in this tenant (e.g. an admin-only account), so there is no planner to show.</summary>
+    public const string NoEmployeeProfile = "planner_no_employee_profile";
 }
 
 /// <param name="TaskId">A task assigned to the caller that is not a meeting.</param>

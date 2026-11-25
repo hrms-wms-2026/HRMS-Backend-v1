@@ -75,7 +75,7 @@ public sealed class TeamPlannerRequestHandler :
             : null;
         return caller is Guid employeeId
             ? await run(_currentUser.TenantId, employeeId)
-            : Result<T>.Failure("Planner day not found.", 404, PlannerErrorCodes.NotFound);
+            : Result<T>.Failure("You have no employee profile in this organization.", 404, PlannerErrorCodes.NoEmployeeProfile);
     }
 }
 
@@ -128,6 +128,6 @@ public sealed class PlannerRequestHandler :
             : null;
         return caller is Guid employeeId
             ? await run(_currentUser.TenantId, employeeId)
-            : Result<T>.Failure("Planner day not found.", 404, PlannerErrorCodes.NotFound);
+            : Result<T>.Failure("You have no employee profile in this organization.", 404, PlannerErrorCodes.NoEmployeeProfile);
     }
 }
