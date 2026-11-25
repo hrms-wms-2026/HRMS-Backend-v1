@@ -1,4 +1,5 @@
 using FluentValidation;
+using ONEVO.Application.Features.DevPlatform.Billing.Commands.UpdateTenantSubscription;
 
 namespace ONEVO.Application.Features.DevPlatform.Tenancy.Commands.CreateTenant;
 
@@ -19,5 +20,9 @@ public class CreateTenantCommandValidator : AbstractValidator<CreateTenantComman
         RuleFor(x => x.Country).NotEmpty().MaximumLength(3);
         RuleFor(x => x.Timezone).NotEmpty();
         RuleFor(x => x.Currency).NotEmpty().MaximumLength(3);
+        When(x => x.Subscription?.IncludedSeats is not null, () =>
+            RuleFor(x => x.Subscription.IncludedSeats!.Value)
+                .InclusiveBetween(0, UpdateTenantSubscriptionCommandValidator.MaxSeats)
+                .WithName("included_seats"));
     }
 }

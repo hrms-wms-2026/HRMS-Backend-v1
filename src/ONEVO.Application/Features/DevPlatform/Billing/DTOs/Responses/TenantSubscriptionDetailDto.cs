@@ -34,4 +34,9 @@ public sealed record TenantSubscriptionDetailDto(
     [property: JsonPropertyName("is_past_due")] bool IsPastDue,
     [property: JsonPropertyName("is_in_grace_period")] bool IsInGracePeriod,
     [property: JsonPropertyName("days_until_renewal")] int? DaysUntilRenewal,
-    [property: JsonPropertyName("days_until_access_ends")] int? DaysUntilAccessEnds);
+    [property: JsonPropertyName("days_until_access_ends")] int? DaysUntilAccessEnds,
+    [property: JsonPropertyName("included_seats")] int? IncludedSeats = null,
+    [property: JsonPropertyName("overage_allowed")] bool? OverageAllowed = null,
+    [property: JsonPropertyName("used_seats")] int? UsedSeats = null,
+    [property: JsonPropertyName("commercial_model")] string? CommercialModel = null,
+    [property: JsonPropertyName("is_test")] bool IsTest = false);

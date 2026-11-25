@@ -15,8 +15,13 @@ public class ListTenantsQueryHandler
     private const int MaxPageSize = 100;
 
     private readonly ITenantRepository _tenants;
+    private readonly ITenantSubscriptionRepository _subscriptions;
 
-    public ListTenantsQueryHandler(ITenantRepository tenants) => _tenants = tenants;
+    public ListTenantsQueryHandler(ITenantRepository tenants, ITenantSubscriptionRepository subscriptions)
+    {
+        _tenants = tenants;
+        _subscriptions = subscriptions;
+    }
 
     public async Task<Result<TenantListResponseDto>> Handle(
         ListTenantsQuery request,
@@ -49,7 +54,10 @@ public class ListTenantsQueryHandler
             string.IsNullOrWhiteSpace(request.Search) ? null : request.Search.Trim(),
             ct);
 
-        var items = tenants.Select(TenancyMapper.ToListItemDto).ToList();
+        var testTenantIds = await _subscriptions.GetTestTenantIdsAsync(tenants.Select(t => t.Id).ToList(), ct);
+        var items = tenants
+            .Select(t => TenancyMapper.ToListItemDto(t) with { IsTest = testTenantIds.Contains(t.Id) })
+            .ToList();
 
         return Result<TenantListResponseDto>.Success(TenancyMapper.ToListResponseDto(items, total, page, size));
     }
