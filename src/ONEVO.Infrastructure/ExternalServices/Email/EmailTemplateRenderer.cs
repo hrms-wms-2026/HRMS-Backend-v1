@@ -67,12 +67,15 @@ public class EmailTemplateRenderer : IEmailTemplateRenderer
         var firstName = Get(f, "invited_first_name");
         var token = Get(f, "invite_token");
         var expires = Get(f, "invite_expires_at");
+        var tenantSlug = Get(f, "tenant_slug");
         var appBaseUrl = string.IsNullOrWhiteSpace(_options.AppBaseUrl)
             ? Get(f, "app_base_url", fallback: string.Empty)
             : _options.AppBaseUrl;
+        // The invitation row is tenant-scoped, so the link must carry the tenant (see ApplyTenantSlug).
+        appBaseUrl = ApplyTenantSlug(appBaseUrl, tenantSlug);
         var inviteUrl = string.IsNullOrWhiteSpace(appBaseUrl)
             ? $"[invite_url placeholder - set Email:AppBaseUrl] token={token}"
-            : $"{appBaseUrl.TrimEnd('/')}/auth/invitations/{Uri.EscapeDataString(token)}";
+            : WithTenantQuery($"{appBaseUrl.TrimEnd('/')}/auth/invitations/{Uri.EscapeDataString(token)}", tenantSlug);
 
         var subject = $"You're invited to manage {company} on CROWNUS";
 

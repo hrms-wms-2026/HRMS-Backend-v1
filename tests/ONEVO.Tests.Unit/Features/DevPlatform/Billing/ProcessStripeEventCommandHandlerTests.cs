@@ -70,6 +70,24 @@ public sealed class ProcessStripeEventCommandHandlerTests
     }
 
     [Fact]
+    public async Task Handle_InvoicePaymentFailed_ForTestTenant_IsIgnored()
+    {
+        var subscription = BuildSubscription();
+        subscription.CommercialModel = "test";
+        subscription.Status = "active";
+        _subscriptions.GetByGatewaySubscriptionRefAsync(GatewaySubRef, Arg.Any<CancellationToken>())
+            .Returns(subscription);
+
+        var result = await _handler.Handle(BuildInvoiceCommand("invoice.payment_failed", paidAt: null), CancellationToken.None);
+
+        result.IsSuccess.Should().BeTrue();
+        subscription.Status.Should().Be("active");
+        subscription.AccessEndsAt.Should().BeNull();
+        await _invoiceRepo.DidNotReceive().AddAsync(Arg.Any<SubscriptionInvoice>(), Arg.Any<CancellationToken>());
+        await _unitOfWork.DidNotReceive().SaveChangesAsync(Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
     public async Task Handle_InvoicePaymentFailed_CreatesOpenInvoiceAndSetsPastDueGrace()
     {
         var subscription = BuildSubscription();

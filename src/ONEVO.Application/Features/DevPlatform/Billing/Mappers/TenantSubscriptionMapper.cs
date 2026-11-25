@@ -11,7 +11,8 @@ public static class TenantSubscriptionMapper
         Tenant tenant,
         TenantSubscription subscription,
         SubscriptionPlan? plan,
-        DateTimeOffset now)
+        DateTimeOffset now,
+        int? usedSeats = null)
     {
         var trialEndsAt = subscription.TrialEndDate;
         var accessEndsAt = subscription.AccessEndsAt;
@@ -49,7 +50,12 @@ public static class TenantSubscriptionMapper
             SubscriptionStatusRules.IsPastDue(subscription.Status),
             SubscriptionStatusRules.IsInGracePeriod(subscription.Status, accessEndsAt, now),
             SubscriptionStatusRules.DaysUntilRenewal(subscription.CurrentPeriodEnd, now),
-            SubscriptionStatusRules.DaysUntilAccessEnds(accessEndsAt, now));
+            SubscriptionStatusRules.DaysUntilAccessEnds(accessEndsAt, now),
+            subscription.IncludedSeats,
+            subscription.OverageAllowed,
+            usedSeats,
+            subscription.CommercialModel,
+            CommercialModels.IsTest(subscription));
     }
 
     private static decimal ResolveAmount(TenantSubscription subscription) =>

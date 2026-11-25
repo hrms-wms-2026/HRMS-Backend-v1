@@ -64,6 +64,33 @@ public sealed class EfWorkApprovalRequestRepositoryTests : IDisposable
     }
 
     [Fact]
+    public async Task ListPendingForProjects_ReturnsPendingRowsOfTheGivenProjectsOnly()
+    {
+        var otherProject = Guid.NewGuid();
+        var unqueriedProject = Guid.NewGuid();
+        var pendingHere = NewRequest(Guid.NewGuid());
+        var pendingThere = NewRequest(Guid.NewGuid());
+        pendingThere.ProjectId = otherProject;
+        var notQueried = NewRequest(Guid.NewGuid());
+        notQueried.ProjectId = unqueriedProject;
+        var otherTenant = NewRequest(Guid.NewGuid());
+        otherTenant.TenantId = Guid.NewGuid();
+        await using (var db = CreateContext())
+        {
+            db.WorkApprovalRequests.AddRange(
+                pendingHere, pendingThere, notQueried, otherTenant,
+                NewRequest(Guid.NewGuid(), WorkApprovalRequestStatuses.Approved));
+            await db.SaveChangesAsync();
+        }
+
+        await using var read = CreateContext();
+        var repo = new EfWorkApprovalRequestRepository(read);
+        (await repo.ListPendingForProjectsAsync(TenantId, [ProjectId, otherProject])).Select(r => r.Id)
+            .Should().BeEquivalentTo([pendingHere.Id, pendingThere.Id]);
+        (await repo.ListPendingForProjectsAsync(TenantId, [])).Should().BeEmpty();
+    }
+
+    [Fact]
     public async Task GetPendingTargetIds_ReturnsOnlyPendingTargetsAmongTheGivenIds()
     {
         var pendingTarget = Guid.NewGuid();

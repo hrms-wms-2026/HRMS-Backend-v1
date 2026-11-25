@@ -90,6 +90,37 @@ public class EfExceptionRepository : IExceptionRepository
             .Distinct()
             .ToListAsync(ct);
 
+    public async Task<IReadOnlyList<Guid>> ListActiveInboxEmployeeIdsAsync(Guid tenantId, bool calendar, CancellationToken ct) =>
+        await _db.Exceptions.AsNoTracking()
+            .Where(e => e.TenantId == tenantId && e.Status != ExceptionStatus.Resolved
+                && CalendarTypes.Contains(e.Type) == calendar)
+            .Select(e => e.EmployeeId)
+            .Distinct()
+            .ToListAsync(ct);
+
+    public Task<int> CountActiveInboxAsync(Guid tenantId, ExceptionInboxCountCriteria criteria, CancellationToken ct)
+    {
+        var routedEmployeeIds = criteria.RoutedEmployeeIds.ToList();
+        var hrFallbackEmployeeIds = criteria.HrFallbackEmployeeIds.ToList();
+        var heldCaseIds = criteria.HeldCaseIds.ToList();
+        var addedCaseIds = criteria.AddedCaseIds.ToList();
+        var journaledEscalatedCaseIds = criteria.JournaledEscalatedCaseIds.ToList();
+
+        return _db.Exceptions.AsNoTracking().CountAsync(e =>
+            e.TenantId == tenantId
+            && e.Status != ExceptionStatus.Resolved
+            && CalendarTypes.Contains(e.Type) == criteria.Calendar
+            && (e.EmployeeId == criteria.CallerEmployeeId
+                || routedEmployeeIds.Contains(e.EmployeeId)
+                || (hrFallbackEmployeeIds.Contains(e.EmployeeId)
+                    && !journaledEscalatedCaseIds.Contains(e.Id))
+                || heldCaseIds.Contains(e.Id)
+                || addedCaseIds.Contains(e.Id)
+                || (criteria.IncludeLegacyHrEscalations
+                    && e.Status == ExceptionStatus.Escalated
+                    && !journaledEscalatedCaseIds.Contains(e.Id))), ct);
+    }
+
     public async Task<IReadOnlyList<MonitoringException>> GetListAsync(
         Guid tenantId, ExceptionListFilter filter, int page, int pageSize, CancellationToken ct) =>
         await Filtered(tenantId, filter)

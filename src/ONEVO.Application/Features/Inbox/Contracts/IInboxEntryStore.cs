@@ -28,14 +28,10 @@ public interface IInboxEntryStore
         Guid tenantId, Guid employeeId, IReadOnlyCollection<string> sources, CancellationToken ct);
 }
 
-/// <summary>Count-only result from one source, the shape task 00a gives every provider. <see cref="ByKind"/> keys are
-/// the source-local kind names; the router prefixes them with the source.</summary>
-public sealed record InboxSourceCounts(int PendingReceived, int OpenAlerts, IReadOnlyDictionary<string, int> ByKind);
-
 /// <summary>
 /// Task 37: a source whose inbox counts come from inbox_items instead of building its rows. The router uses it in place
-/// of the source's list for the badge counts. (Task 00a adds CountAsync to every provider; when both are merged, the
-/// leave provider's CountAsync is this.)
+/// of the source's own <see cref="IInboxSourceProvider.CountAsync"/> for the badge counts (same
+/// <see cref="InboxSourceCounts"/> shape).
 /// </summary>
 public interface IInboxHeaderCountSource
 {

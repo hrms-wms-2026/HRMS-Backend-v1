@@ -564,6 +564,16 @@ public class OnboardingDraftWriteService : IOnboardingDraftWriteService
         // the single SaveChangesAsync at the end, so this reorder changes nothing transactionally.
         var normalizedEmail = draft.WorkEmail.Trim().ToLowerInvariant();
         var user = await _userRepository.GetByTenantAndEmailAsync(draft.TenantId, normalizedEmail, ct);
+
+        // "Add yourself as an employee": the draft is for the acting user's own login, so the seat is
+        // activated now and no invitation is sent. Keyed on the email AND the found login being the actor,
+        // so it can never attach an employee to someone else's login or skip anyone else's invitation.
+        var currentUserEmail = (_currentUser.Email ?? string.Empty).Trim().ToLowerInvariant();
+        var isOwnEmail = currentUserEmail.Length > 0 && currentUserEmail == normalizedEmail;
+        if (isOwnEmail && user is not null && user.Id != actingUserId)
+            return Result<FinalizeOnboardingDraftResponse>.Conflict("This email belongs to a different sign-in in this company.");
+        var isSelf = isOwnEmail && user is not null;
+
         if (user is null)
         {
             user = OnboardingFinalizeFactory.NewPendingUser(draft);
@@ -647,6 +657,11 @@ public class OnboardingDraftWriteService : IOnboardingDraftWriteService
                         draft.TenantId, employeeId, position.Id, draft.StartDate.Value, actingUserId, draft.ReportsToEmployeeId, txnCt);
                     if (reservedAssignmentId is null)
                         throw new PositionAtCapacityException();
+
+                    // Nobody else accepts an invitation for your own profile, so the planned seat
+                    // is activated here instead of in AcceptEmployeeInvitation.
+                    if (isSelf)
+                        await _positionAssignmentRepository.ActivatePlannedAsync(draft.TenantId, reservedAssignmentId.Value, txnCt);
                 }
 
                 if (officeProject is not null)
@@ -694,20 +709,23 @@ public class OnboardingDraftWriteService : IOnboardingDraftWriteService
                     await _userRoleRepository.AddAsync(userRole, txnCt);
                 }
 
-                var rawToken = _tokenGenerator.GenerateUrlSafeOpaqueToken();
-                var tokenHash = InvitationTokenHasher.Hash(rawToken);
-                var expiresAt = _clock.UtcNow.AddHours(OnboardingFinalizeFactory.InvitationValidityHours);
+                if (!isSelf)
+                {
+                    var rawToken = _tokenGenerator.GenerateUrlSafeOpaqueToken();
+                    var tokenHash = InvitationTokenHasher.Hash(rawToken);
+                    var expiresAt = _clock.UtcNow.AddHours(OnboardingFinalizeFactory.InvitationValidityHours);
 
-                var invitation = OnboardingFinalizeFactory.NewInvitation(
-                    draft, user.Id, employeeId, reservedAssignmentId, tokenHash, expiresAt, actingUserId, _clock.UtcNow);
-                await _invitationTokenRepository.AddAsync(invitation, txnCt);
+                    var invitation = OnboardingFinalizeFactory.NewInvitation(
+                        draft, user.Id, employeeId, reservedAssignmentId, tokenHash, expiresAt, actingUserId, _clock.UtcNow);
+                    await _invitationTokenRepository.AddAsync(invitation, txnCt);
 
-                var tenant = await _tenantRepository.GetByIdAsync(draft.TenantId, txnCt);
-                await _outboxWriter.EnqueueAsync(
-                    OutboxMessageTypes.EmployeeOnboardingInviteEmail,
-                    OnboardingFinalizeFactory.NewInviteEmailPayload(draft, employeeId, invitation.Id, rawToken, expiresAt, tenant?.Slug),
-                    draft.TenantId,
-                    txnCt);
+                    var tenant = await _tenantRepository.GetByIdAsync(draft.TenantId, txnCt);
+                    await _outboxWriter.EnqueueAsync(
+                        OutboxMessageTypes.EmployeeOnboardingInviteEmail,
+                        OnboardingFinalizeFactory.NewInviteEmailPayload(draft, employeeId, invitation.Id, rawToken, expiresAt, tenant?.Slug),
+                        draft.TenantId,
+                        txnCt);
+                }
 
                 OnboardingFinalizeFactory.MarkFinalized(draft, _clock.UtcNow);
 
@@ -748,8 +766,8 @@ public class OnboardingDraftWriteService : IOnboardingDraftWriteService
 
         return Result<FinalizeOnboardingDraftResponse>.Success(new FinalizeOnboardingDraftResponse(
             draft.Id, employeeId, draft.Status, draft.DraftReason,
-            InvitationQueued: true, PositionApprovalPending: false, ChecklistTasksCreated: tasksCreated > 0,
-            MessageKey: "onboarding.finalize.invitation_sent"));
+            InvitationQueued: !isSelf, PositionApprovalPending: false, ChecklistTasksCreated: tasksCreated > 0,
+            MessageKey: isSelf ? "onboarding.finalize.self_employee_created" : "onboarding.finalize.invitation_sent"));
     }
 
     private async Task<bool> IsActiveEmployeeInLegalEntityAsync(

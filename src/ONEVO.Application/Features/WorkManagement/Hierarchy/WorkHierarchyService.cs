@@ -31,4 +31,13 @@ public sealed class WorkHierarchyService : IWorkHierarchyService
         }
         return null;
     }
+
+    public async Task<IReadOnlyDictionary<Guid, Guid?>> FindActiveHoldersAsync(
+        Guid tenantId, ProjectModuleTree tree, IReadOnlyCollection<Guid> positionModuleIds, CancellationToken ct = default)
+    {
+        var chains = positionModuleIds.Distinct().ToDictionary(id => id, id => tree.AncestorChain(id));
+        var active = await _membership.GetActiveAssigneeIdsAsync(
+            tenantId, chains.Values.SelectMany(chain => chain.Select(m => m.OwnerId)).Distinct().ToList(), ct);
+        return chains.ToDictionary(c => c.Key, c => c.Value.Select(m => (Guid?)m.OwnerId).FirstOrDefault(o => active.Contains(o!.Value)));
+    }
 }

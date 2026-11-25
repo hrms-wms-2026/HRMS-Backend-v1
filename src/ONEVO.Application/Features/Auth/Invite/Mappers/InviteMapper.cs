@@ -39,7 +39,8 @@ internal static class InviteMapper
             GoogleSignInEnabled: googleOk,
             AllowGoogleEmailMismatch: allowMismatch,
             AllowedEmailDomains: domains,
-            RequiresPassword: requiresPassword);
+            RequiresPassword: requiresPassword,
+            Purpose: inv.Purpose);
     }
 
     private static string ComputeStatus(InvitationToken inv, DateTimeOffset now)
