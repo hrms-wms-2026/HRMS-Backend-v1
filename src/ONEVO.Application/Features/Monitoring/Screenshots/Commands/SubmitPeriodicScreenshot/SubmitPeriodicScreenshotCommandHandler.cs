@@ -111,9 +111,9 @@ public class SubmitPeriodicScreenshotCommandHandler
             AgentDeviceId = deviceId,
             AgentCommandId = null,
             FileRecordId = uploadResult.Value!.Id,
-            EvidenceType = "screenshot",
+            EvidenceType = MonitoringEvidenceTypes.Screenshot,
             Source = "agent",
-            TriggerType = "periodic",
+            TriggerType = MonitoringEvidenceTriggers.Periodic,
             CapturedAt = capturedAt,
             CreatedAt = now
         };

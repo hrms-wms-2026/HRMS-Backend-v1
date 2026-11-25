@@ -31,6 +31,25 @@ using ONEVO.Domain.Features.WorkManagement.Projects.Entities;
 using ONEVO.Domain.Features.WorkManagement.ReleaseCalendar.Entities;
 using ONEVO.Domain.Features.WorkManagement.Sprints.Entities;
 using ONEVO.Domain.Features.WorkManagement.Tasks.Entities;
+using ONEVO.Domain.Features.Conversations.Entities;
+using ONEVO.Domain.Features.Dashboard.Entities;
+using ONEVO.Domain.Features.Inbox.Entities;
+using ONEVO.Domain.Features.Monitoring.ActivityMonitoring.Entities;
+using ONEVO.Domain.Features.Monitoring.AppUsage.Entities;
+using ONEVO.Domain.Features.Monitoring.Biometrics.Entities;
+using ONEVO.Domain.Features.Monitoring.CheckIn.Entities;
+using ONEVO.Domain.Features.Monitoring.DeviceState.Entities;
+using ONEVO.Domain.Features.Monitoring.Meetings.Entities;
+using ONEVO.Domain.Features.Monitoring.PermissionConsent.Entities;
+using ONEVO.Domain.Features.Monitoring.Screenshots.Entities;
+using ONEVO.Domain.Features.Monitoring.Settings.Entities;
+using ONEVO.Domain.Features.Monitoring.TrayActivation.Entities;
+using ONEVO.Domain.Features.Monitoring.WorkSessions.Entities;
+using ONEVO.Domain.Features.SharedPlatform.Notifications.Entities;
+using Cal = ONEVO.Domain.Features.Calendar.Entities;
+using MonitoringException = ONEVO.Domain.Features.Monitoring.Exceptions.Entities.Exception;
+using MonitoringNotification = ONEVO.Domain.Features.Monitoring.Notifications.Entities.Notification;
+using SharedPlatformNotification = ONEVO.Domain.Features.SharedPlatform.Notifications.Entities.Notification;
 using WorkTaskStatus = ONEVO.Domain.Features.WorkManagement.Tasks.Entities.TaskStatus;
 
 namespace ONEVO.Infrastructure.Persistence.Integrity;
@@ -52,6 +71,14 @@ public static class ReferenceForeignKeys
         ApplyLeave(modelBuilder);
         ApplyTimeAttendance(modelBuilder);
         ApplyWorkManagement(modelBuilder);
+        ApplyMonitoring(modelBuilder);
+        ApplyAuth(modelBuilder);
+        ApplyCalendar(modelBuilder);
+        ApplyConversations(modelBuilder);
+        ApplyInbox(modelBuilder);
+        ApplySharedPlatform(modelBuilder);
+        ApplyInfrastructureModule(modelBuilder);
+        ApplyDashboard(modelBuilder);
         ApplyAuditColumns(modelBuilder);
         ApplyTenantColumns(modelBuilder);
     }
@@ -272,6 +299,153 @@ public static class ReferenceForeignKeys
         Fk<TaskAssignment, Employee>(b, x => x.AssignedById);
         Fk<TaskDraft, User>(b, x => x.OwnerUserId);
         Fk<TaskDraft, Project>(b, x => x.ProjectId);
+    }
+
+    // Task 39e: Monitoring.
+    private static void ApplyMonitoring(ModelBuilder b)
+    {
+        Fk<ActivityDailySummary, Employee>(b, x => x.EmployeeId);
+        Fk<ActivityRawBuffer, TrayDeviceRegistration>(b, x => x.AgentDeviceId);
+        Fk<ActivitySnapshot, TrayDeviceRegistration>(b, x => x.AgentDeviceId);
+        Fk<ActivitySnapshot, Employee>(b, x => x.EmployeeId);
+        Fk<AgentCommand, User>(b, x => x.RequestedById);
+        Fk<AppUsageSnapshot, TrayDeviceRegistration>(b, x => x.AgentDeviceId);
+        Fk<AppUsageSnapshot, Employee>(b, x => x.EmployeeId);
+        Fk<BiometricEnrollmentAttempt, TrayDeviceRegistration>(b, x => x.AgentDeviceId);
+        Fk<BiometricEnrollmentAttempt, Employee>(b, x => x.EmployeeId);
+        Fk<BiometricProfile, Employee>(b, x => x.EmployeeId);
+        Fk<BiometricProfile, FileRecord>(b, x => x.LeftReferencePhotoFileId);
+        Fk<BiometricProfile, FileRecord>(b, x => x.ReferencePhotoFileId);
+        Fk<BiometricProfile, FileRecord>(b, x => x.RightReferencePhotoFileId);
+        Fk<DeviceChangeRequest, Employee>(b, x => x.EmployeeId);
+        Fk<DeviceChangeRequest, LegalEntity>(b, x => x.LegalEntityId);
+        Fk<DeviceStateSnapshot, TrayDeviceRegistration>(b, x => x.AgentDeviceId);
+        Fk<DeviceStateSnapshot, Employee>(b, x => x.EmployeeId);
+        Fk<EmployeeCheckIn, TrayDeviceRegistration>(b, x => x.DeviceRegistrationId);
+        Fk<EmployeeCheckIn, User>(b, x => x.UserId);
+        Fk<EmployeeMonitoringOverride, Employee>(b, x => x.EmployeeId);
+        Fk<EmployeeMonitoringOverride, User>(b, x => x.SetById);
+        Fk<EmployeeWorkSession, TrayDeviceRegistration>(b, x => x.DeviceRegistrationId);
+        Fk<EmployeeWorkSession, User>(b, x => x.UserId);
+        Fk<MonitoringException, User>(b, x => x.AcknowledgedById);
+        Fk<MonitoringException, Employee>(b, x => x.EmployeeId);
+        Fk<MonitoringException, User>(b, x => x.EscalatedById);
+        Fk<MonitoringException, User>(b, x => x.ResolvedById);
+        Fk<FaceVerificationAttempt, Employee>(b, x => x.EmployeeId);
+        Fk<FaceVerificationAttempt, FileRecord>(b, x => x.PhotoFileId);
+        Fk<InactivityCaptureAttempt, Employee>(b, x => x.EmployeeId);
+        Fk<InactivityCaptureAttempt, EmployeeWorkSession>(b, x => x.WorkSessionId);
+        Fk<MeetingSignal, TrayDeviceRegistration>(b, x => x.AgentDeviceId);
+        Fk<MeetingSignal, Employee>(b, x => x.EmployeeId);
+        Fk<MonitoringEvidenceAsset, Employee>(b, x => x.EmployeeId);
+        Fk<MonitoringFaceScan, EmployeeCheckIn>(b, x => x.CheckInId);
+        Fk<MonitoringNotification, Employee>(b, x => x.EmployeeId);
+        Fk<MonitoringPermissionConsent, TrayDeviceRegistration>(b, x => x.DeviceRegistrationId);
+        Fk<MonitoringPermissionConsent, Employee>(b, x => x.EmployeeId);
+        Fk<MonitoringPolicyOverride, User>(b, x => x.SetById);
+        Fk<TrayActivationCode, User>(b, x => x.UserId);
+        Fk<TrayDeviceAuthorization, Tenant>(b, x => x.ApprovedTenantId);
+        Fk<TrayDeviceAuthorization, User>(b, x => x.ApprovedUserId);
+        Fk<TrayDeviceRefreshToken, TrayDeviceRegistration>(b, x => x.DeviceRegistrationId);
+        Fk<TrayDeviceRefreshToken, User>(b, x => x.UserId);
+        Fk<TrayDeviceRegistration, User>(b, x => x.UserId);
+    }
+
+    // Task 39e: Auth.
+    private static void ApplyAuth(ModelBuilder b)
+    {
+        Fk<AuditLog, User>(b, x => x.UserId);
+        Fk<InvitationToken, Employee>(b, x => x.EmployeeId);
+        Fk<InvitationToken, LegalEntity>(b, x => x.LegalEntityId);
+        Fk<InvitationToken, OnboardingDraft>(b, x => x.OnboardingDraftId);
+        Fk<InvitationToken, PositionAssignment>(b, x => x.PositionAssignmentId);
+        Fk<InvitationToken, Position>(b, x => x.PositionId);
+        Fk<InvitationToken, User>(b, x => x.RevokedById);
+        Fk<InvitationToken, Role>(b, x => x.RoleId);
+        Fk<InvitationToken, User>(b, x => x.UserId);
+        Fk<LegalAcceptanceRecord, User>(b, x => x.UserId);
+        Fk<PasswordResetToken, User>(b, x => x.UserId);
+        Fk<RefreshToken, User>(b, x => x.UserId);
+        Fk<Session, Employee>(b, x => x.ActiveEmployeeId);
+        Fk<Session, User>(b, x => x.UserId);
+        Fk<UserExternalIdentity, User>(b, x => x.UserId);
+        Fk<UserMfa, User>(b, x => x.UserId);
+        Fk<UserPermissionOverride, User>(b, x => x.UserId);
+        Fk<UserRole, PositionAccessTemplate>(b, x => x.SourcePositionAccessTemplateId);
+        Fk<UserRole, Position>(b, x => x.SourcePositionId);
+        Fk<UserRole, User>(b, x => x.UserId);
+    }
+
+    // Task 39e: Calendar.
+    private static void ApplyCalendar(ModelBuilder b)
+    {
+        Fk<Cal.CalendarEventGuest, Cal.CalendarEvent>(b, x => x.EventId);
+        Fk<Cal.CalendarEventMeetingAttendance, Cal.CalendarEventMeeting>(b, x => x.CalendarEventMeetingId);
+        Fk<Cal.CalendarEventMeetingAttendance, Employee>(b, x => x.EmployeeId);
+        Fk<Cal.CalendarEventMeeting, Cal.CalendarEvent>(b, x => x.CalendarEventId);
+        Fk<Cal.CalendarEventParticipantRsvpHistory, Employee>(b, x => x.EmployeeId);
+        Fk<Cal.CalendarEventParticipantRsvpHistory, Cal.CalendarEventParticipant>(b, x => x.ParticipantId);
+        Fk<Cal.CalendarEventParticipant, Employee>(b, x => x.EmployeeId);
+        Fk<Cal.CalendarEventParticipant, Cal.CalendarEvent>(b, x => x.EventId);
+        Fk<Cal.CalendarEventReminderLog, Employee>(b, x => x.EmployeeId);
+        Fk<Cal.CalendarMeetingIncident, Employee>(b, x => x.EmployeeId);
+        Fk<Cal.CalendarMeetingIncident, MonitoringException>(b, x => x.ExceptionId);
+        Fk<Cal.ExternalCalendarConnection, User>(b, x => x.UserId);
+        Fk<Cal.ExternalCalendarEventLink, Cal.CalendarEvent>(b, x => x.CalendarEventId);
+        Fk<Cal.ExternalCalendarEventLink, Cal.ExternalCalendarConnection>(b, x => x.ExternalCalendarConnectionId);
+        Fk<Cal.HolidayCalendarSettings, LegalEntity>(b, x => x.LegalEntityId);
+        Fk<Cal.HolidayCalendarSettings, User>(b, x => x.UpdatedById);
+    }
+
+    // Task 39e: Conversations.
+    private static void ApplyConversations(ModelBuilder b)
+    {
+        Fk<ConversationFavorite, Employee>(b, x => x.EmployeeId);
+        Fk<ConversationMessageAttachment, FileRecord>(b, x => x.FileRecordId);
+        Fk<ConversationMessageHide, Employee>(b, x => x.EmployeeId);
+        Fk<ConversationMessageMention, Employee>(b, x => x.EmployeeId);
+        Fk<ConversationMessageReaction, Employee>(b, x => x.EmployeeId);
+        Fk<ConversationMessageRevision, Employee>(b, x => x.RevisedByEmployeeId);
+        Fk<ConversationMessage, Employee>(b, x => x.AuthorEmployeeId);
+        Fk<ConversationMessage, Employee>(b, x => x.DeletedByEmployeeId);
+        Fk<ConversationMute, Employee>(b, x => x.EmployeeId);
+        Fk<ConversationParticipant, Employee>(b, x => x.AddedByEmployeeId);
+        Fk<ConversationParticipant, Employee>(b, x => x.EmployeeId);
+        Fk<ConversationParticipant, Employee>(b, x => x.RemovedByEmployeeId);
+    }
+
+    // Task 39e: Inbox.
+    private static void ApplyInbox(ModelBuilder b)
+    {
+        Fk<InboxDecisionJournalEntry, Employee>(b, x => x.ActorEmployeeId);
+        Fk<InboxDecisionJournalEntry, InboxDecisionJournalEntry>(b, x => x.RevertedByJournalId);
+    }
+
+    // Task 39e: SharedPlatform.
+    private static void ApplySharedPlatform(ModelBuilder b)
+    {
+        Fk<NotificationDelivery, SharedPlatformNotification>(b, x => x.NotificationId);
+        Fk<NotificationDelivery, User>(b, x => x.RecipientUserId);
+        Fk<NotificationDelivery, NotificationTemplateVersion>(b, x => x.TemplateVersionId);
+        Fk<NotificationTemplateVersion, PlatformUser>(b, x => x.CreatedByUserId);
+        Fk<NotificationTemplateVersion, PlatformUser>(b, x => x.PublishedByUserId);
+        Fk<NotificationTemplateVersion, PlatformUser>(b, x => x.UpdatedByUserId);
+        Fk<SharedPlatformNotification, User>(b, x => x.RecipientUserId);
+        Fk<TenantNotificationRule, User>(b, x => x.UpdatedByUserId);
+        Fk<TenantSubscription, SubscriptionPlan>(b, x => x.PlanId);
+    }
+
+    // Task 39e: InfrastructureModule.
+    private static void ApplyInfrastructureModule(ModelBuilder b)
+    {
+        Fk<Tenant, SubscriptionPlan>(b, x => x.SubscriptionPlanId);
+        Fk<User, User>(b, x => x.SuspendedById);
+    }
+
+    // Task 39e: Dashboard.
+    private static void ApplyDashboard(ModelBuilder b)
+    {
+        Fk<UserDashboard, User>(b, x => x.UserId);
     }
 
     private static void Fk<TChild, TParent>(

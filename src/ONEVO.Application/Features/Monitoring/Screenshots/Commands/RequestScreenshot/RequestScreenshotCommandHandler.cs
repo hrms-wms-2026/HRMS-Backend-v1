@@ -112,9 +112,9 @@ public class RequestScreenshotCommandHandler
             TenantId = tenantId,
             AgentDeviceId = request.AgentDeviceId,
             RequestedById = _currentUser.UserId,
-            CommandType = "capture_screenshot",
+            CommandType = AgentCommandTypes.CaptureScreenshot,
             PayloadJson = "{}",
-            Status = "pending",
+            Status = AgentCommandStatuses.Pending,
             ExpiresAt = now.Add(CommandTtl),
             CreatedAt = now
         };

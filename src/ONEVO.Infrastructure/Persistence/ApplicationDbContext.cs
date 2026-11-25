@@ -428,6 +428,7 @@ public class ApplicationDbContext : DbContext
         modelBuilder.ApplyConfigurationsFromAssembly(typeof(ApplicationDbContext).Assembly);
         ONEVO.Infrastructure.Persistence.Integrity.ReferenceForeignKeys.Apply(modelBuilder);
         ONEVO.Infrastructure.Persistence.Integrity.StatusCheckConstraints.Apply(modelBuilder);
+        ONEVO.Infrastructure.Persistence.Integrity.CascadeDeleteRules.Apply(modelBuilder);
 
         // Case-sensitive so = keeps PostgreSQL behaviour on hashes, tokens and unique indexes.
         modelBuilder.UseCollation("Latin1_General_100_CS_AS_SC");

@@ -20,13 +20,13 @@ public class EfAgentCommandRepository : IAgentCommandRepository
     public Task<List<AgentCommand>> GetPendingForDeviceAsync(Guid deviceId, CancellationToken ct)
         => _db.AgentCommands
             .Where(c => c.AgentDeviceId == deviceId
-                        && c.Status == "pending"
+                        && c.Status == AgentCommandStatuses.Pending
                         && c.ExpiresAt > DateTimeOffset.UtcNow)
             .OrderBy(c => c.CreatedAt)
             .ToListAsync(ct);
 
     public Task<int> ExpireStaleCommandsAsync(DateTimeOffset now, CancellationToken ct)
         => _db.AgentCommands
-            .Where(c => c.Status == "pending" && c.ExpiresAt <= now)
-            .ExecuteUpdateAsync(s => s.SetProperty(c => c.Status, "expired"), ct);
+            .Where(c => c.Status == AgentCommandStatuses.Pending && c.ExpiresAt <= now)
+            .ExecuteUpdateAsync(s => s.SetProperty(c => c.Status, AgentCommandStatuses.Expired), ct);
 }

@@ -84,7 +84,7 @@ public class CompleteAgentCommandHandler : IRequestHandler<CompleteAgentCommandC
             return Result.Success();
         }
 
-        if (command.Status is "failed" or "expired")
+        if (command.Status is AgentCommandStatuses.Failed or AgentCommandStatuses.Expired)
             return Result.Failure(MonitoringErrors.AgentCommandAlreadySettled, 409);
 
         var now = _clock.UtcNow;
@@ -107,21 +107,21 @@ public class CompleteAgentCommandHandler : IRequestHandler<CompleteAgentCommandC
                 AgentDeviceId = deviceId,
                 AgentCommandId = request.CommandId,
                 FileRecordId = request.FileRecordId.Value,
-                EvidenceType = "screenshot",
+                EvidenceType = MonitoringEvidenceTypes.Screenshot,
                 Source = "agent",
-                TriggerType = "on_demand",
+                TriggerType = MonitoringEvidenceTriggers.OnDemand,
                 CapturedAt = request.CapturedAt,
                 CreatedAt = now
             };
 
             _assets.Add(asset);
-            command.Status = "completed";
+            command.Status = AgentCommandStatuses.Completed;
             command.CompletedAt = now;
             command.ResultJson = request.ResultJson;
         }
         else
         {
-            command.Status = "failed";
+            command.Status = AgentCommandStatuses.Failed;
             command.CompletedAt = now;
             command.ResultJson = request.ResultJson;
         }
