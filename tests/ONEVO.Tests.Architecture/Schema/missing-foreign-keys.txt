@@ -422,6 +422,7 @@ wm_module_hour_summaries.tenant_id | tenant | foreign key to tenants, added in b
 wm_monitor_alerts.created_by_id | audit | AuditableEntityInterceptor writes Guid.Empty for system writes: task-39c
 wm_monitor_alerts.target_id | polymorphic | the type column next to it names the table, so no foreign key is possible
 wm_monitor_alerts.tenant_id | tenant | foreign key to tenants, added in batches: task-39d
+wm_notification_log.actor_employee_id | audit | WorkNotificationEngine writes Guid.Empty as the actor of system monitor alerts
 wm_notification_log.created_by_id | audit | AuditableEntityInterceptor writes Guid.Empty for system writes: task-39c
 wm_notification_log.target_id | polymorphic | the type column next to it names the table, so no foreign key is possible
 wm_notification_log.tenant_id | tenant | foreign key to tenants, added in batches: task-39d

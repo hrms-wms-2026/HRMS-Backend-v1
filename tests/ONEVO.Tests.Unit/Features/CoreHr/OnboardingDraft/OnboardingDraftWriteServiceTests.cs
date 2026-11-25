@@ -208,6 +208,130 @@ public sealed class OnboardingDraftWriteServiceTests
         Assert.Equal(new[] { "commit", "reconcile" }, calls);
     }
 
+    private sealed record SelfFinalize(
+        OnboardingDraftWriteService Service, Guid TenantId, Guid DraftId, Guid ActingUserId, Guid ReservedId,
+        Mock<IInvitationTokenRepository> Invitations, Mock<IOutboxWriter> Outbox, Mock<IPositionAssignmentRepository> Assignments);
+
+    /// <summary>A finalize with a position seat, where the acting user's login email is
+    /// <paramref name="currentUserEmail"/> and the login found for the draft email has id <paramref name="foundUserId"/>
+    /// (null = the acting user).</summary>
+    private SelfFinalize BuildSelfFinalize(
+        string draftEmail, string currentUserEmail, Guid? foundUserId = null, bool templateRequiresApproval = false)
+    {
+        var tenantId = Guid.NewGuid();
+        var actingUserId = Guid.NewGuid();
+        var positionId = Guid.NewGuid();
+        var draft = new OnboardingDraftEntity
+        {
+            Id = Guid.NewGuid(), TenantId = tenantId, FirstName = "Ada", LastName = "Owner",
+            WorkEmail = draftEmail, LegalEntityId = Guid.NewGuid(), EmploymentType = "full_time",
+            StartDate = DateOnly.FromDateTime(DateTime.UtcNow), EmployeeNumber = "EMP-001",
+            WorkModeId = Guid.NewGuid(), PositionId = positionId, Status = OnboardingDraftStatus.Draft, StartedById = actingUserId,
+        };
+        _draftRepository.Setup(r => r.GetTrackedAsync(tenantId, draft.Id, It.IsAny<CancellationToken>())).ReturnsAsync(draft);
+        _positionRepository.Setup(r => r.GetByIdForLegalEntityAsync(tenantId, draft.LegalEntityId, positionId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new Position { Id = positionId, IsActive = true, DepartmentId = Guid.NewGuid(), Name = "Founder" });
+        if (templateRequiresApproval)
+        {
+            _positionRepository.Setup(r => r.GetAccessTemplateByPositionAsync(tenantId, positionId, It.IsAny<CancellationToken>()))
+                .ReturnsAsync(new PositionAccessTemplate { Id = Guid.NewGuid(), RoleId = Guid.NewGuid(), IsActive = true, RequiresApproval = true });
+        }
+        _seatEntitlementService.Setup(s => s.EvaluateAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new SeatDecision(SeatDecisionStatus.Approved, 10, 0, 0, 10, false, false, "ok"));
+        var employmentTypes = new Mock<IEmploymentTypeRepository>();
+        employmentTypes.Setup(r => r.GetIdByCodeAsync("full_time", It.IsAny<CancellationToken>())).ReturnsAsync(1);
+        var tokens = new Mock<ISecureTokenGenerator>();
+        tokens.Setup(t => t.GenerateUrlSafeOpaqueToken()).Returns("raw-token-value");
+        var users = new Mock<IUserRepository>();
+        users.Setup(r => r.GetByTenantAndEmailAsync(tenantId, draftEmail.Trim().ToLowerInvariant(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new ONEVO.Domain.Features.InfrastructureModule.Entities.User
+            {
+                Id = foundUserId ?? actingUserId, TenantId = tenantId, Email = draftEmail.Trim(), IsActive = true, PasswordHash = "hash",
+            });
+        var reservedId = Guid.NewGuid();
+        var assignments = new Mock<IPositionAssignmentRepository>();
+        assignments.Setup(r => r.TryReservePositionAssignmentAsync(
+                tenantId, It.IsAny<Guid>(), positionId, It.IsAny<DateOnly>(), actingUserId, It.IsAny<Guid?>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(reservedId);
+        assignments.Setup(r => r.ActivatePlannedAsync(tenantId, reservedId, It.IsAny<CancellationToken>())).ReturnsAsync(true);
+        var permissions = new Mock<IPermissionRepository>();
+        permissions.Setup(p => p.ListUserIdsWithPermissionCodeAsync(It.IsAny<Guid>(), It.IsAny<string>(), It.IsAny<DateTimeOffset>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(Array.Empty<Guid>());
+        var invitations = new Mock<IInvitationTokenRepository>();
+        var outbox = new Mock<IOutboxWriter>();
+        var unitOfWork = new Mock<IUnitOfWork>();
+        unitOfWork.Setup(u => u.ExecuteInTransactionAsync(It.IsAny<Func<CancellationToken, Task<bool>>>(), It.IsAny<CancellationToken>()))
+            .Returns((Func<CancellationToken, Task<bool>> operation, CancellationToken token) => operation(token));
+        var currentUser = new Mock<ICurrentUser>();
+        currentUser.SetupGet(u => u.Email).Returns(currentUserEmail);
+        currentUser.SetupGet(u => u.UserId).Returns(actingUserId);
+
+        var service = new OnboardingDraftWriteService(
+            _draftRepository.Object, _employeeRepository.Object,
+            users.Object, Mock.Of<IUserRoleRepository>(),
+            _positionRepository.Object, assignments.Object,
+            _legalEntityRepository.Object, _departmentRepository.Object,
+            employmentTypes.Object, _workModeRepository.Object,
+            _seatEntitlementService.Object, Mock.Of<IAccessGrantRequestRepository>(),
+            permissions.Object, Mock.Of<IChecklistTemplateRepository>(),
+            Mock.Of<IEmployeeChecklistTaskRepository>(), invitations.Object,
+            Mock.Of<ITenantRepository>(), outbox.Object,
+            tokens.Object, currentUser.Object, _clock.Object, unitOfWork.Object);
+        return new SelfFinalize(service, tenantId, draft.Id, actingUserId, reservedId, invitations, outbox, assignments);
+    }
+
+    [Fact]
+    public async Task Finalize_SelfDraft_ActivatesSeatAndSendsNoInvitation()
+    {
+        var s = BuildSelfFinalize(draftEmail: " Owner@Acme.Test ", currentUserEmail: "owner@acme.test");
+
+        var result = await s.Service.FinalizeAsync(s.TenantId, s.ActingUserId, s.DraftId, CancellationToken.None);
+
+        Assert.True(result.IsSuccess, result.Error);
+        s.Assignments.Verify(r => r.ActivatePlannedAsync(s.TenantId, s.ReservedId, It.IsAny<CancellationToken>()), Times.Once);
+        s.Invitations.Verify(r => r.AddAsync(It.IsAny<ONEVO.Domain.Features.Auth.Entities.InvitationToken>(), It.IsAny<CancellationToken>()), Times.Never);
+        s.Outbox.Verify(o => o.EnqueueAsync(OutboxMessageTypes.EmployeeOnboardingInviteEmail, It.IsAny<It.IsAnyType>(), It.IsAny<Guid?>(), It.IsAny<CancellationToken>()), Times.Never);
+        Assert.False(result.Value!.InvitationQueued);
+        Assert.Equal("onboarding.finalize.self_employee_created", result.Value.MessageKey);
+    }
+
+    [Fact]
+    public async Task Finalize_OtherEmail_SendsInvitation()
+    {
+        var s = BuildSelfFinalize(draftEmail: "new.hire@acme.test", currentUserEmail: "owner@acme.test", foundUserId: Guid.NewGuid());
+
+        var result = await s.Service.FinalizeAsync(s.TenantId, s.ActingUserId, s.DraftId, CancellationToken.None);
+
+        Assert.True(result.IsSuccess, result.Error);
+        s.Invitations.Verify(r => r.AddAsync(It.IsAny<ONEVO.Domain.Features.Auth.Entities.InvitationToken>(), It.IsAny<CancellationToken>()), Times.Once);
+        s.Outbox.Verify(o => o.EnqueueAsync(OutboxMessageTypes.EmployeeOnboardingInviteEmail, It.IsAny<It.IsAnyType>(), It.IsAny<Guid?>(), It.IsAny<CancellationToken>()), Times.Once);
+        s.Assignments.Verify(r => r.ActivatePlannedAsync(It.IsAny<Guid>(), It.IsAny<Guid>(), It.IsAny<CancellationToken>()), Times.Never);
+        Assert.Equal("onboarding.finalize.invitation_sent", result.Value!.MessageKey);
+    }
+
+    [Fact]
+    public async Task Finalize_SelfEmail_ButFoundUserIsSomeoneElse_IsConflict()
+    {
+        var s = BuildSelfFinalize(draftEmail: "owner@acme.test", currentUserEmail: "owner@acme.test", foundUserId: Guid.NewGuid());
+
+        var result = await s.Service.FinalizeAsync(s.TenantId, s.ActingUserId, s.DraftId, CancellationToken.None);
+
+        Assert.Equal(409, result.StatusCode);
+        s.Outbox.Verify(o => o.EnqueueAsync(It.IsAny<string>(), It.IsAny<It.IsAnyType>(), It.IsAny<Guid?>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task Finalize_SelfDraft_WaitingForPositionApproval_IsUnchanged()
+    {
+        var s = BuildSelfFinalize(draftEmail: "owner@acme.test", currentUserEmail: "owner@acme.test", templateRequiresApproval: true);
+
+        var result = await s.Service.FinalizeAsync(s.TenantId, s.ActingUserId, s.DraftId, CancellationToken.None);
+
+        Assert.True(result.IsSuccess, result.Error);
+        Assert.Equal("onboarding.finalize.waiting_for_position_approval", result.Value!.MessageKey);
+        s.Assignments.Verify(r => r.ActivatePlannedAsync(It.IsAny<Guid>(), It.IsAny<Guid>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
     [Fact]
     public async Task FinalizeAsync_SaveConflict_DoesNotReconcile()
     {

@@ -37,12 +37,14 @@ public sealed class TenantOwnerInviteEmailOutboxHandler : IOutboxMessageHandler
 
         // The enqueueing transaction may not have known the tenant name yet
         // (tenant row unsaved at enqueue time); it is durable by the time we run.
-        var tenantName = payload.TenantName;
-        if (string.IsNullOrEmpty(tenantName))
-        {
-            var tenant = await _tenants.GetByIdAsync(payload.TenantId, ct);
-            tenantName = tenant?.Name ?? string.Empty;
-        }
+        // The slug is always read here: the invitation is tenant-scoped (RLS), so the link must name the
+        // tenant - as a subdomain in Subdomain mode, as ?tenant= in SingleHost mode - or the accept page
+        // cannot find it.
+        var tenant = await _tenants.GetByIdAsync(payload.TenantId, ct);
+        var tenantName = string.IsNullOrEmpty(payload.TenantName)
+            ? tenant?.Name ?? string.Empty
+            : payload.TenantName;
+        var tenantSlug = tenant?.Slug ?? string.Empty;
 
         await _emailService.SendTemplateAsync(
             payload.Email,
@@ -51,6 +53,7 @@ public sealed class TenantOwnerInviteEmailOutboxHandler : IOutboxMessageHandler
             {
                 tenant_id = payload.TenantId,
                 tenant_company = tenantName,
+                tenant_slug = tenantSlug,
                 invited_first_name = payload.FirstName,
                 invited_email = payload.Email,
                 invite_token = payload.InviteToken,
