@@ -177,4 +177,49 @@ public class SubscriptionTrialAndGracePeriodTests
         _capturedSubscription.TrialStartDate.Should().BeNull();
         _capturedSubscription.TrialEndDate.Should().BeNull();
     }
+
+    [Fact]
+    public async Task Handle_WithSeats_StoresSeatPolicyAndDefaultsOverageToFalse()
+    {
+        var command = BuildCommand() with
+        {
+            Subscription = new SubscriptionInfo(PlanId, "monthly", "subscription", IncludedSeats: 25)
+        };
+
+        var result = await BuildHandler().Handle(command, CancellationToken.None);
+
+        result.IsSuccess.Should().BeTrue();
+        _capturedSubscription!.IncludedSeats.Should().Be(25);
+        _capturedSubscription.OverageAllowed.Should().BeFalse();
+    }
+
+    [Fact]
+    public async Task Handle_WithoutSeats_LeavesSeatPolicyUnset()
+    {
+        var result = await BuildHandler().Handle(BuildCommand(), CancellationToken.None);
+
+        result.IsSuccess.Should().BeTrue();
+        _capturedSubscription!.IncludedSeats.Should().BeNull();
+        _capturedSubscription.OverageAllowed.Should().BeNull();
+    }
+
+    [Fact]
+    public async Task Handle_TestTenant_IsActiveWithNoTrialAndTestCommercialModel()
+    {
+        var command = BuildCommand(trialPeriodDays: 14) with
+        {
+            Subscription = new SubscriptionInfo(PlanId, "monthly", "subscription", TrialPeriodDays: 14,
+                IncludedSeats: 10, OverageAllowed: true, IsTest: true)
+        };
+
+        var result = await BuildHandler().Handle(command, CancellationToken.None);
+
+        result.IsSuccess.Should().BeTrue();
+        _capturedSubscription!.CommercialModel.Should().Be("test");
+        _capturedSubscription.Status.Should().Be("active");
+        _capturedSubscription.TrialStartDate.Should().BeNull();
+        _capturedSubscription.TrialEndDate.Should().BeNull();
+        _capturedSubscription.IncludedSeats.Should().Be(10);
+        _capturedSubscription.OverageAllowed.Should().BeTrue();
+    }
 }
