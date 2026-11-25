@@ -702,7 +702,11 @@ public class OnboardingDraftWriteService : IOnboardingDraftWriteService
                 // The only role ever assigned here is the position access template's own RoleId -
                 // never a hardcoded Owner/Admin default. Also assigned when a roles:manage holder
                 // is self-authorizing a bypass past a template that does require approval.
-                if (accessTemplate is { IsActive: true } && (!accessTemplate.RequiresApproval || selfAuthorizedBypass))
+                // Adding yourself: your existing login may already hold that role (e.g. a position
+                // whose access role is Owner). user_roles is keyed on user + role, so adding it again
+                // would fail the whole finalize; keep the row you have.
+                if (accessTemplate is { IsActive: true } && (!accessTemplate.RequiresApproval || selfAuthorizedBypass)
+                    && !(isSelf && await _userRoleRepository.ExistsAsync(user.Id, accessTemplate.RoleId, txnCt)))
                 {
                     var userRole = OnboardingFinalizeFactory.NewPositionUserRole(
                         draft, user.Id, accessTemplate.RoleId, accessTemplate.Id, actingUserId, _clock.UtcNow);
