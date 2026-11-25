@@ -9,6 +9,7 @@ using ONEVO.Application.Features.CoreHr.OnboardingDrafts.Commands.FinalizeOnboar
 using ONEVO.Application.Features.CoreHr.OnboardingDrafts.Commands.SaveOnboardingDraft;
 using ONEVO.Application.Features.CoreHr.OnboardingDrafts.Queries.GetOnboardingDraft;
 using ONEVO.Application.Features.CoreHr.OnboardingDrafts.Queries.GetOnboardingWizardLookups;
+using ONEVO.Application.Features.CoreHr.OnboardingDrafts.Queries.GetSelfEmployeeSetupStatus;
 using ONEVO.Application.Features.CoreHr.OnboardingDrafts.Queries.ListOnboardingDrafts;
 
 namespace ONEVO.Api.Controllers.Tenant.CoreHr;
@@ -65,6 +66,16 @@ public class OnboardingDraftsController : ControllerBase
         [FromQuery] Guid legalEntityId, [FromQuery] string? search = null, CancellationToken ct = default)
     {
         var result = await _mediator.Send(new SearchManagerCandidatesQuery(legalEntityId, search ?? string.Empty), ct);
+        return result.IsSuccess ? Ok(result.Value) : Problem(result.Error, statusCode: result.StatusCode ?? 400);
+    }
+
+    /// <summary>Whether the caller can "Add yourself as an employee" (no employee profile yet, and the company
+    /// has a legal entity and a position), plus their login name and email for the wizard prefill.</summary>
+    [HttpGet("self-setup")]
+    [RequirePermission(PermissionCatalog.Employees.Write)]
+    public async Task<IActionResult> GetSelfSetupStatus(CancellationToken ct = default)
+    {
+        var result = await _mediator.Send(new GetSelfEmployeeSetupStatusQuery(), ct);
         return result.IsSuccess ? Ok(result.Value) : Problem(result.Error, statusCode: result.StatusCode ?? 400);
     }
 

@@ -4,6 +4,7 @@ using Microsoft.Extensions.DependencyInjection;
 using ONEVO.Application.Common.RepositoryInterfaces;
 using ONEVO.Infrastructure.Persistence.Interceptors;
 using ONEVO.Infrastructure.Persistence;
+using ONEVO.Infrastructure.Persistence.SqlServer;
 using ONEVO.Infrastructure.Services.CoreHr.SeatEntitlement;
 
 namespace ONEVO.Infrastructure;
@@ -25,9 +26,11 @@ internal static class DatabaseRegistration
         services.AddDbContext<ApplicationDbContext>((sp, options) =>
         {
             options
-                .UseSqlServer(connectionString, sqlServer =>
+                .UseSqlServer(TenantRlsInterceptor.WithoutSilentReconnect(connectionString), sqlServer =>
                 {
-                    sqlServer.EnableRetryOnFailure(3);
+                    // EF's retry plus broken connections (Linux reports them as number 0): the request
+                    // connection has no silent reconnect, so this retry is what reopens it.
+                    sqlServer.ExecutionStrategy(d => new BrokenConnectionRetryingExecutionStrategy(d));
                     sqlServer.CommandTimeout(30);
                 })
                 .UseSnakeCaseNamingConvention()
