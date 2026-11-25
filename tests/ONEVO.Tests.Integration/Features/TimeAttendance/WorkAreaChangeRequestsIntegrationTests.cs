@@ -140,7 +140,9 @@ public sealed class WorkAreaChangeRequestsIntegrationTests : IClassFixture<WorkA
             WHERE parent_object_id = OBJECT_ID('work_area_change_requests')
               AND delete_referential_action = 0;
             """);
-        restrictiveForeignKeys.Should().HaveCount(5);
+        // Five from the feature, plus the tenant key every tenant_id column has since task 39d.
+        restrictiveForeignKeys.Should().HaveCount(6);
+        restrictiveForeignKeys.Should().Contain("fk_work_area_change_requests_tenants_tenant_id");
 
         var indexes = await QueryStringsAsync(connection, """
             SELECT name FROM sys.indexes
