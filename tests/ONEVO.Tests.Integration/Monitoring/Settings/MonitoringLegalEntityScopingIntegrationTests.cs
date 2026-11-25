@@ -190,7 +190,7 @@ public sealed class MonitoringLegalEntityScopingIntegrationTestsFixture : IAsync
             ScopeType = scopeType,
             ScopeId = scopeId,
             ActivityMonitoring = activityMonitoring,
-            SetById = Guid.NewGuid(),
+            SetById = TestUsers.New(db, tenantId),
             CreatedAt = DateTimeOffset.UtcNow,
             UpdatedAt = DateTimeOffset.UtcNow
         });
@@ -209,7 +209,7 @@ public sealed class MonitoringLegalEntityScopingIntegrationTestsFixture : IAsync
             ScopeType = "role",
             ScopeId = roleId,
             ActivityMonitoring = activityMonitoring,
-            SetById = Guid.NewGuid(),
+            SetById = TestUsers.New(db, tenantId),
             CreatedAt = DateTimeOffset.UtcNow,
             UpdatedAt = DateTimeOffset.UtcNow
         });

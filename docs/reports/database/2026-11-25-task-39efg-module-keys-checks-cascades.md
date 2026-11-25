@@ -131,3 +131,31 @@ Earlier runs, both fixed without weakening a test:
 2. `verify-20261125-110210`: `CredentialOwnershipCompletionArchitectureTests` failed on the generated `payment_gateway` operations. Those tables were left out of 39e and 39g, and the test was not widened.
 
 After each, the three migrations were removed, the snapshot restored from the commit, and the migrations generated again in order (39e, 39f, 39g).
+
+## Full gate on feature/testing (dfd3c4ac7): 26 integration failures
+
+All 26 came from the new keys. Each was either a fixture writing a made-up parent id, or an app bug that the key exposed.
+
+| Group | Failing key or check | Tests | Cause | Fix |
+|---|---|---|---|---|
+| 1 | `fk_user_dashboards_users_user_id` | 6 `UserDashboardRepositoryTests` | Fixture: made-up user id | `TestUsers.NewAsync` (new helper) saves the user first |
+| 2 | `fk_monitoring_policy_overrides_users_set_by_id` | 4 `MonitoringPolicyOverrideIntegrationTests`, 4 `MonitoringLegalEntityScopingIntegrationTests` | Fixture: made-up `set_by_id` | `TestUsers.New` |
+| 3 | `fk_app_usage_snapshots_tray_device_registrations_agent_device_id` | 4 `MeetingComplianceTaskMeetingIntegrationTests`, 1 `MeetingLeakIntegrationTests` | Fixture: made-up device id | `TestDevices.ForEmployeeAsync` (new helper) registers a device of the employee's user |
+| 4 | `fk_user_roles_users_user_id` | 2 `OfficeProjectReconcilerIntegrationTests` | Fixture: an owner without an employee had no `users` row either | `OfficeProjectDb.AssignRoleAsync` adds the user when it is missing |
+| 5 | `fk_sessions_users_user_id` | 1 `SessionRevocationTests` | Fixture: made-up user ids | `TestUsers.New` |
+| 6 | `ck_calendar_event_meetings_owner` (a 2026-11-07 check, not task 39) | 1 `MeetingProvisioningIntegrationTests` | **App**: the new key `calendar_event_meetings.calendar_event_id` was `NoAction`. `DeleteCalendarEvent` removes the event (soft delete, so the row stays), and EF then set the tracked meeting's key to `NULL`, which broke the owner check | Reference keys are now `ClientNoAction` (below) |
+| 7 | `fk_device_change_requests_employees_employee_id` (500, not 409) | 1 `TrayActivationIntegrationTests` | **App**: `TrayEnrollmentService` wrote the user's id into `device_change_requests.employee_id`, while the approval workflow reads it back as an employee id, so the approver could never find the requester. The bug was older than task 39; the key exposed it | The service stores the user's default employee; a user without an employee is still refused, but no request is raised. The test looks the request up by employee id. The 39e repair step 2c maps existing user ids to their employee |
+| 8 | `fk_notifications_users_recipient_user_id` | 2 `OutboxProcessorBehaviourIntegrationTests` | Fixture: the test handler staged a notification for a made-up recipient, so the staged save failed | The payload carries a saved recipient user |
+
+### ClientNoAction for the reference keys
+
+Every key from `ReferenceForeignKeys` (tasks 39b-39e, through `Fk<>` and the `created_by_id` loop) was `DeleteBehavior.NoAction`. On a tracked child, EF then sets a nullable key to `NULL`, and refuses a required one, whenever the parent is removed. The soft-delete interceptor keeps the parent row, so this silently cut a valid link (group 6). Before task 39 these columns had no key, so EF did nothing.
+
+`ClientNoAction` keeps `ON DELETE NO ACTION` in the database, so a real hard delete of a parent with children still fails there, and EF leaves tracked children alone, as it did before task 39. The `tenant_id` keys stay `NoAction`: tenants are never removed, and unit tests pin that. The explicit `Restrict` keys and the 39g cascade review are unchanged.
+
+The change is model only. `20261125114212_ReferenceKeysClientNoAction39e` was generated on top of 39g: it has no operations (empty `Up` and `Down`), and its snapshot moves 278 keys from `NoAction` to `ClientNoAction`. No earlier migration was edited.
+
+New tests:
+- `OtherModuleRepairTests.Repair_maps_a_user_id_in_device_change_requests_to_its_employee` (integration).
+- `TrayEnrollmentServiceTests.IssueAsync_WhenDifferentFingerprintAndUserHasNoEmployee_RefusesWithoutRaisingARequest` (unit).
+- The device change unit test now checks `EmployeeId`.

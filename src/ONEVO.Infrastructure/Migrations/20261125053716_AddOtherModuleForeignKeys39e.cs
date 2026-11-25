@@ -118,6 +118,14 @@ namespace ONEVO.Infrastructure.Migrations
         WHERE COALESCE(u.id, o.id) IS NOT NULL;
         SET @n = @@ROWCOUNT;
         IF @n > 0 PRINT CONCAT(N'Task 39e: added ', @n, N' tray_device_registrations rows for the Dapi demo devices.');
+        -- 2c. TrayEnrollmentService wrote the requesting user's id into device_change_requests.employee_id (fixed in this
+        --     task). Map it to that user's employee when the user has exactly one in the tenant; anything else stops in step 3.
+        UPDATE x SET employee_id = (SELECT e.id FROM employees e WHERE e.user_id = x.employee_id AND e.tenant_id = x.tenant_id)
+        FROM device_change_requests x
+        WHERE NOT EXISTS (SELECT 1 FROM employees p WHERE p.id = x.employee_id)
+          AND (SELECT COUNT(*) FROM employees e WHERE e.user_id = x.employee_id AND e.tenant_id = x.tenant_id) = 1;
+        SET @n = @@ROWCOUNT;
+        IF @n > 0 PRINT CONCAT(N'Task 39e: mapped ', @n, N' device_change_requests.employee_id values from a user id to its employee.');
         -- 3. Any other value that is not a row of the parent stops the migration. Nothing is deleted.
         SELECT @n = COUNT(*) FROM activity_daily_summary x WHERE x.employee_id IS NOT NULL AND NOT EXISTS (SELECT 1 FROM employees p WHERE p.id = x.employee_id);
         IF @n > 0 SET @unknown = CONCAT(@unknown, N' activity_daily_summary.employee_id=', @n);

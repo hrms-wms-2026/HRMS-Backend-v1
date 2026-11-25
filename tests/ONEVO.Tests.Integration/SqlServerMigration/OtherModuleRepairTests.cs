@@ -100,6 +100,27 @@ public sealed class OtherModuleRepairTests
     }
 
     [Fact]
+    public async Task Repair_maps_a_user_id_in_device_change_requests_to_its_employee()
+    {
+        var (db, userId, employeeId) = await SeedAsync();
+        var requestId = Guid.NewGuid();
+        // What TrayEnrollmentService used to write: the requesting user's id in employee_id.
+        await ExecAsync(db, $"""
+            {Admin}
+            ALTER TABLE dbo.device_change_requests NOCHECK CONSTRAINT fk_device_change_requests_employees_employee_id;
+            INSERT INTO dbo.device_change_requests (id, tenant_id, employee_id, new_device_fingerprint, new_device_name,
+                new_device_os, status, requested_at)
+            VALUES ('{requestId}', '{db.TenantId}', '{userId}', 'fp', 'Second Laptop', 'macOS', 'pending', SYSDATETIMEOFFSET());
+            {Reset}
+            """);
+
+        await ExecAsync(db, AddOtherModuleForeignKeys39e.RepairOtherModuleReferencesSql);
+
+        (await ScalarAsync(db, $"SELECT employee_id FROM dbo.device_change_requests WHERE id = '{requestId}'"))
+            .Should().Be(employeeId);
+    }
+
+    [Fact]
     public async Task Status_check_passes_on_clean_data()
     {
         var (db, _, _) = await SeedAsync();

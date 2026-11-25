@@ -8,6 +8,7 @@ using ONEVO.Domain.Features.SharedPlatform.Entities;
 using ONEVO.Domain.Features.SharedPlatform.Notifications.Entities;
 using ONEVO.Infrastructure.Persistence;
 using ONEVO.Infrastructure.Services.SharedPlatform.Outbox;
+using ONEVO.Tests.Integration.Support;
 using Xunit;
 
 namespace ONEVO.Tests.Integration.SharedPlatform;
@@ -65,14 +66,23 @@ public sealed class OutboxProcessorBehaviourIntegrationTests
             var payload = JsonSerializer.Deserialize<NotifyPayload>(payloadJson)!;
             db.Notifications.Add(new Notification
             {
-                Id = payload.NotificationId, TenantId = payload.TenantId, RecipientUserId = Guid.NewGuid(),
+                Id = payload.NotificationId, TenantId = payload.TenantId, RecipientUserId = payload.RecipientUserId,
                 TemplateCode = "outbox_it", Title = "t", Body = "b",
             });
             return thenThrow ? throw new InvalidOperationException("second half failed") : Task.CompletedTask;
         }
     }
 
-    private sealed record NotifyPayload(Guid TenantId, Guid NotificationId);
+    // The recipient is a real user: notifications.recipient_user_id has a foreign key to users (task 39e).
+    private sealed record NotifyPayload(Guid TenantId, Guid NotificationId, Guid RecipientUserId);
+
+    private static async Task<Guid> SeedRecipientAsync(OutboxTestHost host)
+    {
+        await using var db = host.NewAdminContext();
+        var userId = TestUsers.New(db, host.TenantId);
+        await db.SaveChangesAsync();
+        return userId;
+    }
 
     [Fact]
     public async Task FailedAttempt_ReturnsTheMessageToPending_WithTheExistingBackoff_AndClearsTheClaim()
@@ -179,7 +189,7 @@ public sealed class OutboxProcessorBehaviourIntegrationTests
         var host = await OutboxTestHost.CreateAsync();
         Assert.True(await IsForceRlsAsync(host, "notifications"));
         var notificationId = Guid.NewGuid();
-        var id = await host.SeedPendingAsync(NotifyingType, host.TenantId, new NotifyPayload(host.TenantId, notificationId));
+        var id = await host.SeedPendingAsync(NotifyingType, host.TenantId, new NotifyPayload(host.TenantId, notificationId, await SeedRecipientAsync(host)));
         var processor = host.CreateProcessor(s =>
             s.AddScoped<IOutboxMessageHandler>(sp => new NotifyingHandler(sp.GetRequiredService<ApplicationDbContext>(), thenThrow: false)));
 
@@ -195,7 +205,7 @@ public sealed class OutboxProcessorBehaviourIntegrationTests
     {
         var host = await OutboxTestHost.CreateAsync();
         var notificationId = Guid.NewGuid();
-        var id = await host.SeedPendingAsync(NotifyingType, host.TenantId, new NotifyPayload(host.TenantId, notificationId));
+        var id = await host.SeedPendingAsync(NotifyingType, host.TenantId, new NotifyPayload(host.TenantId, notificationId, await SeedRecipientAsync(host)));
         var processor = host.CreateProcessor(s =>
             s.AddScoped<IOutboxMessageHandler>(sp => new NotifyingHandler(sp.GetRequiredService<ApplicationDbContext>(), thenThrow: true)));
 
@@ -213,7 +223,7 @@ public sealed class OutboxProcessorBehaviourIntegrationTests
     {
         var host = await OutboxTestHost.CreateAsync();
         // No tenant on the message -> system mode -> RLS rejects the staged Notification.
-        var bad = await host.SeedPendingAsync(NotifyingType, tenantId: null, new NotifyPayload(host.TenantId, Guid.NewGuid()));
+        var bad = await host.SeedPendingAsync(NotifyingType, tenantId: null, new NotifyPayload(host.TenantId, Guid.NewGuid(), await SeedRecipientAsync(host)));
         var processor = host.CreateProcessor(s =>
             s.AddScoped<IOutboxMessageHandler>(sp => new NotifyingHandler(sp.GetRequiredService<ApplicationDbContext>(), thenThrow: false)));
 

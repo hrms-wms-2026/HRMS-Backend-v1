@@ -82,7 +82,7 @@ public sealed class UserDashboardRepositoryTests : IClassFixture<UserDashboardRe
     public async Task TryAddAsync_SeedsDefaultWidgetsWithThreeLayoutsEachAndTenantId()
     {
         var tenantId = await TestTenants.NewAsync(_fixture.CreateContext);
-        var userId = Guid.NewGuid();
+        var userId = await TestUsers.NewAsync(_fixture.CreateContext, tenantId);
         var expectedKeys = DashboardSeeder.BuildDefaultWidgets(tenantId, Key).Select(w => w.WidgetKey).ToList();
         await SeedAsync(tenantId, userId);
 
@@ -103,7 +103,7 @@ public sealed class UserDashboardRepositoryTests : IClassFixture<UserDashboardRe
     public async Task TryAddAsync_SecondInsertForSameTenantUserKey_ReturnsFalseAndFirstWins()
     {
         var tenantId = await TestTenants.NewAsync(_fixture.CreateContext);
-        var userId = Guid.NewGuid();
+        var userId = await TestUsers.NewAsync(_fixture.CreateContext, tenantId);
         var first = await SeedAsync(tenantId, userId);
 
         using var db2 = _fixture.CreateContext();
@@ -125,7 +125,7 @@ public sealed class UserDashboardRepositoryTests : IClassFixture<UserDashboardRe
     public async Task SaveWithVersionAsync_RemovedWidget_IsExcludedAndSameKeyCanBeReAdded()
     {
         var tenantId = await TestTenants.NewAsync(_fixture.CreateContext);
-        var userId = Guid.NewGuid();
+        var userId = await TestUsers.NewAsync(_fixture.CreateContext, tenantId);
         var seeded = await SeedAsync(tenantId, userId);
         var removedKey = seeded.Widgets[0].WidgetKey;
         var total = seeded.Widgets.Count;
@@ -174,7 +174,7 @@ public sealed class UserDashboardRepositoryTests : IClassFixture<UserDashboardRe
     public async Task SaveWithVersionAsync_ResetStyleRowReuse_RemovesStaleOverwritesRectsAndAddsMissingDefault()
     {
         var tenantId = await TestTenants.NewAsync(_fixture.CreateContext);
-        var userId = Guid.NewGuid();
+        var userId = await TestUsers.NewAsync(_fixture.CreateContext, tenantId);
         var defaults = DashboardSeeder.BuildDefaultWidgets(tenantId, Key);
         var missingDefaultKey = defaults[^1].WidgetKey;
 
@@ -243,7 +243,7 @@ public sealed class UserDashboardRepositoryTests : IClassFixture<UserDashboardRe
     public async Task SaveWithVersionAsync_TwoContextsAtSameVersion_ExactlyOneWins()
     {
         var tenantId = await TestTenants.NewAsync(_fixture.CreateContext);
-        var userId = Guid.NewGuid();
+        var userId = await TestUsers.NewAsync(_fixture.CreateContext, tenantId);
         await SeedAsync(tenantId, userId);
 
         using var dbA = _fixture.CreateContext();
@@ -285,7 +285,7 @@ public sealed class UserDashboardRepositoryTests : IClassFixture<UserDashboardRe
     public async Task GetByWidgetIdAsync_FindsOwningDashboard_AndNullForOtherTenant()
     {
         var tenantId = await TestTenants.NewAsync(_fixture.CreateContext);
-        var userId = Guid.NewGuid();
+        var userId = await TestUsers.NewAsync(_fixture.CreateContext, tenantId);
         var seeded = await SeedAsync(tenantId, userId);
         var widgetId = seeded.Widgets[0].Id;
 
