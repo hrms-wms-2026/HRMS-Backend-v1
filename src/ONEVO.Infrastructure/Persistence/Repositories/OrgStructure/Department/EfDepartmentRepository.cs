@@ -218,6 +218,15 @@ public class EfDepartmentRepository : IDepartmentRepository
         return exists;
     }
 
+    public async Task<bool> AnyActiveAsync(Guid tenantId, CancellationToken ct = default)
+    {
+        var any = await _db.Departments
+            .AsNoTracking()
+            .AnyAsync(department => department.TenantId == tenantId && department.IsActive, ct);
+
+        return any;
+    }
+
     public async Task<bool> ExistsAsync(
         Guid tenantId, Guid legalEntityId, Guid departmentId, CancellationToken ct = default)
     {

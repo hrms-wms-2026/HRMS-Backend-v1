@@ -17,6 +17,7 @@ public sealed class GetSelfEmployeeSetupStatusQueryHandlerTests
     private readonly Mock<IUserRepository> _users = new();
     private readonly Mock<ILegalEntityRepository> _legalEntities = new();
     private readonly Mock<IPositionRepository> _positions = new();
+    private readonly Mock<IDepartmentRepository> _departments = new();
 
     public GetSelfEmployeeSetupStatusQueryHandlerTests()
     {
@@ -24,6 +25,7 @@ public sealed class GetSelfEmployeeSetupStatusQueryHandlerTests
             .ReturnsAsync(new User { Id = UserId, TenantId = TenantId, FirstName = "Ada", LastName = "Owner", Email = "ada@acme.test" });
         _legalEntities.Setup(l => l.CountActiveByTenantAsync(TenantId, It.IsAny<CancellationToken>())).ReturnsAsync(1);
         _positions.Setup(p => p.AnyActiveWithDepartmentAsync(TenantId, It.IsAny<CancellationToken>())).ReturnsAsync(true);
+        _departments.Setup(d => d.AnyActiveAsync(TenantId, It.IsAny<CancellationToken>())).ReturnsAsync(true);
     }
 
     private GetSelfEmployeeSetupStatusQueryHandler Handler()
@@ -32,7 +34,7 @@ public sealed class GetSelfEmployeeSetupStatusQueryHandlerTests
         currentUser.SetupGet(c => c.TenantId).Returns(TenantId);
         currentUser.SetupGet(c => c.UserId).Returns(UserId);
         return new GetSelfEmployeeSetupStatusQueryHandler(
-            currentUser.Object, _employees.Object, _users.Object, _legalEntities.Object, _positions.Object);
+            currentUser.Object, _employees.Object, _users.Object, _legalEntities.Object, _departments.Object, _positions.Object);
     }
 
     [Fact]
@@ -56,6 +58,24 @@ public sealed class GetSelfEmployeeSetupStatusQueryHandlerTests
 
         Assert.False(result.Value!.HasLegalEntity);
         Assert.False(result.Value.CanAddSelf);
+    }
+
+    [Fact]
+    public async Task NoDepartment_ReportsMissingDepartment()
+    {
+        _departments.Setup(d => d.AnyActiveAsync(TenantId, It.IsAny<CancellationToken>())).ReturnsAsync(false);
+
+        var result = await Handler().Handle(new GetSelfEmployeeSetupStatusQuery(), CancellationToken.None);
+
+        Assert.False(result.Value!.HasDepartment);
+    }
+
+    [Fact]
+    public async Task Ready_ReportsDepartment()
+    {
+        var result = await Handler().Handle(new GetSelfEmployeeSetupStatusQuery(), CancellationToken.None);
+
+        Assert.True(result.Value!.HasDepartment);
     }
 
     [Fact]
