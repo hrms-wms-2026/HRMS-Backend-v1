@@ -164,9 +164,9 @@ public class SubmitInactivityCaptureAttemptCommandHandler
                 AgentDeviceId = deviceId,
                 AgentCommandId = null,
                 FileRecordId = uploadResult.Value!.Id,
-                EvidenceType = "screenshot",
+                EvidenceType = MonitoringEvidenceTypes.Screenshot,
                 Source = "agent",
-                TriggerType = "inactivity_approved",
+                TriggerType = MonitoringEvidenceTriggers.InactivityApproved,
                 CapturedAt = request.CapturedAt ?? now,
                 CreatedAt = now
             };

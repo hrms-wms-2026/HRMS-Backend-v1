@@ -22,3 +22,12 @@ public class PermissionChange
 
     public DateTimeOffset AppliedAt { get; set; }
 }
+
+/// <summary>Values of <see cref="PermissionChange.Kind"/> (task 39f: a check constraint reads them).</summary>
+public static class PermissionChangeKinds
+{
+    public const string Rename = "rename";
+    public const string DefaultGrant = "default-grant";
+    public const string SoftRetire = "soft-retire";
+    public const string Remove = "remove";
+}

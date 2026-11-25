@@ -19,8 +19,8 @@ public class EfEvidenceAssetRepository : IEvidenceAssetRepository
             .AsNoTracking()
             .FirstOrDefaultAsync(a => a.TenantId == tenantId
                                       && a.AgentDeviceId == agentDeviceId
-                                      && a.EvidenceType == "screenshot"
-                                      && a.TriggerType == "periodic"
+                                      && a.EvidenceType == MonitoringEvidenceTypes.Screenshot
+                                      && a.TriggerType == MonitoringEvidenceTriggers.Periodic
                                       && a.CapturedAt == capturedAt, ct);
 
     public Task<MonitoringEvidenceAsset?> GetByIdAsync(Guid tenantId, Guid id, CancellationToken ct)

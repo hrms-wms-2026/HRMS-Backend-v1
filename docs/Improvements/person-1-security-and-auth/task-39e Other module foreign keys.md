@@ -30,3 +30,13 @@ The desktop agent writes the monitoring tables at high volume. Check that the re
 ## Done when
 
 - No `task-39e` line is left. With 39b, 39c and 39d done, fewer than 100 id columns have no key, and each has a reason (the target of task 39).
+
+## Results (2026-11-25)
+
+Report: `docs/reports/database/2026-11-25-task-39efg-module-keys-checks-cascades.md`. Branch `claude/improve-task-39efg` (39e, 39f and 39g together).
+
+- Migration `20261125053716_AddOtherModuleForeignKeys39e`: 107 NO ACTION keys and 92 indexes, one `ReferenceForeignKeys` method per module. Not applied by the agent.
+- Its hand-written `RepairOtherModuleReferencesSql` runs first: `Guid.Empty` and ids of the wrong identity table become `NULL` on nullable columns; any other unknown id stops the migration with 50039 naming the columns. Nothing is deleted.
+- No `task-39e` line is left. 17 columns stay without a key, each with a reason (`mixed`, `polymorphic`, `external`, `unused`, a hard delete that a key would block, or the template and version save cycle). 34 id columns have no key in total.
+- `MonitoringRetentionPurgeRunner` deletes only `activity_raw_buffer` and `monitoring_evidence_assets` rows, which no key points at.
+- Bad data: the read-only check `C:\Users\User\Desktop\orphans39efg.sql` (part 1); result pending.

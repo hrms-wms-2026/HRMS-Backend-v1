@@ -7,6 +7,7 @@ using ONEVO.Application.Features.Monitoring.CheckIn.ServiceInterfaces;
 using ONEVO.Application.Features.Monitoring.Screenshots.DTOs.Responses;
 using ONEVO.Application.Features.Monitoring.Screenshots.Mappers;
 using ONEVO.Application.Features.Monitoring.Screenshots.RepositoryInterfaces;
+using ONEVO.Domain.Features.Monitoring.Screenshots.Entities;
 
 namespace ONEVO.Application.Features.Monitoring.Screenshots.Queries.GetPendingCommands;
 
@@ -62,7 +63,7 @@ public class GetPendingCommandsQueryHandler
         var now = _clock.UtcNow;
         foreach (var cmd in pending)
         {
-            cmd.Status = "delivered";
+            cmd.Status = AgentCommandStatuses.Delivered;
             cmd.DeliveredAt = now;
         }
 

@@ -2,145 +2,39 @@
 # SchemaIntegrityInventoryTests: add a line only with a reason, and delete it once the key exists.
 # Format: table.column | group | reason
 # Groups: reference (a real reference, key still to add), tenant (key to tenants), audit (created_by_id),
-#         polymorphic (the type column next to it names the table), external (not a row in this database).
-activity_daily_summary.employee_id | reference | not reviewed yet: task-39e
-activity_raw_buffer.agent_device_id | reference | not reviewed yet: task-39e
-activity_snapshots.agent_device_id | reference | not reviewed yet: task-39e
-activity_snapshots.employee_id | reference | not reviewed yet: task-39e
-agent_commands.requested_by_id | reference | not reviewed yet: task-39e
-app_usage_snapshots.agent_device_id | reference | not reviewed yet: task-39e
-app_usage_snapshots.employee_id | reference | not reviewed yet: task-39e
+#         polymorphic (the type column next to it names the table), external (not a row in this database),
+#         mixed (holds ids of more than one table, with no type column), unused (no code writes it).
 attendance_alert_deductions.alert_id | reference | AttendanceAlertMaterializer hard-deletes an alert whose day no longer qualifies and keeps its refunded deduction; the unique (tenant_id, alert_id) index rules out SET NULL. Needs a product decision: soft-delete alerts (task 39b results)
 attendance_alerts.source_id | polymorphic | the type column next to it names the table, so no foreign key is possible
-audit_logs.correlation_id | reference | not reviewed yet: task-39e
+audit_logs.correlation_id | external | a request correlation id, not a row
 audit_logs.resource_id | polymorphic | the type column next to it names the table, so no foreign key is possible
-audit_logs.user_id | reference | not reviewed yet: task-39e
-biometric_enrollment_attempts.agent_device_id | reference | not reviewed yet: task-39e
-biometric_enrollment_attempts.employee_id | reference | not reviewed yet: task-39e
-biometric_profiles.employee_id | reference | not reviewed yet: task-39e
-biometric_profiles.left_reference_photo_file_id | reference | not reviewed yet: task-39e
-biometric_profiles.reference_photo_file_id | reference | not reviewed yet: task-39e
-biometric_profiles.right_reference_photo_file_id | reference | not reviewed yet: task-39e
-calendar_event_guests.event_id | reference | not reviewed yet: task-39e
-calendar_event_meeting_attendances.calendar_event_meeting_id | reference | not reviewed yet: task-39e
-calendar_event_meeting_attendances.employee_id | reference | not reviewed yet: task-39e
-calendar_event_meetings.calendar_event_id | reference | not reviewed yet: task-39e
-calendar_event_meetings.external_calendar_connection_id | reference | not reviewed yet: task-39e
-calendar_event_participant_rsvp_history.employee_id | reference | not reviewed yet: task-39e
-calendar_event_participant_rsvp_history.event_id | reference | not reviewed yet: task-39e
-calendar_event_participant_rsvp_history.participant_id | reference | not reviewed yet: task-39e
-calendar_event_participants.employee_id | reference | not reviewed yet: task-39e
-calendar_event_participants.event_id | reference | not reviewed yet: task-39e
-calendar_event_reminders_sent.employee_id | reference | not reviewed yet: task-39e
-calendar_event_reminders_sent.event_id | reference | not reviewed yet: task-39e
-calendar_meeting_incidents.employee_id | reference | not reviewed yet: task-39e
-calendar_meeting_incidents.event_id | reference | not reviewed yet: task-39e
-calendar_meeting_incidents.exception_id | reference | not reviewed yet: task-39e
-conversation_favorites.employee_id | reference | not reviewed yet: task-39e
-conversation_message_attachments.file_record_id | reference | not reviewed yet: task-39e
-conversation_message_hides.employee_id | reference | not reviewed yet: task-39e
-conversation_message_mentions.employee_id | reference | not reviewed yet: task-39e
-conversation_message_reactions.employee_id | reference | not reviewed yet: task-39e
-conversation_message_revisions.revised_by_employee_id | reference | not reviewed yet: task-39e
-conversation_messages.author_employee_id | reference | not reviewed yet: task-39e
-conversation_messages.deleted_by_employee_id | reference | not reviewed yet: task-39e
-conversation_messages.reply_to_message_id | reference | not reviewed yet: task-39e
-conversation_mutes.employee_id | reference | not reviewed yet: task-39e
-conversation_participants.added_by_employee_id | reference | not reviewed yet: task-39e
-conversation_participants.employee_id | reference | not reviewed yet: task-39e
-conversation_participants.removed_by_employee_id | reference | not reviewed yet: task-39e
+calendar_event_meetings.external_calendar_connection_id | reference | DisconnectCalendarConnection hard-deletes the connection and keeps the meeting row (it records the provider meeting); a key would make the disconnect fail (task 39e)
+calendar_event_participant_rsvp_history.event_id | mixed | a personal calendar event id or a meeting series id (MeetingAttendeeService), with no type column, so no single parent (task 39e)
+calendar_event_reminders_sent.event_id | mixed | the occurrence's series id (CalendarEventReminderService), a meeting series or a personal event, with no type column (task 39e)
+calendar_meeting_incidents.event_id | mixed | a personal event, a meeting series id, or Guid.Empty for a per-window or per-day rule (CalendarMeetingIncident), so no single parent (task 39e)
+conversation_messages.reply_to_message_id | reference | DeleteMessageIfExistsAsync hard-deletes a system card (ExecuteDelete), and a self reference cannot be SET NULL on SQL Server, so a reply to the card would block it (task 39e)
 conversations.subject_id | polymorphic | the type column next to it names the table, so no foreign key is possible
-device_change_requests.employee_id | reference | not reviewed yet: task-39e
-device_change_requests.legal_entity_id | reference | not reviewed yet: task-39e
-device_state_snapshots.agent_device_id | reference | not reviewed yet: task-39e
-device_state_snapshots.employee_id | reference | not reviewed yet: task-39e
-employee_check_ins.device_registration_id | reference | not reviewed yet: task-39e
-employee_check_ins.user_id | reference | not reviewed yet: task-39e
-employee_monitoring_overrides.employee_id | reference | not reviewed yet: task-39e
-employee_monitoring_overrides.set_by_id | reference | not reviewed yet: task-39e
-employee_work_sessions.device_registration_id | reference | not reviewed yet: task-39e
-employee_work_sessions.user_id | reference | not reviewed yet: task-39e
 employees.nationality_id | external | no nationalities table exists; the API stores the client-supplied id unchecked (task 39b results)
 entity_assets.owner_id | polymorphic | the type column next to it names the table, so no foreign key is possible
-exceptions.acknowledged_by_id | reference | not reviewed yet: task-39e
-exceptions.employee_id | reference | not reviewed yet: task-39e
-exceptions.escalated_by_id | reference | not reviewed yet: task-39e
-exceptions.resolved_by_id | reference | not reviewed yet: task-39e
-external_calendar_connections.user_id | reference | not reviewed yet: task-39e
-external_calendar_event_links.calendar_event_id | reference | not reviewed yet: task-39e
-external_calendar_event_links.external_calendar_connection_id | reference | not reviewed yet: task-39e
-face_verification_attempts.employee_id | reference | not reviewed yet: task-39e
-face_verification_attempts.photo_file_id | reference | not reviewed yet: task-39e
-feature_access_grants.grantee_id | reference | not reviewed yet: task-39e
-holiday_calendar_settings.legal_entity_id | reference | not reviewed yet: task-39e
-holiday_calendar_settings.updated_by_id | reference | not reviewed yet: task-39e
-inactivity_capture_attempts.employee_id | reference | not reviewed yet: task-39e
-inactivity_capture_attempts.work_session_id | reference | not reviewed yet: task-39e
-inbox_decision_journal.actor_employee_id | reference | not reviewed yet: task-39e
-inbox_decision_journal.item_id | reference | not reviewed yet: task-39e
-inbox_decision_journal.reverted_by_journal_id | reference | not reviewed yet: task-39e
+feature_access_grants.grantee_id | polymorphic | the type column next to it names the table, so no foreign key is possible
+inbox_decision_journal.item_id | polymorphic | an inbox item of any source (leave request, correction, approval and so on); the source and kind columns name it, so no single parent (task 39e)
 invitation_tokens.created_by_id | audit | mixed: a platform_users id for the tenant owner's invitation (TenantOwnerInvitationService), a users id otherwise, so no single parent
-invitation_tokens.employee_id | reference | not reviewed yet: task-39e
-invitation_tokens.legal_entity_id | reference | not reviewed yet: task-39e
-invitation_tokens.onboarding_draft_id | reference | not reviewed yet: task-39e
-invitation_tokens.position_assignment_id | reference | not reviewed yet: task-39e
-invitation_tokens.position_id | reference | not reviewed yet: task-39e
-invitation_tokens.revoked_by_id | reference | not reviewed yet: task-39e
-invitation_tokens.role_id | reference | not reviewed yet: task-39e
-invitation_tokens.user_id | reference | not reviewed yet: task-39e
 leave_policy_assignments.target_id | polymorphic | the type column next to it names the table, so no foreign key is possible
-legal_acceptance_records.user_id | reference | not reviewed yet: task-39e
-meeting_signals.agent_device_id | reference | not reviewed yet: task-39e
-meeting_signals.employee_id | reference | not reviewed yet: task-39e
-module_catalog_price_history.changed_by_id | reference | not reviewed yet: task-39e
-monitoring_evidence_assets.employee_id | reference | not reviewed yet: task-39e
-monitoring_evidence_assets.legal_hold_id | reference | not reviewed yet: task-39e
-monitoring_evidence_assets.retention_policy_id | reference | not reviewed yet: task-39e
-monitoring_face_scans.check_in_id | reference | not reviewed yet: task-39e
-monitoring_notifications.employee_id | reference | not reviewed yet: task-39e
-monitoring_permission_consents.device_registration_id | reference | not reviewed yet: task-39e
-monitoring_permission_consents.employee_id | reference | not reviewed yet: task-39e
+module_catalog_price_history.changed_by_id | unused | no code writes this table's actor (task 39e); give it a key to platform_users when a writer exists
+monitoring_evidence_assets.legal_hold_id | external | no legal_holds table exists; the purge only checks it is not null
+monitoring_evidence_assets.retention_policy_id | external | no retention policy table exists (retention is MonitoringRetentionOptions)
 monitoring_policy_overrides.scope_id | polymorphic | the type column next to it names the table, so no foreign key is possible
-monitoring_policy_overrides.set_by_id | reference | not reviewed yet: task-39e
-notification_deliveries.event_id | reference | not reviewed yet: task-39e
-notification_deliveries.notification_id | reference | not reviewed yet: task-39e
-notification_deliveries.recipient_user_id | reference | not reviewed yet: task-39e
+notification_deliveries.event_id | external | the notification event's id (the idempotency key of the delivery), not a row
+notification_templates.active_version_id | reference | a template and its first version are added in one save (NotificationTemplateSeeder, CreateNotificationTemplate); with versions.template_id a key makes a cycle EF cannot order (task 39e)
+payment_gateway_credentials.deactivated_by_id | reference | CredentialOwnershipCompletionArchitectureTests allows later migrations on payment_gateway tables only the 39c audit key; a key here needs that test's owner to agree (task 39e)
+payment_gateway_credentials.rotated_by_id | reference | CredentialOwnershipCompletionArchitectureTests allows later migrations on payment_gateway tables only the 39c audit key; a key here needs that test's owner to agree (task 39e)
 notification_deliveries.related_entity_id | polymorphic | the type column next to it names the table, so no foreign key is possible
-notification_deliveries.template_version_id | reference | not reviewed yet: task-39e
-notification_template_versions.created_by_user_id | reference | not reviewed yet: task-39e
-notification_template_versions.published_by_user_id | reference | not reviewed yet: task-39e
-notification_template_versions.updated_by_user_id | reference | not reviewed yet: task-39e
-notification_templates.active_version_id | reference | not reviewed yet: task-39e
-notifications.recipient_user_id | reference | not reviewed yet: task-39e
 notifications.related_entity_id | polymorphic | the type column next to it names the table, so no foreign key is possible
-password_reset_tokens.user_id | reference | not reviewed yet: task-39e
-payment_gateway_credentials.deactivated_by_id | reference | not reviewed yet: task-39e
-payment_gateway_credentials.rotated_by_id | reference | not reviewed yet: task-39e
 personal_calendar_events.source_id | polymorphic | the type column next to it names the table, so no foreign key is possible
-refresh_tokens.user_id | reference | not reviewed yet: task-39e
 reporting_manager_changes.batch_id | external | a group id made by ReportingLineMoveService (Guid.NewGuid) for the changes of one move; no batch table
-sessions.active_employee_id | reference | not reviewed yet: task-39e
-sessions.user_id | reference | not reviewed yet: task-39e
 task_statuses.approver_id | unused | dead field (see TaskStatus.RequiresApproval): stored from the client unchecked and read by no logic; neither an employee nor a user id is guaranteed
-tenant_notification_rules.updated_by_user_id | reference | not reviewed yet: task-39e
-tenant_provisioning_states.last_updated_by_id | reference | not reviewed yet: task-39e
-tenant_setup_selections.completed_by_id | reference | not reviewed yet: task-39e
-tenant_subscriptions.plan_id | reference | not reviewed yet: task-39e
-tenants.subscription_plan_id | reference | not reviewed yet: task-39e
-tray_activation_codes.user_id | reference | not reviewed yet: task-39e
-tray_device_authorizations.approved_tenant_id | reference | not reviewed yet: task-39e
-tray_device_authorizations.approved_user_id | reference | not reviewed yet: task-39e
-tray_device_refresh_tokens.device_registration_id | reference | not reviewed yet: task-39e
-tray_device_refresh_tokens.user_id | reference | not reviewed yet: task-39e
-tray_device_registrations.user_id | reference | not reviewed yet: task-39e
-user_dashboards.user_id | reference | not reviewed yet: task-39e
-user_external_identities.user_id | reference | not reviewed yet: task-39e
-user_mfa.user_id | reference | not reviewed yet: task-39e
-user_permission_overrides.user_id | reference | not reviewed yet: task-39e
-user_roles.source_position_access_template_id | reference | not reviewed yet: task-39e
-user_roles.source_position_id | reference | not reviewed yet: task-39e
-user_roles.user_id | reference | not reviewed yet: task-39e
-users.suspended_by_id | reference | not reviewed yet: task-39e
+tenant_provisioning_states.last_updated_by_id | unused | no code writes it (task 39e); give it a key when a writer exists
+tenant_setup_selections.completed_by_id | unused | no code writes it (task 39e); give it a key when a writer exists
 wm_approval_requests.target_id | polymorphic | the type column next to it names the table, so no foreign key is possible
 wm_monitor_alerts.target_id | polymorphic | the type column next to it names the table, so no foreign key is possible
 wm_notification_log.target_id | polymorphic | the type column next to it names the table, so no foreign key is possible

@@ -145,7 +145,7 @@ public sealed class PermissionCatalogSynchronizer
                 "Renamed permission {From} -> {To} ({Mode}); kept {RoleGrants} role grants and {Overrides} user overrides " +
                 "in {Tenants} tenants.",
                 rename.From, to, mode, holders.RoleGrants, holders.Overrides, holders.Tenants.Count);
-            Record(run, $"rename:{rename.From}->{to}", "rename", to, rename.From,
+            Record(run, $"rename:{rename.From}->{to}", PermissionChangeKinds.Rename, to, rename.From,
                 new { mode, rename.Reason, rename.Date, holders.RoleGrants, holders.Overrides, tenants = holders.Tenants });
         }
     }
@@ -279,7 +279,7 @@ public sealed class PermissionCatalogSynchronizer
             }
 
             run.Report.DefaultGrantsAdded += added.Count;
-            Record(run, key, "default-grant", grant.Code, null, new
+            Record(run, key, PermissionChangeKinds.DefaultGrant, grant.Code, null, new
             {
                 targets = grant.Targets.Select(t => t.ToString()).ToList(),
                 grant.Reason,
@@ -327,7 +327,7 @@ public sealed class PermissionCatalogSynchronizer
             if (retirement.Stage == RetirementStage.SoftRetired && row.RetiredAt is not null)
                 continue;
 
-            var verb = retirement.Stage == RetirementStage.SoftRetired ? "soft-retire" : "remove";
+            var verb = retirement.Stage == RetirementStage.SoftRetired ? PermissionChangeKinds.SoftRetire : PermissionChangeKinds.Remove;
             var holders = await CountHoldersAsync(row.Id, ct);
             foreach (var (tenantId, count) in holders.Tenants)
             {
