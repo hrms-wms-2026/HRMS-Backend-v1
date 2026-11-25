@@ -3,149 +3,82 @@
 # Format: table.column | group | reason
 # Groups: reference (a real reference, key still to add), tenant (key to tenants), audit (created_by_id),
 #         polymorphic (the type column next to it names the table), external (not a row in this database).
-access_grant_requests.tenant_id | tenant | foreign key to tenants, added in batches: task-39d
 activity_daily_summary.employee_id | reference | not reviewed yet: task-39e
-activity_daily_summary.tenant_id | tenant | foreign key to tenants, added in batches: task-39d
 activity_raw_buffer.agent_device_id | reference | not reviewed yet: task-39e
-activity_raw_buffer.tenant_id | tenant | foreign key to tenants, added in batches: task-39d
 activity_snapshots.agent_device_id | reference | not reviewed yet: task-39e
 activity_snapshots.employee_id | reference | not reviewed yet: task-39e
-activity_snapshots.tenant_id | tenant | foreign key to tenants, added in batches: task-39d
 agent_commands.requested_by_id | reference | not reviewed yet: task-39e
-agent_commands.tenant_id | tenant | foreign key to tenants, added in batches: task-39d
 app_usage_snapshots.agent_device_id | reference | not reviewed yet: task-39e
 app_usage_snapshots.employee_id | reference | not reviewed yet: task-39e
-app_usage_snapshots.tenant_id | tenant | foreign key to tenants, added in batches: task-39d
 attendance_alert_deductions.alert_id | reference | AttendanceAlertMaterializer hard-deletes an alert whose day no longer qualifies and keeps its refunded deduction; the unique (tenant_id, alert_id) index rules out SET NULL. Needs a product decision: soft-delete alerts (task 39b results)
-attendance_alert_deductions.tenant_id | tenant | foreign key to tenants, added in batches: task-39d
 attendance_alerts.source_id | polymorphic | the type column next to it names the table, so no foreign key is possible
-attendance_alerts.tenant_id | tenant | foreign key to tenants, added in batches: task-39d
-attendance_corrections.tenant_id | tenant | foreign key to tenants, added in batches: task-39d
-attendance_records.tenant_id | tenant | foreign key to tenants, added in batches: task-39d
 audit_logs.correlation_id | reference | not reviewed yet: task-39e
 audit_logs.resource_id | polymorphic | the type column next to it names the table, so no foreign key is possible
-audit_logs.tenant_id | tenant | foreign key to tenants, added in batches: task-39d
 audit_logs.user_id | reference | not reviewed yet: task-39e
 biometric_enrollment_attempts.agent_device_id | reference | not reviewed yet: task-39e
 biometric_enrollment_attempts.employee_id | reference | not reviewed yet: task-39e
-biometric_enrollment_attempts.tenant_id | tenant | foreign key to tenants, added in batches: task-39d
 biometric_profiles.employee_id | reference | not reviewed yet: task-39e
 biometric_profiles.left_reference_photo_file_id | reference | not reviewed yet: task-39e
 biometric_profiles.reference_photo_file_id | reference | not reviewed yet: task-39e
 biometric_profiles.right_reference_photo_file_id | reference | not reviewed yet: task-39e
-biometric_profiles.tenant_id | tenant | foreign key to tenants, added in batches: task-39d
-break_records.tenant_id | tenant | foreign key to tenants, added in batches: task-39d
-bulk_onboarding_batch_rows.tenant_id | tenant | foreign key to tenants, added in batches: task-39d
-bulk_onboarding_batches.tenant_id | tenant | foreign key to tenants, added in batches: task-39d
-calendar_event_activity_logs.tenant_id | tenant | foreign key to tenants, added in batches: task-39d
 calendar_event_guests.event_id | reference | not reviewed yet: task-39e
-calendar_event_guests.tenant_id | tenant | foreign key to tenants, added in batches: task-39d
 calendar_event_meeting_attendances.calendar_event_meeting_id | reference | not reviewed yet: task-39e
 calendar_event_meeting_attendances.employee_id | reference | not reviewed yet: task-39e
-calendar_event_meeting_attendances.tenant_id | tenant | foreign key to tenants, added in batches: task-39d
 calendar_event_meetings.calendar_event_id | reference | not reviewed yet: task-39e
 calendar_event_meetings.external_calendar_connection_id | reference | not reviewed yet: task-39e
-calendar_event_meetings.tenant_id | tenant | foreign key to tenants, added in batches: task-39d
 calendar_event_participant_rsvp_history.employee_id | reference | not reviewed yet: task-39e
 calendar_event_participant_rsvp_history.event_id | reference | not reviewed yet: task-39e
 calendar_event_participant_rsvp_history.participant_id | reference | not reviewed yet: task-39e
-calendar_event_participant_rsvp_history.tenant_id | tenant | foreign key to tenants, added in batches: task-39d
 calendar_event_participants.employee_id | reference | not reviewed yet: task-39e
 calendar_event_participants.event_id | reference | not reviewed yet: task-39e
-calendar_event_participants.tenant_id | tenant | foreign key to tenants, added in batches: task-39d
 calendar_event_reminders_sent.employee_id | reference | not reviewed yet: task-39e
 calendar_event_reminders_sent.event_id | reference | not reviewed yet: task-39e
-calendar_event_reminders_sent.tenant_id | tenant | foreign key to tenants, added in batches: task-39d
-calendar_events.tenant_id | tenant | foreign key to tenants, added in batches: task-39d
 calendar_meeting_incidents.employee_id | reference | not reviewed yet: task-39e
 calendar_meeting_incidents.event_id | reference | not reviewed yet: task-39e
 calendar_meeting_incidents.exception_id | reference | not reviewed yet: task-39e
-calendar_meeting_incidents.tenant_id | tenant | foreign key to tenants, added in batches: task-39d
-checklist_templates.tenant_id | tenant | foreign key to tenants, added in batches: task-39d
-clock_in_late_deduction_rules.tenant_id | tenant | foreign key to tenants, added in batches: task-39d
-clock_in_policies.tenant_id | tenant | foreign key to tenants, added in batches: task-39d
 conversation_favorites.employee_id | reference | not reviewed yet: task-39e
-conversation_favorites.tenant_id | tenant | foreign key to tenants, added in batches: task-39d
 conversation_message_attachments.file_record_id | reference | not reviewed yet: task-39e
-conversation_message_attachments.tenant_id | tenant | foreign key to tenants, added in batches: task-39d
 conversation_message_hides.employee_id | reference | not reviewed yet: task-39e
-conversation_message_hides.tenant_id | tenant | foreign key to tenants, added in batches: task-39d
 conversation_message_mentions.employee_id | reference | not reviewed yet: task-39e
-conversation_message_mentions.tenant_id | tenant | foreign key to tenants, added in batches: task-39d
 conversation_message_reactions.employee_id | reference | not reviewed yet: task-39e
-conversation_message_reactions.tenant_id | tenant | foreign key to tenants, added in batches: task-39d
 conversation_message_revisions.revised_by_employee_id | reference | not reviewed yet: task-39e
-conversation_message_revisions.tenant_id | tenant | foreign key to tenants, added in batches: task-39d
 conversation_messages.author_employee_id | reference | not reviewed yet: task-39e
 conversation_messages.deleted_by_employee_id | reference | not reviewed yet: task-39e
 conversation_messages.reply_to_message_id | reference | not reviewed yet: task-39e
-conversation_messages.tenant_id | tenant | foreign key to tenants, added in batches: task-39d
 conversation_mutes.employee_id | reference | not reviewed yet: task-39e
-conversation_mutes.tenant_id | tenant | foreign key to tenants, added in batches: task-39d
 conversation_participants.added_by_employee_id | reference | not reviewed yet: task-39e
 conversation_participants.employee_id | reference | not reviewed yet: task-39e
 conversation_participants.removed_by_employee_id | reference | not reviewed yet: task-39e
-conversation_participants.tenant_id | tenant | foreign key to tenants, added in batches: task-39d
 conversations.subject_id | polymorphic | the type column next to it names the table, so no foreign key is possible
-conversations.tenant_id | tenant | foreign key to tenants, added in batches: task-39d
-daily_work_location_confirmations.tenant_id | tenant | foreign key to tenants, added in batches: task-39d
-dashboard_template_widget_layouts.tenant_id | tenant | foreign key to tenants, added in batches: task-39d
-dashboard_template_widgets.tenant_id | tenant | foreign key to tenants, added in batches: task-39d
-dashboard_templates.tenant_id | tenant | foreign key to tenants, added in batches: task-39d
-dashboard_widget_layouts.tenant_id | tenant | foreign key to tenants, added in batches: task-39d
-dashboard_widgets.tenant_id | tenant | foreign key to tenants, added in batches: task-39d
-departments.tenant_id | tenant | foreign key to tenants, added in batches: task-39d
 device_change_requests.employee_id | reference | not reviewed yet: task-39e
 device_change_requests.legal_entity_id | reference | not reviewed yet: task-39e
-device_change_requests.tenant_id | tenant | foreign key to tenants, added in batches: task-39d
 device_state_snapshots.agent_device_id | reference | not reviewed yet: task-39e
 device_state_snapshots.employee_id | reference | not reviewed yet: task-39e
-device_state_snapshots.tenant_id | tenant | foreign key to tenants, added in batches: task-39d
-employee_addresses.tenant_id | tenant | foreign key to tenants, added in batches: task-39d
-employee_bank_details.tenant_id | tenant | foreign key to tenants, added in batches: task-39d
 employee_check_ins.device_registration_id | reference | not reviewed yet: task-39e
-employee_check_ins.tenant_id | tenant | foreign key to tenants, added in batches: task-39d
 employee_check_ins.user_id | reference | not reviewed yet: task-39e
-employee_checklist_tasks.tenant_id | tenant | foreign key to tenants, added in batches: task-39d
-employee_dependents.tenant_id | tenant | foreign key to tenants, added in batches: task-39d
-employee_emergency_contacts.tenant_id | tenant | foreign key to tenants, added in batches: task-39d
-employee_hierarchy_closure.tenant_id | tenant | foreign key to tenants, added in batches: task-39d
 employee_monitoring_overrides.employee_id | reference | not reviewed yet: task-39e
 employee_monitoring_overrides.set_by_id | reference | not reviewed yet: task-39e
-employee_monitoring_overrides.tenant_id | tenant | foreign key to tenants, added in batches: task-39d
-employee_work_locations.tenant_id | tenant | foreign key to tenants, added in batches: task-39d
 employee_work_sessions.device_registration_id | reference | not reviewed yet: task-39e
-employee_work_sessions.tenant_id | tenant | foreign key to tenants, added in batches: task-39d
 employee_work_sessions.user_id | reference | not reviewed yet: task-39e
 employees.nationality_id | external | no nationalities table exists; the API stores the client-supplied id unchecked (task 39b results)
-employees.tenant_id | tenant | foreign key to tenants, added in batches: task-39d
 entity_assets.owner_id | polymorphic | the type column next to it names the table, so no foreign key is possible
-entity_assets.tenant_id | tenant | foreign key to tenants, added in batches: task-39d
 exceptions.acknowledged_by_id | reference | not reviewed yet: task-39e
 exceptions.employee_id | reference | not reviewed yet: task-39e
 exceptions.escalated_by_id | reference | not reviewed yet: task-39e
 exceptions.resolved_by_id | reference | not reviewed yet: task-39e
-exceptions.tenant_id | tenant | foreign key to tenants, added in batches: task-39d
-external_calendar_connections.tenant_id | tenant | foreign key to tenants, added in batches: task-39d
 external_calendar_connections.user_id | reference | not reviewed yet: task-39e
 external_calendar_event_links.calendar_event_id | reference | not reviewed yet: task-39e
 external_calendar_event_links.external_calendar_connection_id | reference | not reviewed yet: task-39e
-external_calendar_event_links.tenant_id | tenant | foreign key to tenants, added in batches: task-39d
 face_verification_attempts.employee_id | reference | not reviewed yet: task-39e
 face_verification_attempts.photo_file_id | reference | not reviewed yet: task-39e
-face_verification_attempts.tenant_id | tenant | foreign key to tenants, added in batches: task-39d
 feature_access_grants.grantee_id | reference | not reviewed yet: task-39e
-feature_access_grants.tenant_id | tenant | foreign key to tenants, added in batches: task-39d
 holiday_calendar_settings.legal_entity_id | reference | not reviewed yet: task-39e
-holiday_calendar_settings.tenant_id | tenant | foreign key to tenants, added in batches: task-39d
 holiday_calendar_settings.updated_by_id | reference | not reviewed yet: task-39e
 inactivity_capture_attempts.employee_id | reference | not reviewed yet: task-39e
-inactivity_capture_attempts.tenant_id | tenant | foreign key to tenants, added in batches: task-39d
 inactivity_capture_attempts.work_session_id | reference | not reviewed yet: task-39e
 inbox_decision_journal.actor_employee_id | reference | not reviewed yet: task-39e
 inbox_decision_journal.item_id | reference | not reviewed yet: task-39e
 inbox_decision_journal.reverted_by_journal_id | reference | not reviewed yet: task-39e
-inbox_decision_journal.tenant_id | tenant | foreign key to tenants, added in batches: task-39d
 invitation_tokens.created_by_id | audit | mixed: a platform_users id for the tenant owner's invitation (TenantOwnerInvitationService), a users id otherwise, so no single parent
 invitation_tokens.employee_id | reference | not reviewed yet: task-39e
 invitation_tokens.legal_entity_id | reference | not reviewed yet: task-39e
@@ -154,156 +87,60 @@ invitation_tokens.position_assignment_id | reference | not reviewed yet: task-39
 invitation_tokens.position_id | reference | not reviewed yet: task-39e
 invitation_tokens.revoked_by_id | reference | not reviewed yet: task-39e
 invitation_tokens.role_id | reference | not reviewed yet: task-39e
-invitation_tokens.tenant_id | tenant | foreign key to tenants, added in batches: task-39d
 invitation_tokens.user_id | reference | not reviewed yet: task-39e
-labels.tenant_id | tenant | foreign key to tenants, added in batches: task-39d
-leave_approval_delegates.tenant_id | tenant | foreign key to tenants, added in batches: task-39d
-leave_balance_audits.tenant_id | tenant | foreign key to tenants, added in batches: task-39d
-leave_entitlements.tenant_id | tenant | foreign key to tenants, added in batches: task-39d
-leave_policies.tenant_id | tenant | foreign key to tenants, added in batches: task-39d
 leave_policy_assignments.target_id | polymorphic | the type column next to it names the table, so no foreign key is possible
-leave_policy_assignments.tenant_id | tenant | foreign key to tenants, added in batches: task-39d
-leave_policy_blackout_periods.tenant_id | tenant | foreign key to tenants, added in batches: task-39d
-leave_policy_versions.tenant_id | tenant | foreign key to tenants, added in batches: task-39d
-leave_request_approvers.tenant_id | tenant | foreign key to tenants, added in batches: task-39d
-leave_request_day_allocations.tenant_id | tenant | foreign key to tenants, added in batches: task-39d
-leave_request_documents.tenant_id | tenant | foreign key to tenants, added in batches: task-39d
-leave_requests.tenant_id | tenant | foreign key to tenants, added in batches: task-39d
-leave_types.tenant_id | tenant | foreign key to tenants, added in batches: task-39d
-legal_acceptance_records.tenant_id | tenant | foreign key to tenants, added in batches: task-39d
 legal_acceptance_records.user_id | reference | not reviewed yet: task-39e
-legal_entities.tenant_id | tenant | foreign key to tenants, added in batches: task-39d
-location_change_requests.tenant_id | tenant | foreign key to tenants, added in batches: task-39d
-management_coverage_records.tenant_id | tenant | foreign key to tenants, added in batches: task-39d
-meeting_action_items.tenant_id | tenant | foreign key to tenants, added in batches: task-39d
-meeting_attendance_sessions.tenant_id | tenant | foreign key to tenants, added in batches: task-39d
-meeting_details.tenant_id | tenant | foreign key to tenants, added in batches: task-39d
-meeting_occurrence_attendees.tenant_id | tenant | foreign key to tenants, added in batches: task-39d
-meeting_occurrence_suppressions.tenant_id | tenant | foreign key to tenants, added in batches: task-39d
-meeting_series.tenant_id | tenant | foreign key to tenants, added in batches: task-39d
-meeting_series_links.tenant_id | tenant | foreign key to tenants, added in batches: task-39d
 meeting_signals.agent_device_id | reference | not reviewed yet: task-39e
 meeting_signals.employee_id | reference | not reviewed yet: task-39e
-meeting_signals.tenant_id | tenant | foreign key to tenants, added in batches: task-39d
 module_catalog_price_history.changed_by_id | reference | not reviewed yet: task-39e
 monitoring_evidence_assets.employee_id | reference | not reviewed yet: task-39e
 monitoring_evidence_assets.legal_hold_id | reference | not reviewed yet: task-39e
 monitoring_evidence_assets.retention_policy_id | reference | not reviewed yet: task-39e
-monitoring_evidence_assets.tenant_id | tenant | foreign key to tenants, added in batches: task-39d
 monitoring_face_scans.check_in_id | reference | not reviewed yet: task-39e
-monitoring_face_scans.tenant_id | tenant | foreign key to tenants, added in batches: task-39d
-monitoring_feature_toggles.tenant_id | tenant | foreign key to tenants, added in batches: task-39d
 monitoring_notifications.employee_id | reference | not reviewed yet: task-39e
-monitoring_notifications.tenant_id | tenant | foreign key to tenants, added in batches: task-39d
 monitoring_permission_consents.device_registration_id | reference | not reviewed yet: task-39e
 monitoring_permission_consents.employee_id | reference | not reviewed yet: task-39e
-monitoring_permission_consents.tenant_id | tenant | foreign key to tenants, added in batches: task-39d
 monitoring_policy_overrides.scope_id | polymorphic | the type column next to it names the table, so no foreign key is possible
 monitoring_policy_overrides.set_by_id | reference | not reviewed yet: task-39e
-monitoring_policy_overrides.tenant_id | tenant | foreign key to tenants, added in batches: task-39d
 notification_deliveries.event_id | reference | not reviewed yet: task-39e
 notification_deliveries.notification_id | reference | not reviewed yet: task-39e
 notification_deliveries.recipient_user_id | reference | not reviewed yet: task-39e
 notification_deliveries.related_entity_id | polymorphic | the type column next to it names the table, so no foreign key is possible
 notification_deliveries.template_version_id | reference | not reviewed yet: task-39e
-notification_deliveries.tenant_id | tenant | foreign key to tenants, added in batches: task-39d
 notification_template_versions.created_by_user_id | reference | not reviewed yet: task-39e
 notification_template_versions.published_by_user_id | reference | not reviewed yet: task-39e
 notification_template_versions.updated_by_user_id | reference | not reviewed yet: task-39e
 notification_templates.active_version_id | reference | not reviewed yet: task-39e
 notifications.recipient_user_id | reference | not reviewed yet: task-39e
 notifications.related_entity_id | polymorphic | the type column next to it names the table, so no foreign key is possible
-notifications.tenant_id | tenant | foreign key to tenants, added in batches: task-39d
-objectives.tenant_id | tenant | foreign key to tenants, added in batches: task-39d
-offboarding_records.tenant_id | tenant | foreign key to tenants, added in batches: task-39d
-offboarding_task_bypass_requests.tenant_id | tenant | foreign key to tenants, added in batches: task-39d
-onboarding_drafts.tenant_id | tenant | foreign key to tenants, added in batches: task-39d
-outbox_messages.tenant_id | tenant | foreign key to tenants, added in batches: task-39d
-password_reset_tokens.tenant_id | tenant | foreign key to tenants, added in batches: task-39d
 password_reset_tokens.user_id | reference | not reviewed yet: task-39e
 payment_gateway_credentials.deactivated_by_id | reference | not reviewed yet: task-39e
 payment_gateway_credentials.rotated_by_id | reference | not reviewed yet: task-39e
 personal_calendar_events.source_id | polymorphic | the type column next to it names the table, so no foreign key is possible
-personal_calendar_events.tenant_id | tenant | foreign key to tenants, added in batches: task-39d
-planned_task_blocks.tenant_id | tenant | foreign key to tenants, added in batches: task-39d
-position_access_templates.tenant_id | tenant | foreign key to tenants, added in batches: task-39d
-position_assignments.tenant_id | tenant | foreign key to tenants, added in batches: task-39d
-position_reporting_history.tenant_id | tenant | foreign key to tenants, added in batches: task-39d
-positions.tenant_id | tenant | foreign key to tenants, added in batches: task-39d
-presence_sessions.tenant_id | tenant | foreign key to tenants, added in batches: task-39d
-project_categories.tenant_id | tenant | foreign key to tenants, added in batches: task-39d
-project_member_invitations.tenant_id | tenant | foreign key to tenants, added in batches: task-39d
-project_members.tenant_id | tenant | foreign key to tenants, added in batches: task-39d
-projects.tenant_id | tenant | foreign key to tenants, added in batches: task-39d
-refresh_tokens.tenant_id | tenant | foreign key to tenants, added in batches: task-39d
 refresh_tokens.user_id | reference | not reviewed yet: task-39e
-release_calendar.tenant_id | tenant | foreign key to tenants, added in batches: task-39d
 reporting_manager_changes.batch_id | external | a group id made by ReportingLineMoveService (Guid.NewGuid) for the changes of one move; no batch table
-reporting_manager_changes.tenant_id | tenant | foreign key to tenants, added in batches: task-39d
-role_permissions.tenant_id | tenant | foreign key to tenants, added in batches: task-39d
-roles.tenant_id | tenant | foreign key to tenants, added in batches: task-39d
-seat_increase_requests.tenant_id | tenant | foreign key to tenants, added in batches: task-39d
 sessions.active_employee_id | reference | not reviewed yet: task-39e
-sessions.tenant_id | tenant | foreign key to tenants, added in batches: task-39d
 sessions.user_id | reference | not reviewed yet: task-39e
-sprint_activity_logs.tenant_id | tenant | foreign key to tenants, added in batches: task-39d
-sprints.tenant_id | tenant | foreign key to tenants, added in batches: task-39d
-support_ticket_attachments.tenant_id | tenant | foreign key to tenants, added in batches: task-39d
-support_ticket_comments.tenant_id | tenant | foreign key to tenants, added in batches: task-39d
-task_categories.tenant_id | tenant | foreign key to tenants, added in batches: task-39d
-task_clocking_sessions.tenant_id | tenant | foreign key to tenants, added in batches: task-39d
-task_comment_logs.tenant_id | tenant | foreign key to tenants, added in batches: task-39d
-task_comment_reactions.tenant_id | tenant | foreign key to tenants, added in batches: task-39d
-task_comments.tenant_id | tenant | foreign key to tenants, added in batches: task-39d
-task_drafts.tenant_id | tenant | foreign key to tenants, added in batches: task-39d
-task_edit_logs.tenant_id | tenant | foreign key to tenants, added in batches: task-39d
-task_percentage_logs.tenant_id | tenant | foreign key to tenants, added in batches: task-39d
-task_status_change_logs.tenant_id | tenant | foreign key to tenants, added in batches: task-39d
 task_statuses.approver_id | unused | dead field (see TaskStatus.RequiresApproval): stored from the client unchecked and read by no logic; neither an employee nor a user id is guaranteed
-task_statuses.tenant_id | tenant | foreign key to tenants, added in batches: task-39d
-tasks.tenant_id | tenant | foreign key to tenants, added in batches: task-39d
-tenant_auth_policies.tenant_id | tenant | foreign key to tenants, added in batches: task-39d
-tenant_notification_rules.tenant_id | tenant | foreign key to tenants, added in batches: task-39d
 tenant_notification_rules.updated_by_user_id | reference | not reviewed yet: task-39e
-tenant_one_time_charges.tenant_id | tenant | foreign key to tenants, added in batches: task-39d
 tenant_provisioning_states.last_updated_by_id | reference | not reviewed yet: task-39e
-tenant_provisioning_states.tenant_id | tenant | foreign key to tenants, added in batches: task-39d
 tenant_setup_selections.completed_by_id | reference | not reviewed yet: task-39e
-tenant_setup_selections.tenant_id | tenant | foreign key to tenants, added in batches: task-39d
 tenant_subscriptions.plan_id | reference | not reviewed yet: task-39e
-tenant_subscriptions.tenant_id | tenant | foreign key to tenants, added in batches: task-39d
-tenant_work_modes.tenant_id | tenant | foreign key to tenants, added in batches: task-39d
 tenants.subscription_plan_id | reference | not reviewed yet: task-39e
-tray_activation_codes.tenant_id | tenant | foreign key to tenants, added in batches: task-39d
 tray_activation_codes.user_id | reference | not reviewed yet: task-39e
 tray_device_authorizations.approved_tenant_id | reference | not reviewed yet: task-39e
 tray_device_authorizations.approved_user_id | reference | not reviewed yet: task-39e
 tray_device_refresh_tokens.device_registration_id | reference | not reviewed yet: task-39e
-tray_device_refresh_tokens.tenant_id | tenant | foreign key to tenants, added in batches: task-39d
 tray_device_refresh_tokens.user_id | reference | not reviewed yet: task-39e
-tray_device_registrations.tenant_id | tenant | foreign key to tenants, added in batches: task-39d
 tray_device_registrations.user_id | reference | not reviewed yet: task-39e
-user_dashboards.tenant_id | tenant | foreign key to tenants, added in batches: task-39d
 user_dashboards.user_id | reference | not reviewed yet: task-39e
-user_external_identities.tenant_id | tenant | foreign key to tenants, added in batches: task-39d
 user_external_identities.user_id | reference | not reviewed yet: task-39e
-user_mfa.tenant_id | tenant | foreign key to tenants, added in batches: task-39d
 user_mfa.user_id | reference | not reviewed yet: task-39e
-user_permission_overrides.tenant_id | tenant | foreign key to tenants, added in batches: task-39d
 user_permission_overrides.user_id | reference | not reviewed yet: task-39e
 user_roles.source_position_access_template_id | reference | not reviewed yet: task-39e
 user_roles.source_position_id | reference | not reviewed yet: task-39e
-user_roles.tenant_id | tenant | foreign key to tenants, added in batches: task-39d
 user_roles.user_id | reference | not reviewed yet: task-39e
 users.suspended_by_id | reference | not reviewed yet: task-39e
-users.tenant_id | tenant | foreign key to tenants, added in batches: task-39d
-versions.tenant_id | tenant | foreign key to tenants, added in batches: task-39d
 wm_approval_requests.target_id | polymorphic | the type column next to it names the table, so no foreign key is possible
-wm_approval_requests.tenant_id | tenant | foreign key to tenants, added in batches: task-39d
-wm_module_hour_summaries.tenant_id | tenant | foreign key to tenants, added in batches: task-39d
 wm_monitor_alerts.target_id | polymorphic | the type column next to it names the table, so no foreign key is possible
-wm_monitor_alerts.tenant_id | tenant | foreign key to tenants, added in batches: task-39d
 wm_notification_log.target_id | polymorphic | the type column next to it names the table, so no foreign key is possible
-wm_notification_log.tenant_id | tenant | foreign key to tenants, added in batches: task-39d
-wm_task_rate_settings.tenant_id | tenant | foreign key to tenants, added in batches: task-39d
-work_area_change_requests.tenant_id | tenant | foreign key to tenants, added in batches: task-39d

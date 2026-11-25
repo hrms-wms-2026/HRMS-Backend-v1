@@ -21,3 +21,14 @@
 
 - No `tenant` line is left in the allow-list.
 - Migrations are created and reported, not applied to a shared database.
+
+## Results
+
+Done on branch `claude/improve-task-39d-tenant-fks` (from local `feature/testing` 7b4073f7a, with the later 39c fixes merged in). Report: `docs/reports/database/2026-11-25-task-39d-tenant-foreign-keys.md`.
+
+- Migration: `20261124131426_AddTenantForeignKeys39d`, generated with `dotnet ef migrations add`. 163 NO ACTION keys to `tenants` and 19 indexes; no table or column change. One migration instead of batches, as Execution asked. Not applied to any shared database.
+- All 163 `tenant` lines are gone from `missing-foreign-keys.txt` (309 → 146 lines). `ReferenceForeignKeys.ApplyTenantColumns` adds the keys from one loop over the `TenantId` property, so nullable PlatformShared columns stay nullable and later tables get their key.
+- Hand-written SQL: a read-only check, in admin tenant context mode, that stops with error 50039 and names each table holding a `tenant_id` that is not a tenant (`TenantOrphanCheckTests`). Nothing is repaired or deleted.
+- RLS: key checks are not filtered by RLS; the architecture (RLS registry) tests pass unchanged.
+- Local `CrownusDb` check (run by the user): all 163 columns `unknown 0`.
+- Test fixtures: new `TestTenants` helper for made-up tenant ids (dashboards, sessions); the work-area schema test names the new key.
