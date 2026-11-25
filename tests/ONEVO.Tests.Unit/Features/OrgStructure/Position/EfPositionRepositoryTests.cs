@@ -90,9 +90,21 @@ public sealed class EfPositionRepositoryTests
 
         Assert.NotNull(entityType);
 
+        var (own, tenant) = SplitTenantKey(entityType);
+        Assert.Equal(3, own.Count); // 2 own keys + created_by_user_id (task 39b)
+        Assert.All(own, fk => Assert.Equal(DeleteBehavior.Restrict, fk.DeleteBehavior));
+        Assert.Equal(DeleteBehavior.NoAction, tenant.DeleteBehavior); // task 39d; the same DDL as Restrict
+    }
+
+    /// <summary>The table's own keys, and the tenant_id key to tenants that every tenant table has since task 39d.</summary>
+    private static (List<Microsoft.EntityFrameworkCore.Metadata.IForeignKey> Own, Microsoft.EntityFrameworkCore.Metadata.IForeignKey Tenant)
+        SplitTenantKey(Microsoft.EntityFrameworkCore.Metadata.IEntityType entityType)
+    {
         var fks = entityType.GetForeignKeys().ToList();
-        Assert.Equal(3, fks.Count); // 2 own keys + created_by_user_id (task 39b)
-        Assert.All(fks, fk => Assert.Equal(DeleteBehavior.Restrict, fk.DeleteBehavior));
+        var tenant = Assert.Single(fks, fk =>
+            fk.PrincipalEntityType.ClrType == typeof(ONEVO.Domain.Features.InfrastructureModule.Entities.Tenant)
+            && fk.Properties.Single().Name == "TenantId");
+        return (fks.Where(fk => fk != tenant).ToList(), tenant);
     }
 
     [Fact]
@@ -103,9 +115,10 @@ public sealed class EfPositionRepositoryTests
 
         Assert.NotNull(entityType);
 
-        var fks = entityType.GetForeignKeys().ToList();
-        Assert.Equal(5, fks.Count); // 4 own keys + responsible_employee_id (task 39a)
-        Assert.All(fks, fk => Assert.Equal(DeleteBehavior.Restrict, fk.DeleteBehavior));
+        var (own, tenant) = SplitTenantKey(entityType);
+        Assert.Equal(5, own.Count); // 4 own keys + responsible_employee_id (task 39a)
+        Assert.All(own, fk => Assert.Equal(DeleteBehavior.Restrict, fk.DeleteBehavior));
+        Assert.Equal(DeleteBehavior.NoAction, tenant.DeleteBehavior); // task 39d; the same DDL as Restrict
     }
 
     [Fact]

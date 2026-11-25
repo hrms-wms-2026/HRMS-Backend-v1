@@ -50,7 +50,9 @@ The integration suite found fixtures that wrote made-up tenant ids. They were fi
 - `TestTenants` (new, `tests/ONEVO.Tests.Integration/Support`) adds the tenants row behind a fixture tenant id. `UserDashboardRepositoryTests` (6 tests) and `SessionRevocationTests` use it.
 - `WorkAreaChangeRequestsIntegrationTests.MigratedSchema_HasExpectedColumnsRestrictiveForeignKeysAndIndexes` counted 5 NO ACTION keys on `work_area_change_requests`; it now expects 6 and names the new `fk_work_area_change_requests_tenants_tenant_id`.
 
-All 8 failures of the first full run failed again when run alone, so they were real. After the fixes the four classes pass 22 of 22.
+- `EfPositionRepositoryTests` (unit) counted every key on `position_reporting_history` and `management_coverage_records` and required Restrict. They now count the table's own keys as before (Restrict) and check the new tenant key on its own (NO ACTION, the same DDL on SQL Server).
+
+All 8 integration failures of the first full run failed again when run alone, so they were real. After the fixes the four classes pass 22 of 22.
 
 ## Gate
 
