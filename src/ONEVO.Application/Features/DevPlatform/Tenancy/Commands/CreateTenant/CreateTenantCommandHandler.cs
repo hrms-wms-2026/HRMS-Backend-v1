@@ -11,6 +11,7 @@ using ONEVO.Application.Features.DevPlatform.Tenancy.Provisioning;
 using ONEVO.Application.Features.DevPlatform.Tenancy.DTOs.Requests;
 using ONEVO.Application.Features.DevPlatform.Tenancy.DTOs.Responses;
 using ONEVO.Application.Features.DevPlatform.Provisioning.ServiceInterfaces;
+using ONEVO.Application.Features.DevPlatform.Subscription.Helpers;
 using ONEVO.Application.Features.DevPlatform.Subscription.RepositoryInterfaces;
 using ONEVO.Application.Features.DevPlatform.Tenancy.RepositoryInterfaces;
 using ONEVO.Application.Features.OrgStructure.RepositoryInterfaces;
@@ -97,7 +98,9 @@ public class CreateTenantCommandHandler
                 $"Subscription plan '{request.Subscription.PlanId}' not found.");
 
         // 3a. Validate trial/grace overrides before any entity creation
-        var trialDays = request.Subscription.TrialPeriodDays ?? plan.TrialPeriodDays;
+        var isTest = request.Subscription.IsTest;
+        // A test tenant is never billed, so it never trials out either.
+        var trialDays = isTest ? 0 : request.Subscription.TrialPeriodDays ?? plan.TrialPeriodDays;
         var graceDays = request.Subscription.UnpaidGracePeriodDays ?? plan.UnpaidGracePeriodDays;
         if (trialDays < 0 || graceDays < 0)
             return Result<CreateTenantDraftResponseDto>.Failure("Trial period days and unpaid grace period days must be non-negative.", 400);
@@ -165,6 +168,11 @@ public class CreateTenantCommandHandler
             BillingCycle = billingCycle,
             CommercialModel = request.Subscription.CommercialModel,
             Status = subscriptionStatus,
+            // Authoritative seat policy. Without it, onboarding can't be finalized
+            // (SeatEntitlementService reports "Undetermined").
+            IncludedSeats = request.Subscription.IncludedSeats,
+            OverageAllowed = request.Subscription.OverageAllowed
+                ?? (request.Subscription.IncludedSeats is not null ? false : null),
             CurrentPeriodStart = DateOnly.FromDateTime(now.UtcDateTime),
             CurrentPeriodEnd = isAnnual
                 ? DateOnly.FromDateTime(now.AddYears(1).UtcDateTime)
@@ -184,6 +192,8 @@ public class CreateTenantCommandHandler
             // AccessEndsAt: null initially; set by billing system when subscription lapses
             CreatedAt = now
         };
+        if (isTest)
+            CommercialModels.ApplyTestMode(subscription);
         await _subscriptions.AddAsync(subscription, ct);
 
         // 8. Seed Owner role (does NOT call SaveChanges)

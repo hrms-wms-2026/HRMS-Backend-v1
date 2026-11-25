@@ -49,4 +49,19 @@ public sealed class EfSubscriptionRepository
             .OrderByDescending(s => s.CreatedAt)
             .FirstOrDefaultAsync(ct);
     }
+
+    public async Task<IReadOnlySet<Guid>> GetTestTenantIdsAsync(
+        IReadOnlyCollection<Guid> tenantIds, CancellationToken ct = default)
+    {
+        if (tenantIds.Count == 0)
+            return new HashSet<Guid>();
+
+        var test = ONEVO.Application.Features.DevPlatform.Subscription.Helpers.CommercialModels.Test;
+        var ids = await _db.TenantSubscriptions
+            .AsNoTracking()
+            .Where(s => tenantIds.Contains(s.TenantId) && s.CommercialModel == test)
+            .Select(s => s.TenantId)
+            .ToListAsync(ct);
+        return ids.ToHashSet();
+    }
 }
