@@ -26,6 +26,8 @@ public static class RlsTableRegistry
             // 20261120141304_AddInboxItems (task 37)
             ["inbox_items"] = RlsPredicate.Tenant,
             ["inbox_item_assignees"] = RlsPredicate.Tenant,
+            // 20261121144123_AddMonitoringSettings (Improvements task 36)
+            ["monitoring_settings"] = RlsPredicate.Tenant,
         };
 
     /// <summary>Every table under tenant isolation: the baseline plus everything added after it.</summary>

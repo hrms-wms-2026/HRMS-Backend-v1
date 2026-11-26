@@ -68,7 +68,7 @@ public sealed class TrayPresenceRequirementEvaluator : ITrayPresenceRequirementE
         }
 
         // Identity verification is owned by the employee's Work Mode ("photo required"), not by
-        // a MonitoringFeatureToggles flag - see IMonitoringToggleResolver.IsPhotoRequiredAsync.
+        // a monitoring_settings company flag - see IMonitoringToggleResolver.IsPhotoRequiredAsync.
         return _currentUser.LegalEntityId is { } activeLegalEntityId
             ? await _toggles.IsPhotoRequiredAsync(tenantId, userId, activeLegalEntityId, ct)
             : await _toggles.IsPhotoRequiredAsync(tenantId, userId, ct);

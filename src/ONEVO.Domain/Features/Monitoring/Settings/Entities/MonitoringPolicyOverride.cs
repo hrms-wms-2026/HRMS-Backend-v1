@@ -5,6 +5,7 @@ namespace ONEVO.Domain.Features.Monitoring.Settings.Entities;
 /// <summary>
 /// Role / position / department scoped monitoring overrides. Null = inherit.
 /// Unique on (tenant_id, scope_type, scope_id).
+/// <para>Legacy since Improvements task 36: the table is kept for one release and no code reads or writes it. Use <see cref="MonitoringSetting"/>.</para>
 /// </summary>
 public class MonitoringPolicyOverride : ITenantOwnedEntity
 {

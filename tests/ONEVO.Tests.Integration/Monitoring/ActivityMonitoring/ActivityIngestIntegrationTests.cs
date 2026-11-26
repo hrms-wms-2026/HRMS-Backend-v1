@@ -56,13 +56,15 @@ public sealed class ActivityIngestIntegrationTestsFixture : IAsyncLifetime
     {
         using var scope = _factory.Services.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
-        db.MonitoringFeatureToggles.Add(new MonitoringFeatureToggles
+        db.MonitoringSettings.Add(new MonitoringSetting
         {
             Id = Guid.NewGuid(),
-            TenantId = tenantId,
+            TenantId = tenantId, ScopeType = MonitoringSettingScopes.Tenant, ScopeId = tenantId,
             ActivityMonitoring = true,
             CreatedAt = DateTimeOffset.UtcNow,
-            UpdatedAt = DateTimeOffset.UtcNow
+            UpdatedAt = DateTimeOffset.UtcNow,
+            // A base row sets every switch (task 36).
+            ApplicationTracking = false, DocumentTracking = false, CommunicationTracking = false, ScreenshotCapture = false, AutoScreenshotCapture = false, MeetingDetection = false, DeviceTracking = false, WorkLocationVerification = false, IdentityVerification = false, Biometric = false,
         });
         await db.SaveChangesAsync();
     }

@@ -10,7 +10,8 @@ namespace ONEVO.Infrastructure.Services.Monitoring.ActivityMonitoring;
 
 /// <summary>
 /// Resolves monitoring capability enablement:
-/// employee override → work mode → role/position/dept policy → tenant toggle → false (safe default).
+/// employee → work mode → role → position → department → legal entity → tenant → false (safe default),
+/// all read from monitoring_settings in one query per resolution (Improvements task 36).
 /// Cached 2 minutes per tenant/employee/capability.
 /// </summary>
 public class MonitoringToggleResolverService : IMonitoringToggleResolver
@@ -178,92 +179,14 @@ public class MonitoringToggleResolverService : IMonitoringToggleResolver
         if (employee is null)
             return MonitoringToggleResolution.DefaultIdleThresholdMinutes;
 
-        // 1. Employee-level override
-        var employeeOverride = await _db.EmployeeMonitoringOverrides
-            .AsNoTracking()
-            .FirstOrDefaultAsync(o => o.TenantId == tenantId && o.EmployeeId == employee.Id, ct);
-        var employeeMinutes = employeeOverride?.IdleThresholdMinutes;
-
-        // 2. Work Mode tier - resolved directly from the employee row, not a collected scope
-        // list, since there's exactly one WorkMode per employee (unlike roles, which can be plural).
-        MonitoringPolicyOverride? workModeOverride = employee.WorkModeId is Guid workModeId
-            ? await _db.MonitoringPolicyOverrides
-                .AsNoTracking()
-                .FirstOrDefaultAsync(p => p.TenantId == tenantId && p.ScopeType == "work_mode" && p.ScopeId == workModeId, ct)
-            : null;
-        var workModeMinutes = workModeOverride?.IdleThresholdMinutes;
-
-        // 3. Policy overrides: role > position > department
-        Guid? departmentId = employee?.DepartmentId;
-        Guid? positionId = employee is null
-            ? null
-            : await _db.PositionAssignments
-                .AsNoTracking()
-                .Where(a => a.EmployeeId == employee.Id
-                    && a.AssignmentKind == PositionAssignmentKind.PrimaryEmployment
-                    && a.AssignmentStatus == PositionAssignmentStatus.Active
-                    && a.EffectiveFrom <= DateOnly.FromDateTime(DateTime.UtcNow)
-                    && (a.EffectiveTo == null || a.EffectiveTo >= DateOnly.FromDateTime(DateTime.UtcNow)))
-                .OrderByDescending(a => a.EffectiveFrom)
-                .Select(a => (Guid?)a.PositionId)
-                .FirstOrDefaultAsync(ct);
-        Guid userIdForRoles = employee!.UserId;
-
-        var roleIds = await _db.UserRoles
-            .AsNoTracking()
-            .Where(ur => ur.TenantId == tenantId && ur.UserId == userIdForRoles)
-            .Select(ur => ur.RoleId)
-            .ToListAsync(ct);
-
-        var scopeIds = new List<Guid>();
-        scopeIds.AddRange(roleIds);
-        if (positionId.HasValue) scopeIds.Add(positionId.Value);
-        if (departmentId.HasValue) scopeIds.Add(departmentId.Value);
-
-        int? roleMinutes = null;
-        int? positionMinutes = null;
-        int? departmentMinutes = null;
-
-        if (scopeIds.Count > 0)
-        {
-            var policies = await _db.MonitoringPolicyOverrides
-                .AsNoTracking()
-                .Where(p => p.TenantId == tenantId && scopeIds.Contains(p.ScopeId))
-                .ToListAsync(ct);
-
-            roleMinutes = policies
-                .Where(p => p.ScopeType == "role" && roleIds.Contains(p.ScopeId))
-                .Select(p => p.IdleThresholdMinutes)
-                .FirstOrDefault(v => v.HasValue);
-
-            if (positionId.HasValue)
-            {
-                positionMinutes = policies
-                    .Where(p => p.ScopeType == "position" && p.ScopeId == positionId.Value)
-                    .Select(p => p.IdleThresholdMinutes)
-                    .FirstOrDefault(v => v.HasValue);
-            }
-
-            if (departmentId.HasValue)
-            {
-                departmentMinutes = policies
-                    .Where(p => p.ScopeType == "department" && p.ScopeId == departmentId.Value)
-                    .Select(p => p.IdleThresholdMinutes)
-                    .FirstOrDefault(v => v.HasValue);
-            }
-        }
-
-        // 4. Legal-entity default, then retained tenant fallback.
-        var toggles = await _db.MonitoringFeatureToggles
-            .AsNoTracking()
-            .Where(t => t.TenantId == tenantId
-                && (t.LegalEntityId == employee.LegalEntityId || t.LegalEntityId == null))
-            .OrderByDescending(t => t.LegalEntityId == employee.LegalEntityId)
-            .FirstOrDefaultAsync(ct);
-        var tenantMinutes = toggles?.IdleThresholdMinutes;
-
+        var levels = await LoadLevelsAsync(tenantId, employee, ct);
         return MonitoringToggleResolution.ResolveMinutes(
-            employeeMinutes, workModeMinutes, roleMinutes, positionMinutes, departmentMinutes, tenantMinutes);
+            levels.Employee?.IdleThresholdMinutes,
+            levels.WorkMode?.IdleThresholdMinutes,
+            levels.FirstRole(s => s.IdleThresholdMinutes),
+            levels.Position?.IdleThresholdMinutes,
+            levels.Department?.IdleThresholdMinutes,
+            levels.Base?.IdleThresholdMinutes);
     }
 
     private async Task<int?> ResolveRadiusMetersAsync(
@@ -273,92 +196,14 @@ public class MonitoringToggleResolverService : IMonitoringToggleResolver
         if (employee is null)
             return null;
 
-        // 1. Employee-level override
-        var employeeOverride = await _db.EmployeeMonitoringOverrides
-            .AsNoTracking()
-            .FirstOrDefaultAsync(o => o.TenantId == tenantId && o.EmployeeId == employee.Id, ct);
-        var employeeRadius = employeeOverride?.AllowedRadiusMeters;
-
-        // 2. Work Mode tier - resolved directly from the employee row, not a collected scope
-        // list, since there's exactly one WorkMode per employee (unlike roles, which can be plural).
-        MonitoringPolicyOverride? workModeOverride = employee.WorkModeId is Guid workModeId
-            ? await _db.MonitoringPolicyOverrides
-                .AsNoTracking()
-                .FirstOrDefaultAsync(p => p.TenantId == tenantId && p.ScopeType == "work_mode" && p.ScopeId == workModeId, ct)
-            : null;
-        var workModeRadius = workModeOverride?.AllowedRadiusMeters;
-
-        // 3. Policy overrides: role > position > department
-        Guid? departmentId = employee?.DepartmentId;
-        Guid? positionId = employee is null
-            ? null
-            : await _db.PositionAssignments
-                .AsNoTracking()
-                .Where(a => a.EmployeeId == employee.Id
-                    && a.AssignmentKind == PositionAssignmentKind.PrimaryEmployment
-                    && a.AssignmentStatus == PositionAssignmentStatus.Active
-                    && a.EffectiveFrom <= DateOnly.FromDateTime(DateTime.UtcNow)
-                    && (a.EffectiveTo == null || a.EffectiveTo >= DateOnly.FromDateTime(DateTime.UtcNow)))
-                .OrderByDescending(a => a.EffectiveFrom)
-                .Select(a => (Guid?)a.PositionId)
-                .FirstOrDefaultAsync(ct);
-        Guid userIdForRoles = employee!.UserId;
-
-        var roleIds = await _db.UserRoles
-            .AsNoTracking()
-            .Where(ur => ur.TenantId == tenantId && ur.UserId == userIdForRoles)
-            .Select(ur => ur.RoleId)
-            .ToListAsync(ct);
-
-        var scopeIds = new List<Guid>();
-        scopeIds.AddRange(roleIds);
-        if (positionId.HasValue) scopeIds.Add(positionId.Value);
-        if (departmentId.HasValue) scopeIds.Add(departmentId.Value);
-
-        int? roleRadius = null;
-        int? positionRadius = null;
-        int? departmentRadius = null;
-
-        if (scopeIds.Count > 0)
-        {
-            var policies = await _db.MonitoringPolicyOverrides
-                .AsNoTracking()
-                .Where(p => p.TenantId == tenantId && scopeIds.Contains(p.ScopeId))
-                .ToListAsync(ct);
-
-            roleRadius = policies
-                .Where(p => p.ScopeType == "role" && roleIds.Contains(p.ScopeId))
-                .Select(p => p.AllowedRadiusMeters)
-                .FirstOrDefault(v => v.HasValue);
-
-            if (positionId.HasValue)
-            {
-                positionRadius = policies
-                    .Where(p => p.ScopeType == "position" && p.ScopeId == positionId.Value)
-                    .Select(p => p.AllowedRadiusMeters)
-                    .FirstOrDefault(v => v.HasValue);
-            }
-
-            if (departmentId.HasValue)
-            {
-                departmentRadius = policies
-                    .Where(p => p.ScopeType == "department" && p.ScopeId == departmentId.Value)
-                    .Select(p => p.AllowedRadiusMeters)
-                    .FirstOrDefault(v => v.HasValue);
-            }
-        }
-
-        // 4. Legal-entity default, then retained tenant fallback.
-        var toggles = await _db.MonitoringFeatureToggles
-            .AsNoTracking()
-            .Where(t => t.TenantId == tenantId
-                && (t.LegalEntityId == employee.LegalEntityId || t.LegalEntityId == null))
-            .OrderByDescending(t => t.LegalEntityId == employee.LegalEntityId)
-            .FirstOrDefaultAsync(ct);
-        var tenantRadius = toggles?.AllowedRadiusMeters;
-
+        var levels = await LoadLevelsAsync(tenantId, employee, ct);
         return MonitoringToggleResolution.ResolveRadiusMeters(
-            employeeRadius, workModeRadius, roleRadius, positionRadius, departmentRadius, tenantRadius);
+            levels.Employee?.AllowedRadiusMeters,
+            levels.WorkMode?.AllowedRadiusMeters,
+            levels.FirstRole(s => s.AllowedRadiusMeters),
+            levels.Position?.AllowedRadiusMeters,
+            levels.Department?.AllowedRadiusMeters,
+            levels.Base?.AllowedRadiusMeters);
     }
 
     private async Task<bool> ResolveAsync(
@@ -381,128 +226,95 @@ public class MonitoringToggleResolverService : IMonitoringToggleResolver
         MonitoringCapability capability,
         CancellationToken ct)
     {
-        // 1. Employee-level override
-        var employeeOverride = await _db.EmployeeMonitoringOverrides
+        var levels = await LoadLevelsAsync(tenantId, employee, ct);
+        return MonitoringToggleResolution.Resolve(
+            GetCapability(levels.Employee, capability),
+            GetCapability(levels.WorkMode, capability),
+            levels.FirstRole(s => GetCapability(s, capability)),
+            GetCapability(levels.Position, capability),
+            GetCapability(levels.Department, capability),
+            GetCapability(levels.Base, capability));
+    }
+
+    /// <summary>
+    /// Every monitoring_settings row that applies to the employee, read in one query (task 36):
+    /// their own row, work mode, roles, primary position, department, legal entity and the tenant
+    /// fallback. Before task 36 this took one query per level across three tables.
+    /// </summary>
+    private async Task<SettingLevels> LoadLevelsAsync(Guid tenantId, Employee employee, CancellationToken ct)
+    {
+        var today = DateOnly.FromDateTime(DateTime.UtcNow);
+        var positionId = await _db.PositionAssignments
             .AsNoTracking()
-            .FirstOrDefaultAsync(o => o.TenantId == tenantId && o.EmployeeId == employee.Id, ct);
-        bool? employeeValue = employeeOverride is null
-            ? null
-            : GetCapability(employeeOverride, capability);
-
-        // 2. Work Mode tier - resolved directly from the employee row, not a collected scope
-        // list, since there's exactly one WorkMode per employee (unlike roles, which can be plural).
-        MonitoringPolicyOverride? workModeOverride = employee.WorkModeId is Guid workModeId
-            ? await _db.MonitoringPolicyOverrides
-                .AsNoTracking()
-                .FirstOrDefaultAsync(p => p.TenantId == tenantId && p.ScopeType == "work_mode" && p.ScopeId == workModeId, ct)
-            : null;
-        bool? workModeValue = workModeOverride is null
-            ? null
-            : GetCapability(workModeOverride, capability);
-
-        // 3. Policy overrides: role > position > department
-        // EmployeeId in Phase 1 may be UserId (tray identity) or a real Employee.Id.
-        Guid? departmentId = employee?.DepartmentId;
-        Guid? positionId = employee is null
-            ? null
-            : await _db.PositionAssignments
-                .AsNoTracking()
-                .Where(a => a.EmployeeId == employee.Id
-                    && a.AssignmentKind == PositionAssignmentKind.PrimaryEmployment
-                    && a.AssignmentStatus == PositionAssignmentStatus.Active
-                    && a.EffectiveFrom <= DateOnly.FromDateTime(DateTime.UtcNow)
-                    && (a.EffectiveTo == null || a.EffectiveTo >= DateOnly.FromDateTime(DateTime.UtcNow)))
-                .OrderByDescending(a => a.EffectiveFrom)
-                .Select(a => (Guid?)a.PositionId)
-                .FirstOrDefaultAsync(ct);
-        Guid userIdForRoles = employee!.UserId;
+            .Where(a => a.EmployeeId == employee.Id
+                && a.AssignmentKind == PositionAssignmentKind.PrimaryEmployment
+                && a.AssignmentStatus == PositionAssignmentStatus.Active
+                && a.EffectiveFrom <= today
+                && (a.EffectiveTo == null || a.EffectiveTo >= today))
+            .OrderByDescending(a => a.EffectiveFrom)
+            .Select(a => (Guid?)a.PositionId)
+            .FirstOrDefaultAsync(ct);
 
         var roleIds = await _db.UserRoles
             .AsNoTracking()
-            .Where(ur => ur.TenantId == tenantId && ur.UserId == userIdForRoles)
+            .Where(ur => ur.TenantId == tenantId && ur.UserId == employee.UserId)
             .Select(ur => ur.RoleId)
             .ToListAsync(ct);
 
-        var scopeIds = new List<Guid>();
+        var scopeIds = new List<Guid> { employee.Id, tenantId };
+        if (employee.LegalEntityId is Guid legalEntity) scopeIds.Add(legalEntity);
         scopeIds.AddRange(roleIds);
-        if (positionId.HasValue) scopeIds.Add(positionId.Value);
-        if (departmentId.HasValue) scopeIds.Add(departmentId.Value);
+        if (employee.WorkModeId is Guid workModeId) scopeIds.Add(workModeId);
+        if (positionId is Guid position) scopeIds.Add(position);
+        if (employee.DepartmentId is Guid department) scopeIds.Add(department);
 
-        bool? roleValue = null;
-        bool? positionValue = null;
-        bool? departmentValue = null;
-
-        if (scopeIds.Count > 0)
-        {
-            var policies = await _db.MonitoringPolicyOverrides
-                .AsNoTracking()
-                .Where(p => p.TenantId == tenantId && scopeIds.Contains(p.ScopeId))
-                .ToListAsync(ct);
-
-            roleValue = policies
-                .Where(p => p.ScopeType == "role" && roleIds.Contains(p.ScopeId))
-                .Select(p => GetCapability(p, capability))
-                .FirstOrDefault(v => v.HasValue);
-
-            if (positionId.HasValue)
-            {
-                positionValue = policies
-                    .Where(p => p.ScopeType == "position" && p.ScopeId == positionId.Value)
-                    .Select(p => GetCapability(p, capability))
-                    .FirstOrDefault(v => v.HasValue);
-            }
-
-            if (departmentId.HasValue)
-            {
-                departmentValue = policies
-                    .Where(p => p.ScopeType == "department" && p.ScopeId == departmentId.Value)
-                    .Select(p => GetCapability(p, capability))
-                    .FirstOrDefault(v => v.HasValue);
-            }
-        }
-
-        // 4. Legal-entity default, then retained tenant fallback.
-        var toggles = await _db.MonitoringFeatureToggles
+        var rows = await _db.MonitoringSettings
             .AsNoTracking()
-            .Where(t => t.TenantId == tenantId
-                && (t.LegalEntityId == employee.LegalEntityId || t.LegalEntityId == null))
-            .OrderByDescending(t => t.LegalEntityId == employee.LegalEntityId)
-            .FirstOrDefaultAsync(ct);
-        bool? tenantValue = toggles is null ? null : GetCapability(toggles, capability);
+            .Where(s => s.TenantId == tenantId && scopeIds.Contains(s.ScopeId))
+            .ToListAsync(ct);
 
-        return MonitoringToggleResolution.Resolve(
-            employeeValue, workModeValue, roleValue, positionValue, departmentValue, tenantValue);
+        MonitoringSetting? Row(string scope, Guid? id) =>
+            id is Guid value ? rows.FirstOrDefault(r => r.ScopeType == scope && r.ScopeId == value) : null;
+
+        return new SettingLevels(
+            Row(MonitoringSettingScopes.Employee, employee.Id),
+            Row(MonitoringSettingScopes.WorkMode, employee.WorkModeId),
+            rows.Where(r => r.ScopeType == MonitoringSettingScopes.Role && roleIds.Contains(r.ScopeId))
+                .OrderBy(r => r.ScopeId)
+                .ToList(),
+            Row(MonitoringSettingScopes.Position, positionId),
+            Row(MonitoringSettingScopes.Department, employee.DepartmentId),
+            // Legal-entity default, then the retained tenant fallback.
+            Row(MonitoringSettingScopes.LegalEntity, employee.LegalEntityId)
+                ?? Row(MonitoringSettingScopes.Tenant, tenantId));
     }
 
-    private static bool? GetCapability(EmployeeMonitoringOverride o, MonitoringCapability c) => c switch
+    private sealed record SettingLevels(
+        MonitoringSetting? Employee,
+        MonitoringSetting? WorkMode,
+        IReadOnlyList<MonitoringSetting> Roles,
+        MonitoringSetting? Position,
+        MonitoringSetting? Department,
+        MonitoringSetting? Base)
     {
-        MonitoringCapability.ActivityMonitoring => o.ActivityMonitoring,
-        MonitoringCapability.ApplicationTracking => o.ApplicationTracking,
-        MonitoringCapability.DocumentTracking => o.DocumentTracking,
-        MonitoringCapability.CommunicationTracking => o.CommunicationTracking,
-        MonitoringCapability.ScreenshotCapture => o.ScreenshotCapture,
-        MonitoringCapability.AutoScreenshotCapture => o.AutoScreenshotCapture,
-        MonitoringCapability.MeetingDetection => o.MeetingDetection,
-        MonitoringCapability.DeviceTracking => o.DeviceTracking,
-        MonitoringCapability.WorkLocationVerification => o.WorkLocationVerification,
-        MonitoringCapability.IdentityVerification => o.IdentityVerification,
-        MonitoringCapability.Biometric => o.Biometric,
-        _ => null
-    };
+        /// <summary>The first role row that sets the value; roles have no order among themselves.</summary>
+        public T? FirstRole<T>(Func<MonitoringSetting, T?> value) where T : struct =>
+            Roles.Select(value).FirstOrDefault(v => v.HasValue);
+    }
 
-    private static bool? GetCapability(MonitoringPolicyOverride o, MonitoringCapability c) => c switch
+    internal static bool? GetCapability(MonitoringSetting? s, MonitoringCapability c) => s is null ? null : c switch
     {
-        MonitoringCapability.ActivityMonitoring => o.ActivityMonitoring,
-        MonitoringCapability.ApplicationTracking => o.ApplicationTracking,
-        MonitoringCapability.DocumentTracking => o.DocumentTracking,
-        MonitoringCapability.CommunicationTracking => o.CommunicationTracking,
-        MonitoringCapability.ScreenshotCapture => o.ScreenshotCapture,
-        MonitoringCapability.AutoScreenshotCapture => o.AutoScreenshotCapture,
-        MonitoringCapability.MeetingDetection => o.MeetingDetection,
-        MonitoringCapability.DeviceTracking => o.DeviceTracking,
-        MonitoringCapability.WorkLocationVerification => o.WorkLocationVerification,
-        MonitoringCapability.IdentityVerification => o.IdentityVerification,
-        MonitoringCapability.Biometric => o.Biometric,
+        MonitoringCapability.ActivityMonitoring => s.ActivityMonitoring,
+        MonitoringCapability.ApplicationTracking => s.ApplicationTracking,
+        MonitoringCapability.DocumentTracking => s.DocumentTracking,
+        MonitoringCapability.CommunicationTracking => s.CommunicationTracking,
+        MonitoringCapability.ScreenshotCapture => s.ScreenshotCapture,
+        MonitoringCapability.AutoScreenshotCapture => s.AutoScreenshotCapture,
+        MonitoringCapability.MeetingDetection => s.MeetingDetection,
+        MonitoringCapability.DeviceTracking => s.DeviceTracking,
+        MonitoringCapability.WorkLocationVerification => s.WorkLocationVerification,
+        MonitoringCapability.IdentityVerification => s.IdentityVerification,
+        MonitoringCapability.Biometric => s.Biometric,
         _ => null
     };
 
@@ -526,11 +338,7 @@ public class MonitoringToggleResolverService : IMonitoringToggleResolver
         var resolved = false;
         var employeeOverride = employee is null
             ? null
-            : await _db.EmployeeMonitoringOverrides
-                .AsNoTracking()
-                .Where(o => o.TenantId == tenantId && o.EmployeeId == employee.Id)
-                .Select(o => o.PhotoRequired)
-                .FirstOrDefaultAsync(ct);
+            : await EmployeePhotoRequiredAsync(tenantId, employee.Id, ct);
         if (employeeOverride is bool overridden)
         {
             resolved = overridden;
@@ -554,26 +362,15 @@ public class MonitoringToggleResolverService : IMonitoringToggleResolver
         var employee = await ResolveEmployeeAsync(tenantId, userId, legalEntityId, ct);
         if (employee is null)
             return null;
-        return await _db.EmployeeMonitoringOverrides
-            .AsNoTracking()
-            .Where(o => o.TenantId == tenantId && o.EmployeeId == employee.Id)
-            .Select(o => o.PhotoRequired)
-            .FirstOrDefaultAsync(ct);
+        return await EmployeePhotoRequiredAsync(tenantId, employee.Id, ct);
     }
 
-    private static bool GetCapability(MonitoringFeatureToggles t, MonitoringCapability c) => c switch
-    {
-        MonitoringCapability.ActivityMonitoring => t.ActivityMonitoring,
-        MonitoringCapability.ApplicationTracking => t.ApplicationTracking,
-        MonitoringCapability.DocumentTracking => t.DocumentTracking,
-        MonitoringCapability.CommunicationTracking => t.CommunicationTracking,
-        MonitoringCapability.ScreenshotCapture => t.ScreenshotCapture,
-        MonitoringCapability.AutoScreenshotCapture => t.AutoScreenshotCapture,
-        MonitoringCapability.MeetingDetection => t.MeetingDetection,
-        MonitoringCapability.DeviceTracking => t.DeviceTracking,
-        MonitoringCapability.WorkLocationVerification => t.WorkLocationVerification,
-        MonitoringCapability.IdentityVerification => t.IdentityVerification,
-        MonitoringCapability.Biometric => t.Biometric,
-        _ => false
-    };
+    private Task<bool?> EmployeePhotoRequiredAsync(Guid tenantId, Guid employeeId, CancellationToken ct) =>
+        _db.MonitoringSettings
+            .AsNoTracking()
+            .Where(s => s.TenantId == tenantId
+                && s.ScopeType == MonitoringSettingScopes.Employee
+                && s.ScopeId == employeeId)
+            .Select(s => s.PhotoRequired)
+            .FirstOrDefaultAsync(ct);
 }

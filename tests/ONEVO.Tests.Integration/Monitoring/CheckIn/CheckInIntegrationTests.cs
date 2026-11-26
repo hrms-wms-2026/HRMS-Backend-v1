@@ -88,12 +88,14 @@ public sealed class CheckInIntegrationTestsFixture : IAsyncLifetime
     {
         using var scope = _factory.Services.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
-        db.MonitoringFeatureToggles.Add(new MonitoringFeatureToggles
+        db.MonitoringSettings.Add(new MonitoringSetting
         {
             Id = Guid.NewGuid(),
-            TenantId = tenantId,
-            LegalEntityId = null,
-            WorkLocationVerification = true
+            TenantId = tenantId, ScopeType = MonitoringSettingScopes.Tenant, ScopeId = tenantId,
+            
+            WorkLocationVerification = true,
+            // A base row sets every switch (task 36).
+            ActivityMonitoring = false, ApplicationTracking = false, DocumentTracking = false, CommunicationTracking = false, ScreenshotCapture = false, AutoScreenshotCapture = false, MeetingDetection = false, DeviceTracking = false, IdentityVerification = false, Biometric = false,
         });
         await db.SaveChangesAsync();
     }

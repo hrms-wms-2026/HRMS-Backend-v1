@@ -142,6 +142,8 @@ public class ApplicationDbContext : DbContext
     public DbSet<MonitoringFeatureToggles> MonitoringFeatureToggles => Set<MonitoringFeatureToggles>();
     public DbSet<EmployeeMonitoringOverride> EmployeeMonitoringOverrides => Set<EmployeeMonitoringOverride>();
     public DbSet<MonitoringPolicyOverride> MonitoringPolicyOverrides => Set<MonitoringPolicyOverride>();
+    /// <summary>Improvements task 36: the one monitoring settings table. The three tables above are kept for one release and unused.</summary>
+    public DbSet<MonitoringSetting> MonitoringSettings => Set<MonitoringSetting>();
 
     // Monitoring - Screenshots & agent commands
     public DbSet<MonitoringEvidenceAsset> MonitoringEvidenceAssets => Set<MonitoringEvidenceAsset>();

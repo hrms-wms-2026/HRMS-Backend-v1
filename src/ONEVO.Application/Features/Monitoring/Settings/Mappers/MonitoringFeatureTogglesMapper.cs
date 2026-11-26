@@ -17,23 +17,24 @@ public static class MonitoringFeatureTogglesMapper
     /// resolver's default (2), and UpdatedAt = null, mirroring
     /// MonitoringToggleResolverService's own null-row-means-default semantics.
     /// </summary>
-    public static MonitoringFeatureTogglesResponse ToResponse(MonitoringFeatureToggles? entity) =>
+    public static MonitoringFeatureTogglesResponse ToResponse(MonitoringSetting? entity) =>
         entity is null
             ? new MonitoringFeatureTogglesResponse(
                 false, false, false, false, false, false, false, false, false, false, false,
                 DefaultIdleThresholdMinutes, null, null)
             : new MonitoringFeatureTogglesResponse(
-                entity.ActivityMonitoring,
-                entity.ApplicationTracking,
-                entity.DocumentTracking,
-                entity.CommunicationTracking,
-                entity.ScreenshotCapture,
-                entity.AutoScreenshotCapture,
-                entity.MeetingDetection,
-                entity.DeviceTracking,
-                entity.WorkLocationVerification,
-                entity.IdentityVerification,
-                entity.Biometric,
+                // A base row sets every switch (check constraint); "?? false" only satisfies the type.
+                entity.ActivityMonitoring ?? false,
+                entity.ApplicationTracking ?? false,
+                entity.DocumentTracking ?? false,
+                entity.CommunicationTracking ?? false,
+                entity.ScreenshotCapture ?? false,
+                entity.AutoScreenshotCapture ?? false,
+                entity.MeetingDetection ?? false,
+                entity.DeviceTracking ?? false,
+                entity.WorkLocationVerification ?? false,
+                entity.IdentityVerification ?? false,
+                entity.Biometric ?? false,
                 entity.IdleThresholdMinutes ?? DefaultIdleThresholdMinutes,
                 entity.AllowedRadiusMeters,
                 entity.UpdatedAt);

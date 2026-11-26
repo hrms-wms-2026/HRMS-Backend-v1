@@ -58,10 +58,10 @@ public class UpdateMonitoringFeatureTogglesCommandHandlerTests
     public async Task Handle_NoExistingRow_CreatesNewRow()
     {
         _toggles.Setup(r => r.GetByLegalEntityIdAsync(TenantId, LegalEntityId, false, It.IsAny<CancellationToken>()))
-            .ReturnsAsync((MonitoringFeatureToggles?)null);
-        MonitoringFeatureToggles? added = null;
-        _toggles.Setup(r => r.AddAsync(It.IsAny<MonitoringFeatureToggles>(), It.IsAny<CancellationToken>()))
-            .Callback<MonitoringFeatureToggles, CancellationToken>((t, _) => added = t)
+            .ReturnsAsync((MonitoringSetting?)null);
+        MonitoringSetting? added = null;
+        _toggles.Setup(r => r.AddAsync(It.IsAny<MonitoringSetting>(), It.IsAny<CancellationToken>()))
+            .Callback<MonitoringSetting, CancellationToken>((t, _) => added = t)
             .Returns(Task.CompletedTask);
         var sut = BuildSut();
 
@@ -70,24 +70,27 @@ public class UpdateMonitoringFeatureTogglesCommandHandlerTests
         result.IsSuccess.Should().BeTrue();
         added.Should().NotBeNull();
         added!.TenantId.Should().Be(TenantId);
-        added.LegalEntityId.Should().Be(LegalEntityId);
+        added.ScopeType.Should().Be(MonitoringSettingScopes.LegalEntity);
+        added.ScopeId.Should().Be(LegalEntityId);
         added.ActivityMonitoring.Should().BeTrue();
         added.CreatedAt.Should().Be(FixedNow);
         added.UpdatedAt.Should().Be(FixedNow);
-        _toggles.Verify(r => r.Update(It.IsAny<MonitoringFeatureToggles>()), Times.Never);
+        _toggles.Verify(r => r.Update(It.IsAny<MonitoringSetting>()), Times.Never);
         _toggles.Verify(r => r.SaveChangesAsync(It.IsAny<CancellationToken>()), Times.Once);
     }
 
     [Fact]
     public async Task Handle_ExistingRow_UpdatesInPlace()
     {
-        var existing = new MonitoringFeatureToggles
+        var existing = new MonitoringSetting
         {
             Id = Guid.NewGuid(),
-            TenantId = TenantId,
+            TenantId = TenantId, ScopeType = MonitoringSettingScopes.Tenant, ScopeId = TenantId,
             ActivityMonitoring = false,
             CreatedAt = FixedNow.AddDays(-10),
-            UpdatedAt = FixedNow.AddDays(-10)
+            UpdatedAt = FixedNow.AddDays(-10),
+            // A base row sets every switch (task 36).
+            ApplicationTracking = false, DocumentTracking = false, CommunicationTracking = false, ScreenshotCapture = false, AutoScreenshotCapture = false, MeetingDetection = false, DeviceTracking = false, WorkLocationVerification = false, IdentityVerification = false, Biometric = false,
         };
         _toggles.Setup(r => r.GetByLegalEntityIdAsync(TenantId, LegalEntityId, false, It.IsAny<CancellationToken>()))
             .ReturnsAsync(existing);
@@ -99,17 +102,17 @@ public class UpdateMonitoringFeatureTogglesCommandHandlerTests
         existing.ActivityMonitoring.Should().BeTrue();
         existing.UpdatedAt.Should().Be(FixedNow);
         _toggles.Verify(r => r.Update(existing), Times.Once);
-        _toggles.Verify(r => r.AddAsync(It.IsAny<MonitoringFeatureToggles>(), It.IsAny<CancellationToken>()), Times.Never);
+        _toggles.Verify(r => r.AddAsync(It.IsAny<MonitoringSetting>(), It.IsAny<CancellationToken>()), Times.Never);
     }
 
     [Fact]
     public async Task Handle_NoExistingRow_PersistsIdleThresholdMinutes()
     {
         _toggles.Setup(r => r.GetByLegalEntityIdAsync(TenantId, LegalEntityId, false, It.IsAny<CancellationToken>()))
-            .ReturnsAsync((MonitoringFeatureToggles?)null);
-        MonitoringFeatureToggles? added = null;
-        _toggles.Setup(r => r.AddAsync(It.IsAny<MonitoringFeatureToggles>(), It.IsAny<CancellationToken>()))
-            .Callback<MonitoringFeatureToggles, CancellationToken>((t, _) => added = t)
+            .ReturnsAsync((MonitoringSetting?)null);
+        MonitoringSetting? added = null;
+        _toggles.Setup(r => r.AddAsync(It.IsAny<MonitoringSetting>(), It.IsAny<CancellationToken>()))
+            .Callback<MonitoringSetting, CancellationToken>((t, _) => added = t)
             .Returns(Task.CompletedTask);
         var sut = BuildSut();
 
@@ -150,7 +153,7 @@ public class UpdateMonitoringFeatureTogglesCommandHandlerTests
     public async Task Handle_ValidRequest_InvalidatesTenantToggleCachePrefix()
     {
         _toggles.Setup(r => r.GetByLegalEntityIdAsync(TenantId, LegalEntityId, false, It.IsAny<CancellationToken>()))
-            .ReturnsAsync((MonitoringFeatureToggles?)null);
+            .ReturnsAsync((MonitoringSetting?)null);
         var sut = BuildSut();
 
         await sut.Handle(ValidCommand(), CancellationToken.None);
@@ -163,12 +166,15 @@ public class UpdateMonitoringFeatureTogglesCommandHandlerTests
     [Fact]
     public async Task Handle_ExistingRow_WritesAuditLogWithOldAndNewValues()
     {
-        var existing = new MonitoringFeatureToggles
+        var existing = new MonitoringSetting
         {
             Id = Guid.NewGuid(),
             TenantId = TenantId,
-            LegalEntityId = LegalEntityId,
-            ActivityMonitoring = true
+            ScopeType = MonitoringSettingScopes.LegalEntity,
+            ScopeId = LegalEntityId,
+            ActivityMonitoring = true,
+            // A base row sets every switch (task 36).
+            ApplicationTracking = false, DocumentTracking = false, CommunicationTracking = false, ScreenshotCapture = false, AutoScreenshotCapture = false, MeetingDetection = false, DeviceTracking = false, WorkLocationVerification = false, IdentityVerification = false, Biometric = false,
         };
         _toggles.Setup(r => r.GetByLegalEntityIdAsync(TenantId, LegalEntityId, false, It.IsAny<CancellationToken>()))
             .ReturnsAsync(existing);
@@ -194,7 +200,7 @@ public class UpdateMonitoringFeatureTogglesCommandHandlerTests
     public async Task Handle_NoExistingRow_WritesAuditLogWithoutOldValues()
     {
         _toggles.Setup(r => r.GetByLegalEntityIdAsync(TenantId, LegalEntityId, false, It.IsAny<CancellationToken>()))
-            .ReturnsAsync((MonitoringFeatureToggles?)null);
+            .ReturnsAsync((MonitoringSetting?)null);
         AuditLog? audit = null;
         _auditLogs.Setup(a => a.AddAsync(It.IsAny<AuditLog>(), It.IsAny<CancellationToken>()))
             .Callback<AuditLog, CancellationToken>((a, _) => audit = a)

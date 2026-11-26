@@ -157,33 +157,38 @@ public sealed class MonitoringLegalEntityScopingIntegrationTestsFixture : IAsync
     {
         using var scope = _factory.Services.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
-        db.MonitoringFeatureToggles.Add(new MonitoringFeatureToggles
+        db.MonitoringSettings.Add(new MonitoringSetting
         {
             Id = Guid.NewGuid(),
-            TenantId = tenantId,
+            TenantId = tenantId, ScopeType = MonitoringSettingScopes.Tenant, ScopeId = tenantId,
             ActivityMonitoring = activityMonitoring,
             CreatedAt = DateTimeOffset.UtcNow,
-            UpdatedAt = DateTimeOffset.UtcNow
+            UpdatedAt = DateTimeOffset.UtcNow,
+            // A base row sets every switch (task 36).
+            ApplicationTracking = false, DocumentTracking = false, CommunicationTracking = false, ScreenshotCapture = false, AutoScreenshotCapture = false, MeetingDetection = false, DeviceTracking = false, WorkLocationVerification = false, IdentityVerification = false, Biometric = false,
         });
         await db.SaveChangesAsync();
     }
 
-    public static MonitoringFeatureToggles Toggle(
+    public static MonitoringSetting Toggle(
         Guid tenantId, Guid legalEntityId, bool activityMonitoring) => new()
     {
         Id = Guid.NewGuid(),
         TenantId = tenantId,
-        LegalEntityId = legalEntityId,
+        ScopeType = MonitoringSettingScopes.LegalEntity,
+        ScopeId = legalEntityId,
         ActivityMonitoring = activityMonitoring,
         CreatedAt = DateTimeOffset.UtcNow,
-        UpdatedAt = DateTimeOffset.UtcNow
+        UpdatedAt = DateTimeOffset.UtcNow,
+        // A base row sets every switch (task 36).
+        ApplicationTracking = false, DocumentTracking = false, CommunicationTracking = false, ScreenshotCapture = false, AutoScreenshotCapture = false, MeetingDetection = false, DeviceTracking = false, WorkLocationVerification = false, IdentityVerification = false, Biometric = false,
     };
 
     public async Task SeedOverrideAsync(Guid tenantId, string scopeType, Guid scopeId, bool activityMonitoring)
     {
         using var scope = _factory.Services.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
-        db.MonitoringPolicyOverrides.Add(new MonitoringPolicyOverride
+        db.MonitoringSettings.Add(new MonitoringSetting
         {
             Id = Guid.NewGuid(),
             TenantId = tenantId,
@@ -202,7 +207,7 @@ public sealed class MonitoringLegalEntityScopingIntegrationTestsFixture : IAsync
         using var scope = _factory.Services.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
         var roleId = Guid.NewGuid();
-        db.MonitoringPolicyOverrides.Add(new MonitoringPolicyOverride
+        db.MonitoringSettings.Add(new MonitoringSetting
         {
             Id = Guid.NewGuid(),
             TenantId = tenantId,
@@ -441,17 +446,17 @@ public sealed class MonitoringLegalEntityScopingIntegrationTests : IClassFixture
 
         using var scope = _fixture.Factory.Services.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
-        db.MonitoringFeatureToggles.AddRange(
+        db.MonitoringSettings.AddRange(
             MonitoringLegalEntityScopingIntegrationTestsFixture.Toggle(tenantId, legalEntityA, activityMonitoring: true),
             MonitoringLegalEntityScopingIntegrationTestsFixture.Toggle(tenantId, legalEntityB, activityMonitoring: false));
         await db.SaveChangesAsync();
 
-        (await db.MonitoringFeatureToggles.SingleAsync(x => x.LegalEntityId == legalEntityA))
+        (await db.MonitoringSettings.SingleAsync(x => x.ScopeType == MonitoringSettingScopes.LegalEntity && x.ScopeId == legalEntityA))
             .ActivityMonitoring.Should().BeTrue();
-        (await db.MonitoringFeatureToggles.SingleAsync(x => x.LegalEntityId == legalEntityB))
+        (await db.MonitoringSettings.SingleAsync(x => x.ScopeType == MonitoringSettingScopes.LegalEntity && x.ScopeId == legalEntityB))
             .ActivityMonitoring.Should().BeFalse();
 
-        db.MonitoringFeatureToggles.Add(MonitoringLegalEntityScopingIntegrationTestsFixture.Toggle(tenantId, legalEntityA, activityMonitoring: false));
+        db.MonitoringSettings.Add(MonitoringLegalEntityScopingIntegrationTestsFixture.Toggle(tenantId, legalEntityA, activityMonitoring: false));
         var saveDuplicate = () => db.SaveChangesAsync();
         await saveDuplicate.Should().ThrowAsync<DbUpdateException>()
             .Where(e => ((SqlException)e.InnerException!).Number == 2601 || ((SqlException)e.InnerException!).Number == 2627);
@@ -511,7 +516,7 @@ public sealed class MonitoringLegalEntityScopingIntegrationTests : IClassFixture
 
         using var scope = _fixture.Factory.Services.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
-        var stillExists = await db.MonitoringPolicyOverrides.AnyAsync(o =>
+        var stillExists = await db.MonitoringSettings.AnyAsync(o =>
             o.TenantId == fixture.TenantId && o.ScopeType == "department" && o.ScopeId == fixture.DepartmentInLegalEntityB);
         stillExists.Should().BeTrue("a cross-company delete attempt must not remove the target company's override");
     }

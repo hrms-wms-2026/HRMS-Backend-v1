@@ -82,6 +82,8 @@ public sealed class SchemaParityTests(SqlServerFixture fixture)
         "rate_limit_settings", "rate_limit_setting_changes",
         // 20261120141304_AddInboxItems (task 37a)
         "inbox_items", "inbox_item_assignees",
+        // 20261121144123_AddMonitoringSettings
+        "monitoring_settings",
     ];
 
     // Columns added to existing tables by migrations after the SQL Server baseline, as "table.column".

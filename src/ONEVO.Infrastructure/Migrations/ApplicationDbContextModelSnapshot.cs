@@ -9714,6 +9714,120 @@ namespace ONEVO.Infrastructure.Migrations
                     b.ToTable("monitoring_policy_overrides", (string)null);
                 });
 
+            modelBuilder.Entity("ONEVO.Domain.Features.Monitoring.Settings.Entities.MonitoringSetting", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier")
+                        .HasColumnName("id");
+
+                    b.Property<bool?>("ActivityMonitoring")
+                        .HasColumnType("bit")
+                        .HasColumnName("activity_monitoring");
+
+                    b.Property<int?>("AllowedRadiusMeters")
+                        .HasColumnType("int")
+                        .HasColumnName("allowed_radius_meters");
+
+                    b.Property<bool?>("ApplicationTracking")
+                        .HasColumnType("bit")
+                        .HasColumnName("application_tracking");
+
+                    b.Property<bool?>("AutoScreenshotCapture")
+                        .HasColumnType("bit")
+                        .HasColumnName("auto_screenshot_capture");
+
+                    b.Property<bool?>("Biometric")
+                        .HasColumnType("bit")
+                        .HasColumnName("biometric");
+
+                    b.Property<bool?>("CommunicationTracking")
+                        .HasColumnType("bit")
+                        .HasColumnName("communication_tracking");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("datetimeoffset")
+                        .HasColumnName("created_at");
+
+                    b.Property<bool?>("DeviceTracking")
+                        .HasColumnType("bit")
+                        .HasColumnName("device_tracking");
+
+                    b.Property<bool?>("DocumentTracking")
+                        .HasColumnType("bit")
+                        .HasColumnName("document_tracking");
+
+                    b.Property<bool?>("IdentityVerification")
+                        .HasColumnType("bit")
+                        .HasColumnName("identity_verification");
+
+                    b.Property<int?>("IdleThresholdMinutes")
+                        .HasColumnType("int")
+                        .HasColumnName("idle_threshold_minutes");
+
+                    b.Property<bool?>("MeetingDetection")
+                        .HasColumnType("bit")
+                        .HasColumnName("meeting_detection");
+
+                    b.Property<string>("OverrideReason")
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)")
+                        .HasColumnName("override_reason");
+
+                    b.Property<bool?>("PhotoRequired")
+                        .HasColumnType("bit")
+                        .HasColumnName("photo_required");
+
+                    b.Property<Guid>("ScopeId")
+                        .HasColumnType("uniqueidentifier")
+                        .HasColumnName("scope_id");
+
+                    b.Property<string>("ScopeType")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)")
+                        .HasColumnName("scope_type");
+
+                    b.Property<bool?>("ScreenshotCapture")
+                        .HasColumnType("bit")
+                        .HasColumnName("screenshot_capture");
+
+                    b.Property<Guid?>("SetById")
+                        .HasColumnType("uniqueidentifier")
+                        .HasColumnName("set_by_id");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uniqueidentifier")
+                        .HasColumnName("tenant_id");
+
+                    b.Property<DateTimeOffset>("UpdatedAt")
+                        .HasColumnType("datetimeoffset")
+                        .HasColumnName("updated_at");
+
+                    b.Property<bool?>("WorkLocationVerification")
+                        .HasColumnType("bit")
+                        .HasColumnName("work_location_verification");
+
+                    b.HasKey("Id")
+                        .HasName("pk_monitoring_settings");
+
+                    b.HasIndex("TenantId", "ScopeId")
+                        .HasDatabaseName("ix_monitoring_settings_tenant_scope_id");
+
+                    b.HasIndex("TenantId", "ScopeType", "ScopeId")
+                        .IsUnique()
+                        .HasDatabaseName("ux_monitoring_settings_tenant_scope");
+
+                    b.ToTable("monitoring_settings", null, t =>
+                        {
+                            t.HasCheckConstraint("ck_monitoring_settings_base_rows_set_every_switch", "[scope_type] NOT IN ('tenant', 'legal_entity') OR ([activity_monitoring] IS NOT NULL AND [application_tracking] IS NOT NULL AND [document_tracking] IS NOT NULL AND [communication_tracking] IS NOT NULL AND [screenshot_capture] IS NOT NULL AND [auto_screenshot_capture] IS NOT NULL AND [meeting_detection] IS NOT NULL AND [device_tracking] IS NOT NULL AND [work_location_verification] IS NOT NULL AND [identity_verification] IS NOT NULL AND [biometric] IS NOT NULL)");
+
+                            t.HasCheckConstraint("ck_monitoring_settings_scope_type", "[scope_type] IN ('tenant', 'legal_entity', 'department', 'position', 'role', 'work_mode', 'employee')");
+
+                            t.HasCheckConstraint("ck_monitoring_settings_tenant_scope_id", "[scope_type] <> 'tenant' OR [scope_id] = [tenant_id]");
+                        });
+                });
+
             modelBuilder.Entity("ONEVO.Domain.Features.Monitoring.TrayActivation.Entities.DeviceChangeRequest", b =>
                 {
                     b.Property<Guid>("Id")
@@ -19008,6 +19122,16 @@ namespace ONEVO.Infrastructure.Migrations
                         .HasForeignKey("LegalEntityId")
                         .OnDelete(DeleteBehavior.Restrict)
                         .HasConstraintName("fk_monitoring_feature_toggles_legal_entities_legal_entity_id");
+                });
+
+            modelBuilder.Entity("ONEVO.Domain.Features.Monitoring.Settings.Entities.MonitoringSetting", b =>
+                {
+                    b.HasOne("ONEVO.Domain.Features.InfrastructureModule.Entities.Tenant", null)
+                        .WithMany()
+                        .HasForeignKey("TenantId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("fk_monitoring_settings_tenants_tenant_id");
                 });
 
             modelBuilder.Entity("ONEVO.Domain.Features.Monitoring.TrayActivation.Entities.DeviceChangeRequest", b =>
