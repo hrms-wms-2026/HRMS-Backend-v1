@@ -320,6 +320,9 @@ project_members.created_by_id | audit | AuditableEntityInterceptor writes Guid.E
 project_members.tenant_id | tenant | foreign key to tenants, added in batches: task-39d
 projects.created_by_id | audit | AuditableEntityInterceptor writes Guid.Empty for system writes: task-39c
 projects.tenant_id | tenant | foreign key to tenants, added in batches: task-39d
+rate_limit_setting_changes.platform_user_id | audit | append-only rate limit history (task 45): kept after the plan, tenant or admin it names is deleted
+rate_limit_setting_changes.subscription_plan_id | audit | append-only rate limit history (task 45): kept after the plan, tenant or admin it names is deleted
+rate_limit_setting_changes.tenant_id | audit | append-only rate limit history (task 45): kept after the plan, tenant or admin it names is deleted
 refresh_tokens.tenant_id | tenant | foreign key to tenants, added in batches: task-39d
 refresh_tokens.user_id | reference | not reviewed yet: task-39e
 release_calendar.created_by_id | audit | AuditableEntityInterceptor writes Guid.Empty for system writes: task-39c

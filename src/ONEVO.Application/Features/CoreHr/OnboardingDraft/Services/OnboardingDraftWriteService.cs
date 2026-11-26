@@ -614,8 +614,11 @@ public class OnboardingDraftWriteService : IOnboardingDraftWriteService
             draft, employeeId, user.Id, employmentTypeId, draft.StartDate.Value, actingUserId);
         await _employeeRepository.AddAsync(employee, ct);
 
+        // Adding yourself: the Office project needs the person finalizing to be an active employee,
+        // and you only become one when this finalize commits, so your checklist's Work tasks are
+        // created right after the commit instead (TryProvisionSelfChecklistWorkTasksAsync).
         OfficeProjectContext? officeProject = null;
-        if (_workTaskProvisioner is not null && checklistTasks.Count > 0)
+        if (_workTaskProvisioner is not null && checklistTasks.Count > 0 && !isSelf)
         {
             var targetDate = checklistTasks.Max(task => task.DueDate);
             var officeResult = await _workTaskProvisioner.EnsureOfficeProjectAsync(
@@ -702,7 +705,11 @@ public class OnboardingDraftWriteService : IOnboardingDraftWriteService
                 // The only role ever assigned here is the position access template's own RoleId -
                 // never a hardcoded Owner/Admin default. Also assigned when a roles:manage holder
                 // is self-authorizing a bypass past a template that does require approval.
-                if (accessTemplate is { IsActive: true } && (!accessTemplate.RequiresApproval || selfAuthorizedBypass))
+                // Adding yourself: your existing login may already hold that role (e.g. a position
+                // whose access role is Owner). user_roles is keyed on user + role, so adding it again
+                // would fail the whole finalize; keep the row you have.
+                if (accessTemplate is { IsActive: true } && (!accessTemplate.RequiresApproval || selfAuthorizedBypass)
+                    && !(isSelf && await _userRoleRepository.ExistsAsync(user.Id, accessTemplate.RoleId, txnCt)))
                 {
                     var userRole = OnboardingFinalizeFactory.NewPositionUserRole(
                         draft, user.Id, accessTemplate.RoleId, accessTemplate.Id, actingUserId, _clock.UtcNow);
@@ -760,8 +767,12 @@ public class OnboardingDraftWriteService : IOnboardingDraftWriteService
         if (_officeReconciler is not null)
             await _officeReconciler.TryReconcileAsync(draft.TenantId, ct);
 
+        var workTasksCommitted = !isSelf
+            || (_workTaskProvisioner is not null && checklistTasks.Count > 0
+                && await TryProvisionSelfChecklistWorkTasksAsync(draft, employee, checklistTasks, actingUserId, ct));
+
         // Template attachments are copied only now that the Work tasks are committed.
-        if (_workTaskProvisioner is not null && checklistTasks.Count > 0)
+        if (_workTaskProvisioner is not null && checklistTasks.Count > 0 && workTasksCommitted)
             await _workTaskProvisioner.CopyTemplateAttachmentsAsync(draft.TenantId, checklistTasks, actingUserId, ct);
 
         return Result<FinalizeOnboardingDraftResponse>.Success(new FinalizeOnboardingDraftResponse(
@@ -777,6 +788,45 @@ public class OnboardingDraftWriteService : IOnboardingDraftWriteService
         if (employee is null || employee.LegalEntityId != legalEntityId)
             return false;
         return await _positionAssignmentRepository.GetActivePrimaryAsync(tenantId, employeeId, ct) is not null;
+    }
+
+    /// <summary>Adding yourself with an onboarding checklist: now that your employee record is committed,
+    /// puts your checklist tasks into the Office project as Work tasks, in their own transaction.
+    /// Best effort, like the photo: the employee and checklist are already committed, so a failure
+    /// leaves the checklist tasks without Work tasks rather than undoing the onboarding.</summary>
+    private async Task<bool> TryProvisionSelfChecklistWorkTasksAsync(
+        OnboardingDraftEntity draft, ONEVO.Domain.Features.CoreHr.Entities.Employee employee,
+        IReadOnlyList<EmployeeChecklistTask> checklistTasks, Guid actingUserId, CancellationToken ct)
+    {
+        try
+        {
+            var targetDate = checklistTasks.Max(task => task.DueDate);
+            var office = await _workTaskProvisioner!.EnsureOfficeProjectAsync(
+                draft.TenantId, draft.LegalEntityId, actingUserId, targetDate, ct);
+            if (!office.IsSuccess)
+                return false;
+
+            await _unitOfWork.ExecuteInTransactionAsync(async txnCt =>
+            {
+                var provisioned = await _workTaskProvisioner.ProvisionAsync(
+                    office.Value!, employee, checklistTasks, actingUserId, txnCt);
+                if (!provisioned.IsSuccess)
+                    throw new ChecklistWorkTaskProvisioningException(
+                        provisioned.Error!, provisioned.StatusCode ?? 400);
+                await _draftRepository.SaveChangesAsync(txnCt);
+                return true;
+            }, ct);
+            return true;
+        }
+        catch (Exception) when (!ct.IsCancellationRequested)
+        {
+            // Nothing from the failed attempt may be saved later, and no checklist task points at
+            // a Work task that was rolled back.
+            _unitOfWork.ClearTracking();
+            foreach (var checklistTask in checklistTasks)
+                checklistTask.WorkTaskId = null;
+            return false;
+        }
     }
 
     private async Task TryLinkDraftAvatarAsync(Guid tenantId, Guid employeeId, Guid fileId, CancellationToken ct)
