@@ -1,4 +1,5 @@
 using MediatR;
+using ONEVO.Application.Common.Auditing;
 using ONEVO.Application.Common.Models;
 using ONEVO.Application.Features.DevPlatform.SystemConfig.RateLimits.DTOs;
 using ONEVO.Application.Features.DevPlatform.SystemConfig.RateLimits.Helpers;
@@ -13,4 +14,10 @@ public sealed record SetGlobalRateLimitCommand(
     int? Burst,
     string Reason,
     string? RowVersion,
-    string? CorrelationId) : IRequest<Result<IReadOnlyList<GlobalRateLimitDto>>>, ISetRateLimitCommand;
+    string? CorrelationId) : IRequest<Result<IReadOnlyList<GlobalRateLimitDto>>>, ISetRateLimitCommand, IAuditedCommand<Result<IReadOnlyList<GlobalRateLimitDto>>>
+{
+    // Ids, the limit and the values only; the free-text reason stays in rate_limit_setting_changes.
+    public AuditEntry DescribeAudit(Result<IReadOnlyList<GlobalRateLimitDto>>? response)
+        => new AuditEntry("rate_limit.set", "rate_limit", LimitName.ToStoredName(), null,
+            new { Scope = "global", LimitName = LimitName.ToStoredName(), PerMinute, Burst });
+}

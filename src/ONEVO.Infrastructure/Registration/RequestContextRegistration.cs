@@ -20,6 +20,8 @@ internal static class RequestContextRegistration
         services.AddScoped<IWritableTenantContext>(sp => sp.GetRequiredService<TenantContextAccessor>());
         services.AddScoped<ICurrentUser, CurrentUserService>();
         services.AddScoped<ICurrentPlatformUserContext, CurrentPlatformUserContext>();
+        // F-07: client IP and user agent for the platform audit log.
+        services.AddScoped<ONEVO.Application.Common.ServiceInterfaces.IRequestClientInfo, HttpRequestClientInfo>();
         services.AddSingleton<MemoryCacheService>();
         services.AddSingleton<ICacheService>(sp => sp.GetRequiredService<MemoryCacheService>());
         services.AddSingleton<IDateTimeProvider, SystemDateTimeProvider>();

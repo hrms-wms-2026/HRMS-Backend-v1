@@ -5,6 +5,7 @@ using ONEVO.Application.Features.DevPlatform.SystemConfig.PlatformServiceKeys.De
 using ONEVO.Application.Features.DevPlatform.SystemConfig.PlatformServiceKeys.DTOs.Responses;
 using ONEVO.Application.Features.DevPlatform.SystemConfig.PlatformServiceKeys.Mappers;
 using ONEVO.Application.Features.DevPlatform.SystemConfig.PlatformServiceKeys.RepositoryInterfaces;
+using ONEVO.Application.Common.Auditing;
 
 namespace ONEVO.Application.Features.DevPlatform.SystemConfig.PlatformServiceKeys.Commands.RotatePlatformServiceKey;
 
@@ -17,7 +18,11 @@ public sealed record RotatePlatformServiceKeyCommand(
     string ServiceKey,
     string? ApiKey,
     Guid ActorPlatformUserId,
-    IReadOnlyDictionary<string, string>? Fields = null) : IRequest<Result<PlatformServiceKeyDto>>;
+    IReadOnlyDictionary<string, string>? Fields = null) : IRequest<Result<PlatformServiceKeyDto>>, IAuditedCommand<Result<PlatformServiceKeyDto>>
+{
+    public AuditEntry DescribeAudit(Result<PlatformServiceKeyDto>? response)
+        => new("service_key.rotated", "service_key", ServiceKey, null, new { ApiKeyRotated = ApiKey != null, FieldNames = Fields?.Keys.OrderBy(k => k, StringComparer.Ordinal).ToArray() });
+}
 
 public sealed class RotatePlatformServiceKeyCommandHandler
     : IRequestHandler<RotatePlatformServiceKeyCommand, Result<PlatformServiceKeyDto>>

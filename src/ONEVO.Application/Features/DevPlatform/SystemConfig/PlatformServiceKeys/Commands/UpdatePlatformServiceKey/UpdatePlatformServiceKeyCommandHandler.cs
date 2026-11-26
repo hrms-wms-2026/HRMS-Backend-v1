@@ -3,6 +3,7 @@ using ONEVO.Application.Common.Models;
 using ONEVO.Application.Features.DevPlatform.SystemConfig.PlatformServiceKeys.DTOs.Responses;
 using ONEVO.Application.Features.DevPlatform.SystemConfig.PlatformServiceKeys.Mappers;
 using ONEVO.Application.Features.DevPlatform.SystemConfig.PlatformServiceKeys.RepositoryInterfaces;
+using ONEVO.Application.Common.Auditing;
 
 namespace ONEVO.Application.Features.DevPlatform.SystemConfig.PlatformServiceKeys.Commands.UpdatePlatformServiceKey;
 
@@ -13,7 +14,11 @@ namespace ONEVO.Application.Features.DevPlatform.SystemConfig.PlatformServiceKey
 public sealed record UpdatePlatformServiceKeyCommand(
     string ServiceKey,
     string DisplayName,
-    Guid ActorPlatformUserId) : IRequest<Result<PlatformServiceKeyDto>>;
+    Guid ActorPlatformUserId) : IRequest<Result<PlatformServiceKeyDto>>, IAuditedCommand<Result<PlatformServiceKeyDto>>
+{
+    public AuditEntry DescribeAudit(Result<PlatformServiceKeyDto>? response)
+        => new("service_key.updated", "service_key", ServiceKey, null, new { DisplayName });
+}
 
 public sealed class UpdatePlatformServiceKeyCommandHandler
     : IRequestHandler<UpdatePlatformServiceKeyCommand, Result<PlatformServiceKeyDto>>

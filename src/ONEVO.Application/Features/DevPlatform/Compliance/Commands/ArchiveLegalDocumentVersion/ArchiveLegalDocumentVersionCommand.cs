@@ -5,11 +5,16 @@ using ONEVO.Application.Common.ServiceInterfaces;
 using ONEVO.Application.Features.DevPlatform.Compliance.DTOs.Responses;
 using ONEVO.Application.Features.DevPlatform.Compliance.Mappers;
 using ONEVO.Application.Features.DevPlatform.Compliance.RepositoryInterfaces;
+using ONEVO.Application.Common.Auditing;
 
 namespace ONEVO.Application.Features.DevPlatform.Compliance.Commands.ArchiveLegalDocumentVersion;
 
 /// <summary>Archives a published version. Only status/updated_at change - content body is never touched.</summary>
-public sealed record ArchiveLegalDocumentVersionCommand(Guid Id) : IRequest<Result<LegalDocumentVersionDetailDto>>;
+public sealed record ArchiveLegalDocumentVersionCommand(Guid Id) : IRequest<Result<LegalDocumentVersionDetailDto>>, IAuditedCommand<Result<LegalDocumentVersionDetailDto>>
+{
+    public AuditEntry DescribeAudit(Result<LegalDocumentVersionDetailDto>? response)
+        => AuditEntry.For("legal_document_version.archived", "legal_document_version", Id);
+}
 
 public sealed class ArchiveLegalDocumentVersionCommandHandler
     : IRequestHandler<ArchiveLegalDocumentVersionCommand, Result<LegalDocumentVersionDetailDto>>

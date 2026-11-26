@@ -140,6 +140,9 @@ internal static class DeveloperPlatformRegistration
         services.AddScoped<IPlatformUserSessionRepository, EfPlatformUserSessionRepository>();
         services.AddScoped<IPlatformAccessReadRepository, EfPlatformAccessReadRepository>();
         services.AddScoped<IPlatformAuthEventRepository, EfPlatformAuthEventRepository>();
+        services.AddScoped<
+            ONEVO.Application.Features.DevPlatform.Audit.RepositoryInterfaces.IPlatformAuditLogRepository,
+            ONEVO.Infrastructure.Persistence.Repositories.DevPlatform.Audit.EfPlatformAuditLogRepository>();
         services.AddScoped<IPlatformUserInviteRepository, EfPlatformUserInviteRepository>();
         services.AddScoped<IPlatformPermissionResolver, PlatformPermissionResolver>();
         services.AddScoped<IPlatformAccessManagementService, PlatformAccessManagementService>();

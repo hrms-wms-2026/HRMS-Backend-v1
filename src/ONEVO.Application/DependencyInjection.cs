@@ -31,11 +31,18 @@ public static class DependencyInjection
             cfg.AddBehavior(typeof(IPipelineBehavior<,>), typeof(UnhandledExceptionBehavior<,>));
             cfg.AddBehavior(typeof(IPipelineBehavior<,>), typeof(AdminTenantContextBehavior<,>));
             cfg.AddBehavior(typeof(IPipelineBehavior<,>), typeof(ValidationBehavior<,>));
+            // Outside AuditingBehavior, so the rate limit reload runs after the audit transaction commits.
+            cfg.AddBehavior(typeof(IPipelineBehavior<,>),
+                typeof(ONEVO.Application.Features.DevPlatform.SystemConfig.RateLimits.Services.RateLimitReloadBehavior<,>));
+            // After validation (a rejected request is not a privileged attempt) and around the handler,
+            // so the audit row commits in the handler's transaction. See AuditingBehavior.
+            cfg.AddBehavior(typeof(IPipelineBehavior<,>), typeof(AuditingBehavior<,>));
             cfg.AddBehavior(typeof(IPipelineBehavior<,>), typeof(LoggingBehavior<,>));
             cfg.AddBehavior(typeof(IPipelineBehavior<,>), typeof(PerformanceBehavior<,>));
         });
 
         services.AddValidatorsFromAssembly(assembly);
+        AddAuditStateReaders(services, assembly);
 
         services.AddScoped<
             ONEVO.Application.Features.Dashboard.Layout.Access.IDashboardWidgetAccess,
@@ -43,6 +50,7 @@ public static class DependencyInjection
         services.AddScoped<ONEVO.Application.Features.Dashboard.Layout.Services.DashboardSeeder>();
         // Improvements task 47: admin API for rate limits.
         services.AddScoped<ONEVO.Application.Features.DevPlatform.SystemConfig.RateLimits.Services.RateLimitAdminService>();
+        services.AddScoped<ONEVO.Application.Features.DevPlatform.SystemConfig.RateLimits.Services.RateLimitReloadSignal>();
         // Widget data providers themselves are registered by the API layer (they mirror its controller actions).
         services.AddScoped<
             ONEVO.Application.Features.Dashboard.Layout.Data.IWidgetDataOrchestrator,
@@ -143,5 +151,19 @@ public static class DependencyInjection
             ONEVO.Application.Features.Monitoring.Exceptions.Services.ExceptionAlertRouterFactory>();
 
         return services;
+    }
+
+    /// <summary>Registers every closed IAuditStateReader&lt;TCommand&gt; so AuditingBehavior can find it.</summary>
+    private static void AddAuditStateReaders(IServiceCollection services, System.Reflection.Assembly assembly)
+    {
+        var readerInterface = typeof(ONEVO.Application.Common.Auditing.IAuditStateReader<>);
+        foreach (var type in assembly.GetTypes().Where(t => t is { IsClass: true, IsAbstract: false }))
+        {
+            foreach (var contract in type.GetInterfaces()
+                         .Where(i => i.IsGenericType && i.GetGenericTypeDefinition() == readerInterface))
+            {
+                services.AddScoped(contract, type);
+            }
+        }
     }
 }

@@ -343,7 +343,9 @@ public class TenantIsolationArchitectureTests
         // The baseline's tables are covered by AddRowLevelSecurity, which loops over the registry.
         var offenders = MigrationUpBodies()
             .Where(m => !m.Name.EndsWith("_InitialSqlServer.cs", StringComparison.Ordinal))
-            .Where(m => Regex.IsMatch(m.Up, @"CreateTable\([\s\S]*?tenant_id\s*=\s*table\.Column"))
+            // The lookbehind keeps a column that merely ends in "tenant_id" (platform_audit_logs.target_tenant_id
+            // names the tenant an admin action touched; the table is platform-wide) from counting as tenant_id.
+            .Where(m => Regex.IsMatch(m.Up, @"CreateTable\([\s\S]*?(?<![A-Za-z0-9_])tenant_id\s*=\s*table\.Column"))
             .Where(m => !m.Up.Contains("RlsSql.CreatePolicy", StringComparison.Ordinal))
             .Select(m => m.Name)
             .ToList();

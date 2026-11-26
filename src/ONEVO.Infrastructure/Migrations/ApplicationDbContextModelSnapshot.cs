@@ -5159,6 +5159,106 @@ namespace ONEVO.Infrastructure.Migrations
                     b.ToTable("global_app_catalog", (string)null);
                 });
 
+            modelBuilder.Entity("ONEVO.Domain.Features.DevPlatform.Audit.Entities.PlatformAuditLog", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier")
+                        .HasColumnName("id");
+
+                    b.Property<string>("Action")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)")
+                        .HasColumnName("action");
+
+                    b.Property<Guid?>("ActorPlatformUserId")
+                        .HasColumnType("uniqueidentifier")
+                        .HasColumnName("actor_platform_user_id");
+
+                    b.Property<string>("AfterJson")
+                        .HasColumnType("nvarchar(max)")
+                        .HasColumnName("after_json")
+                        .HasAnnotation("Crownus:JsonColumn", true);
+
+                    b.Property<string>("BeforeJson")
+                        .HasColumnType("nvarchar(max)")
+                        .HasColumnName("before_json")
+                        .HasAnnotation("Crownus:JsonColumn", true);
+
+                    b.Property<string>("CorrelationId")
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)")
+                        .HasColumnName("correlation_id");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("datetimeoffset")
+                        .HasColumnName("created_at");
+
+                    b.Property<string>("FailureReason")
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)")
+                        .HasColumnName("failure_reason");
+
+                    b.Property<string>("IpAddress")
+                        .HasMaxLength(45)
+                        .HasColumnType("nvarchar(45)")
+                        .HasColumnName("ip_address");
+
+                    b.Property<string>("Outcome")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)")
+                        .HasColumnName("outcome");
+
+                    b.Property<string>("TargetId")
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)")
+                        .HasColumnName("target_id");
+
+                    b.Property<Guid?>("TargetTenantId")
+                        .HasColumnType("uniqueidentifier")
+                        .HasColumnName("target_tenant_id");
+
+                    b.Property<string>("TargetType")
+                        .IsRequired()
+                        .HasMaxLength(80)
+                        .HasColumnType("nvarchar(80)")
+                        .HasColumnName("target_type");
+
+                    b.Property<string>("UserAgent")
+                        .HasMaxLength(512)
+                        .HasColumnType("nvarchar(512)")
+                        .HasColumnName("user_agent");
+
+                    b.HasKey("Id")
+                        .HasName("pk_platform_audit_logs");
+
+                    b.HasIndex("CreatedAt")
+                        .HasDatabaseName("ix_platform_audit_logs_created_at");
+
+                    b.HasIndex("Action", "CreatedAt")
+                        .HasDatabaseName("ix_platform_audit_logs_action_created_at");
+
+                    b.HasIndex("ActorPlatformUserId", "CreatedAt")
+                        .HasDatabaseName("ix_platform_audit_logs_actor_platform_user_id_created_at");
+
+                    b.HasIndex("TargetTenantId", "CreatedAt")
+                        .HasDatabaseName("ix_platform_audit_logs_target_tenant_id_created_at");
+
+                    b.HasIndex("TargetType", "TargetId")
+                        .HasDatabaseName("ix_platform_audit_logs_target_type_target_id");
+
+                    b.ToTable("platform_audit_logs", null, t =>
+                        {
+                            t.HasCheckConstraint("ck_platform_audit_logs_after_json_json", "ISJSON([after_json]) = 1");
+
+                            t.HasCheckConstraint("ck_platform_audit_logs_before_json_json", "ISJSON([before_json]) = 1");
+
+                            t.HasCheckConstraint("ck_platform_audit_logs_outcome", "outcome IN ('succeeded', 'failed')");
+                        });
+                });
+
             modelBuilder.Entity("ONEVO.Domain.Features.DevPlatform.Compliance.Entities.LegalDocumentVersion", b =>
                 {
                     b.Property<Guid>("Id")
@@ -18437,7 +18537,7 @@ namespace ONEVO.Infrastructure.Migrations
                     b.HasOne("ONEVO.Domain.Features.DevPlatform.PlatformAccess.Entities.PlatformUser", null)
                         .WithMany()
                         .HasForeignKey("UserId")
-                        .OnDelete(DeleteBehavior.SetNull)
+                        .OnDelete(DeleteBehavior.Restrict)
                         .HasConstraintName("fk_platform_auth_events_platform_users_user_id");
                 });
 
@@ -19177,19 +19277,19 @@ namespace ONEVO.Infrastructure.Migrations
                     b.HasOne("ONEVO.Domain.Features.DevPlatform.PlatformAccess.Entities.PlatformUser", null)
                         .WithMany()
                         .HasForeignKey("ActorAdminUserId")
-                        .OnDelete(DeleteBehavior.SetNull)
+                        .OnDelete(DeleteBehavior.Restrict)
                         .HasConstraintName("fk_billing_audit_logs_platform_users_actor_admin_user_id");
 
                     b.HasOne("ONEVO.Domain.Features.SharedPlatform.Entities.SubscriptionInvoice", null)
                         .WithMany()
                         .HasForeignKey("InvoiceId")
-                        .OnDelete(DeleteBehavior.SetNull)
+                        .OnDelete(DeleteBehavior.Restrict)
                         .HasConstraintName("fk_billing_audit_logs_subscription_invoices_invoice_id");
 
                     b.HasOne("ONEVO.Domain.Features.InfrastructureModule.Entities.Tenant", null)
                         .WithMany()
                         .HasForeignKey("TenantId")
-                        .OnDelete(DeleteBehavior.SetNull)
+                        .OnDelete(DeleteBehavior.Restrict)
                         .HasConstraintName("fk_billing_audit_logs_tenants_tenant_id");
                 });
 

@@ -1,4 +1,5 @@
 using MediatR;
+using ONEVO.Application.Common.Auditing;
 using ONEVO.Application.Common.Models;
 using ONEVO.Application.Common.RepositoryInterfaces;
 using ONEVO.Application.Common.ServiceInterfaces;
@@ -65,7 +66,13 @@ public sealed record CreatePlatformAnnouncementCommand(
     string? Audience,
     DateTimeOffset? StartsAt,
     DateTimeOffset? EndsAt,
-    Guid ActorPlatformUserId) : IRequest<Result<PlatformAnnouncementDto>>, IPlatformAnnouncementInput;
+    Guid ActorPlatformUserId) : IRequest<Result<PlatformAnnouncementDto>>, IAuditedCommand<Result<PlatformAnnouncementDto>>, IPlatformAnnouncementInput
+{
+    // Title and body are left out; the announcement row keeps them.
+    public AuditEntry DescribeAudit(Result<PlatformAnnouncementDto>? response)
+        => AuditEntry.For("announcement.created", "announcement", response?.Value?.Id, null,
+            new { Severity, Audience, StartsAt, EndsAt });
+}
 
 public sealed class CreatePlatformAnnouncementCommandHandler
     : IRequestHandler<CreatePlatformAnnouncementCommand, Result<PlatformAnnouncementDto>>
@@ -120,7 +127,12 @@ public sealed record UpdatePlatformAnnouncementCommand(
     string? Severity,
     string? Audience,
     DateTimeOffset? StartsAt,
-    DateTimeOffset? EndsAt) : IRequest<Result<PlatformAnnouncementDto>>, IPlatformAnnouncementInput;
+    DateTimeOffset? EndsAt) : IRequest<Result<PlatformAnnouncementDto>>, IAuditedCommand<Result<PlatformAnnouncementDto>>, IPlatformAnnouncementInput
+{
+    // Title and body are left out; the announcement row keeps them.
+    public AuditEntry DescribeAudit(Result<PlatformAnnouncementDto>? response)
+        => AuditEntry.For("announcement.updated", "announcement", Id, null, new { Severity, Audience, StartsAt, EndsAt });
+}
 
 public sealed class UpdatePlatformAnnouncementCommandHandler
     : IRequestHandler<UpdatePlatformAnnouncementCommand, Result<PlatformAnnouncementDto>>
@@ -161,7 +173,10 @@ public sealed class UpdatePlatformAnnouncementCommandHandler
 }
 
 /// <summary>Permanently deletes an announcement. Unpublish instead to keep it for later.</summary>
-public sealed record DeletePlatformAnnouncementCommand(Guid Id) : IRequest<Result<bool>>;
+public sealed record DeletePlatformAnnouncementCommand(Guid Id) : IRequest<Result<bool>>, IAuditedCommand<Result<bool>>
+{
+    public AuditEntry DescribeAudit(Result<bool>? response) => AuditEntry.For("announcement.deleted", "announcement", Id);
+}
 
 public sealed class DeletePlatformAnnouncementCommandHandler : IRequestHandler<DeletePlatformAnnouncementCommand, Result<bool>>
 {
@@ -186,7 +201,11 @@ public sealed class DeletePlatformAnnouncementCommandHandler : IRequestHandler<D
 }
 
 public sealed record SetPlatformAnnouncementPublishedCommand(Guid Id, bool Publish, Guid ActorPlatformUserId)
-    : IRequest<Result<PlatformAnnouncementDto>>;
+    : IRequest<Result<PlatformAnnouncementDto>>, IAuditedCommand<Result<PlatformAnnouncementDto>>
+{
+    public AuditEntry DescribeAudit(Result<PlatformAnnouncementDto>? response)
+        => AuditEntry.For(Publish ? "announcement.published" : "announcement.unpublished", "announcement", Id);
+}
 
 public sealed class SetPlatformAnnouncementPublishedCommandHandler
     : IRequestHandler<SetPlatformAnnouncementPublishedCommand, Result<PlatformAnnouncementDto>>

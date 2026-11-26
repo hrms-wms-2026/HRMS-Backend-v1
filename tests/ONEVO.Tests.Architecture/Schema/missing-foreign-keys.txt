@@ -301,6 +301,8 @@ personal_calendar_events.source_id | polymorphic | the type column next to it na
 personal_calendar_events.tenant_id | tenant | foreign key to tenants, added in batches: task-39d
 planned_task_blocks.created_by_id | audit | AuditableEntityInterceptor writes Guid.Empty for system writes: task-39c
 planned_task_blocks.tenant_id | tenant | foreign key to tenants, added in batches: task-39d
+platform_audit_logs.actor_platform_user_id | audit | append-only platform audit log (F-07): kept after the admin or tenant it names is deleted
+platform_audit_logs.target_tenant_id | audit | append-only platform audit log (F-07): kept after the admin or tenant it names is deleted
 position_access_templates.tenant_id | tenant | foreign key to tenants, added in batches: task-39d
 position_assignments.created_by_id | audit | AuditableEntityInterceptor writes Guid.Empty for system writes: task-39c
 position_assignments.tenant_id | tenant | foreign key to tenants, added in batches: task-39d

@@ -76,6 +76,7 @@ outbox_messages.type | todo | not reviewed yet: task-39f
 permission_changes.kind | todo | values are string literals in PermissionCatalogSynchronizer (rename, default-grant, soft-retire, remove); move them to constants first: task-39f
 personal_calendar_events.event_status | todo | not reviewed yet: task-39f
 personal_calendar_events.source_type | todo | not reviewed yet: task-39f
+platform_audit_logs.target_type | free | each audited command names its own target type (F-07); the list grows with new commands
 platform_auth_events.event_type | todo | not reviewed yet: task-39f
 platform_users.invite_status | todo | not reviewed yet: task-39f
 platform_users.mfa_status | todo | not reviewed yet: task-39f

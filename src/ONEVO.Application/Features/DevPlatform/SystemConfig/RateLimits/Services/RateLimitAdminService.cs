@@ -1,4 +1,3 @@
-using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using ONEVO.Application.Common.Configuration;
 using ONEVO.Application.Common.Exceptions;
@@ -34,34 +33,33 @@ public sealed record RateLimitChangeRequest(
 
 /// <summary>
 /// Reads and writes rate limit overrides for the admin API (Improvements task 47). Every write saves
-/// the override and one history row in a single SaveChanges (one transaction), then reloads the
-/// task 46 provider so the change applies on this instance at once. A no-op writes nothing.
+/// the override and one history row in a single SaveChanges (one transaction), then asks for a reload
+/// of the task 46 provider (<see cref="RateLimitReloadSignal"/>). <see cref="RateLimitReloadBehavior{TRequest, TResponse}"/>
+/// runs it after the transaction commits, so the change applies on this instance at once. A no-op
+/// writes nothing and asks for nothing.
 /// </summary>
 public sealed class RateLimitAdminService
 {
     private const int CorrelationIdMaxLength = 100;
 
     private readonly IRateLimitSettingRepository _repository;
-    private readonly IRateLimitSettingsInvalidator _invalidator;
+    private readonly RateLimitReloadSignal _reload;
     private readonly IOptionsMonitor<RateLimitSettings> _appSettings;
     private readonly ICurrentPlatformUserContext _platformUser;
     private readonly IDateTimeProvider _clock;
-    private readonly ILogger<RateLimitAdminService> _logger;
 
     public RateLimitAdminService(
         IRateLimitSettingRepository repository,
-        IRateLimitSettingsInvalidator invalidator,
+        RateLimitReloadSignal reload,
         IOptionsMonitor<RateLimitSettings> appSettings,
         ICurrentPlatformUserContext platformUser,
-        IDateTimeProvider clock,
-        ILogger<RateLimitAdminService> logger)
+        IDateTimeProvider clock)
     {
         _repository = repository;
-        _invalidator = invalidator;
+        _reload = reload;
         _appSettings = appSettings;
         _platformUser = platformUser;
         _clock = clock;
-        _logger = logger;
     }
 
     // ---------------------------------------------------------------- reads
@@ -257,7 +255,8 @@ public sealed class RateLimitAdminService
             return StaleConflict();
         }
 
-        await InvalidateAsync();
+        // The reload itself runs in RateLimitReloadBehavior, after the transaction commits.
+        _reload.Request();
         return Result.Success();
     }
 
@@ -311,20 +310,6 @@ public sealed class RateLimitAdminService
             + $"({signedIn.PerMinute}/min, burst {signedIn.Burst}) for the same {target.Scope}.",
             400,
             "rate_limit_ceiling_below_signed_in");
-    }
-
-    private async Task InvalidateAsync()
-    {
-        try
-        {
-            // Not the request token: once saved, the change must reach the limiter even if the caller left.
-            await _invalidator.InvalidateAsync(CancellationToken.None);
-        }
-        catch (Exception ex)
-        {
-            // The change is saved; the 30-second check picks it up.
-            _logger.LogWarning(ex, "Rate limit settings were saved but the immediate reload failed.");
-        }
     }
 
     private static Result StaleConflict() => Result.Failure(

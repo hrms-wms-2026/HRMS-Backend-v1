@@ -1,4 +1,5 @@
 using MediatR;
+using ONEVO.Application.Common.Auditing;
 using ONEVO.Application.Common.Models;
 using ONEVO.Application.Common.RepositoryInterfaces;
 using ONEVO.Application.Common.ServiceInterfaces;
@@ -19,7 +20,13 @@ public sealed record CreateSupportTicketCommand(
     string? Description,
     string? Priority,
     string? Category,
-    Guid ActorPlatformUserId) : IRequest<Result<SupportTicketDto>>, ISupportTicketInput;
+    Guid ActorPlatformUserId) : IRequest<Result<SupportTicketDto>>, IAuditedCommand<Result<SupportTicketDto>>, ISupportTicketInput
+{
+    // Subject, description and category are customer text: never copied into the audit row.
+    public AuditEntry DescribeAudit(Result<SupportTicketDto>? response)
+        => AuditEntry.For("support_ticket.created", "support_ticket", response?.Value?.Id,
+            TenantId ?? response?.Value?.TenantId, new { Priority });
+}
 
 public sealed class CreateSupportTicketCommandHandler : IRequestHandler<CreateSupportTicketCommand, Result<SupportTicketDto>>
 {
@@ -71,7 +78,12 @@ public sealed class CreateSupportTicketCommandHandler : IRequestHandler<CreateSu
     }
 }
 
-public sealed record UpdateSupportTicketStatusCommand(Guid TicketId, string? Status) : IRequest<Result<SupportTicketDto>>;
+public sealed record UpdateSupportTicketStatusCommand(Guid TicketId, string? Status)
+    : IRequest<Result<SupportTicketDto>>, IAuditedCommand<Result<SupportTicketDto>>
+{
+    public AuditEntry DescribeAudit(Result<SupportTicketDto>? response)
+        => AuditEntry.For("support_ticket.status_changed", "support_ticket", TicketId, response?.Value?.TenantId, new { Status });
+}
 
 public sealed class UpdateSupportTicketStatusCommandHandler
     : IRequestHandler<UpdateSupportTicketStatusCommand, Result<SupportTicketDto>>
@@ -118,7 +130,13 @@ public sealed class UpdateSupportTicketStatusCommandHandler
 }
 
 /// <summary>Assigns a ticket to an active platform user, or clears the assignee when null.</summary>
-public sealed record AssignSupportTicketCommand(Guid TicketId, Guid? AssignedToPlatformUserId) : IRequest<Result<SupportTicketDto>>;
+public sealed record AssignSupportTicketCommand(Guid TicketId, Guid? AssignedToPlatformUserId)
+    : IRequest<Result<SupportTicketDto>>, IAuditedCommand<Result<SupportTicketDto>>
+{
+    public AuditEntry DescribeAudit(Result<SupportTicketDto>? response)
+        => AuditEntry.For("support_ticket.assigned", "support_ticket", TicketId, response?.Value?.TenantId,
+            new { AssignedToPlatformUserId });
+}
 
 public sealed class AssignSupportTicketCommandHandler : IRequestHandler<AssignSupportTicketCommand, Result<SupportTicketDto>>
 {
@@ -156,7 +174,13 @@ public sealed class AssignSupportTicketCommandHandler : IRequestHandler<AssignSu
 }
 
 public sealed record AddSupportTicketCommentCommand(Guid TicketId, string? Body, bool IsInternal, Guid ActorPlatformUserId)
-    : IRequest<Result<SupportTicketCommentDto>>;
+    : IRequest<Result<SupportTicketCommentDto>>, IAuditedCommand<Result<SupportTicketCommentDto>>
+{
+    // The comment body is never copied into the audit row.
+    public AuditEntry DescribeAudit(Result<SupportTicketCommentDto>? response)
+        => AuditEntry.For("support_ticket.commented", "support_ticket", TicketId, null,
+            new { CommentId = response?.Value?.Id, IsInternal });
+}
 
 public sealed class AddSupportTicketCommentCommandHandler
     : IRequestHandler<AddSupportTicketCommentCommand, Result<SupportTicketCommentDto>>
@@ -220,7 +244,12 @@ public sealed record UpdateSupportTicketCommand(
     string? Subject,
     string? Description,
     string? Priority,
-    string? Category) : IRequest<Result<SupportTicketDto>>, ISupportTicketInput;
+    string? Category) : IRequest<Result<SupportTicketDto>>, IAuditedCommand<Result<SupportTicketDto>>, ISupportTicketInput
+{
+    // Subject, description and category are customer text: never copied into the audit row.
+    public AuditEntry DescribeAudit(Result<SupportTicketDto>? response)
+        => AuditEntry.For("support_ticket.updated", "support_ticket", TicketId, response?.Value?.TenantId, new { Priority });
+}
 
 public sealed class UpdateSupportTicketCommandHandler : IRequestHandler<UpdateSupportTicketCommand, Result<SupportTicketDto>>
 {
@@ -254,7 +283,13 @@ public sealed record UploadSupportTicketAttachmentCommand(
     Guid TicketId,
     SupportUpload Upload,
     bool IsInternal,
-    Guid ActorPlatformUserId) : IRequest<Result<SupportTicketAttachmentDto>>;
+    Guid ActorPlatformUserId) : IRequest<Result<SupportTicketAttachmentDto>>, IAuditedCommand<Result<SupportTicketAttachmentDto>>
+{
+    // The file name can carry personal data, so only the type and size are kept.
+    public AuditEntry DescribeAudit(Result<SupportTicketAttachmentDto>? response)
+        => AuditEntry.For("support_ticket.attachment_added", "support_ticket", TicketId, null,
+            new { AttachmentId = response?.Value?.Id, IsInternal, ContentType = Upload?.ContentType, SizeBytes = Upload?.SizeBytes });
+}
 
 public sealed class UploadSupportTicketAttachmentCommandHandler
     : IRequestHandler<UploadSupportTicketAttachmentCommand, Result<SupportTicketAttachmentDto>>

@@ -1,4 +1,5 @@
 using MediatR;
+using ONEVO.Application.Common.Auditing;
 using ONEVO.Application.Common.Models;
 using ONEVO.Application.Features.DevPlatform.SystemConfig.RateLimits.DTOs;
 using ONEVO.Application.Features.DevPlatform.SystemConfig.RateLimits.Helpers;
@@ -12,4 +13,10 @@ public sealed record RemovePlanRateLimitCommand(
     RateLimitName LimitName,
     string Reason,
     string? RowVersion,
-    string? CorrelationId) : IRequest<Result<PlanRateLimitsDto>>, IRemoveRateLimitCommand;
+    string? CorrelationId) : IRequest<Result<PlanRateLimitsDto>>, IRemoveRateLimitCommand, IAuditedCommand<Result<PlanRateLimitsDto>>
+{
+    // Ids, the limit and the values only; the free-text reason stays in rate_limit_setting_changes.
+    public AuditEntry DescribeAudit(Result<PlanRateLimitsDto>? response)
+        => AuditEntry.For("rate_limit.removed", "subscription_plan", SubscriptionPlanId, null,
+            new { Scope = "plan", LimitName = LimitName.ToStoredName() });
+}

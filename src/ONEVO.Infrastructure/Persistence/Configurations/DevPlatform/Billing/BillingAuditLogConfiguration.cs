@@ -28,19 +28,21 @@ public class BillingAuditLogConfiguration : IEntityTypeConfiguration<BillingAudi
         builder.HasIndex(l => new { l.TenantId, l.CreatedAt })
             .HasDatabaseName("ix_billing_audit_logs_tenant_id_created_at");
 
+        // Audit rows are append-only: deleting a referenced tenant, invoice or admin must fail, never
+        // null the audit column (a cascade is not permission-checked, so it would bypass the DENY).
         builder.HasOne<Tenant>()
             .WithMany()
             .HasForeignKey(l => l.TenantId)
-            .OnDelete(DeleteBehavior.SetNull);
+            .OnDelete(DeleteBehavior.Restrict);
 
         builder.HasOne<SubscriptionInvoice>()
             .WithMany()
             .HasForeignKey(l => l.InvoiceId)
-            .OnDelete(DeleteBehavior.SetNull);
+            .OnDelete(DeleteBehavior.Restrict);
 
         builder.HasOne<PlatformUser>()
             .WithMany()
             .HasForeignKey(l => l.ActorAdminUserId)
-            .OnDelete(DeleteBehavior.SetNull);
+            .OnDelete(DeleteBehavior.Restrict);
     }
 }
