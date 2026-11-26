@@ -45,6 +45,8 @@ public static class DependencyInjection
             ONEVO.Application.Features.Dashboard.Layout.Access.IDashboardWidgetAccess,
             ONEVO.Application.Features.Dashboard.Layout.Access.DashboardWidgetAccess>();
         services.AddScoped<ONEVO.Application.Features.Dashboard.Layout.Services.DashboardSeeder>();
+        // Improvements task 47: admin API for rate limits.
+        services.AddScoped<ONEVO.Application.Features.DevPlatform.SystemConfig.RateLimits.Services.RateLimitAdminService>();
         // Widget data providers themselves are registered by the API layer (they mirror its controller actions).
         services.AddScoped<
             ONEVO.Application.Features.Dashboard.Layout.Data.IWidgetDataOrchestrator,
