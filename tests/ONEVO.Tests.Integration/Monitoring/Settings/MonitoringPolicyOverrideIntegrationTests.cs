@@ -188,7 +188,7 @@ public sealed class MonitoringPolicyOverrideIntegrationTestsFixture : IAsyncLife
             ScopeType = scopeType,
             ScopeId = scopeId,
             ActivityMonitoring = activityMonitoring,
-            SetById = Guid.NewGuid(),
+            SetById = TestUsers.New(db, tenantId),
             CreatedAt = DateTimeOffset.UtcNow,
             UpdatedAt = DateTimeOffset.UtcNow
         });

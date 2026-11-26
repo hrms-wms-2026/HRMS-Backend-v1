@@ -35,6 +35,15 @@ public static class TestUsers
     public static Guid New(ApplicationDbContext db, Guid tenantId, string firstName = "Test", string lastName = "User") =>
         Add(db, tenantId, Guid.NewGuid(), firstName, lastName);
 
+    /// <summary>A new user id whose users row is already saved, through a context of its own.</summary>
+    public static async Task<Guid> NewAsync(Func<ApplicationDbContext> createContext, Guid tenantId)
+    {
+        await using var db = createContext();
+        var userId = New(db, tenantId);
+        await db.SaveChangesAsync();
+        return userId;
+    }
+
     /// <summary>
     /// For fixture setup only, before SaveChanges: adds the users row of every employee the context is about to
     /// insert whose user is neither tracked nor stored yet.

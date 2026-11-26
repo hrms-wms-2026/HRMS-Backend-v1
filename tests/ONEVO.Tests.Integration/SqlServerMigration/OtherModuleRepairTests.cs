@@ -17,6 +17,8 @@ public sealed class OtherModuleRepairTests
     private const string ScopeCheck = "ck_clock_in_policies_scope_type";
     private const string Admin = "EXEC sp_set_session_context N'app.tenant_context_mode', N'admin';";
     private const string Reset = "EXEC sp_set_session_context N'app.tenant_context_mode', NULL;";
+    // DapiHistorySeeder.DapiTenantId: the demo tenant whose seeded snapshots had no device registration.
+    private const string DapiTenantId = "6b0874ab-71db-401f-859f-bdd50c1317fb";
 
     [Fact]
     public async Task Repair_passes_on_clean_data()
@@ -67,6 +69,58 @@ public sealed class OtherModuleRepairTests
     }
 
     [Fact]
+    public async Task Repair_adds_the_missing_device_registration_for_the_dapi_demo_tenant()
+    {
+        var (db, userId, employeeId) = await SeedAsync();
+        var deviceId = Guid.NewGuid();
+        await AddSnapshotWithUnknownDeviceAsync(db, DapiTenantId, employeeId, deviceId);
+
+        await ExecAsync(db, AddOtherModuleForeignKeys39e.RepairOtherModuleReferencesSql);
+
+        (await ScalarAsync(db, $"SELECT user_id FROM dbo.tray_device_registrations WHERE id = '{deviceId}'"))
+            .Should().Be(userId);
+        (await ScalarAsync(db, $"SELECT COUNT(*) FROM dbo.activity_snapshots WHERE agent_device_id = '{deviceId}'"))
+            .Should().Be(1, "the snapshot is kept and now points at a real registration");
+    }
+
+    [Fact]
+    public async Task Repair_stops_on_an_unknown_device_of_any_other_tenant()
+    {
+        var (db, _, employeeId) = await SeedAsync();
+        var deviceId = Guid.NewGuid();
+        await AddSnapshotWithUnknownDeviceAsync(db, db.TenantId.ToString(), employeeId, deviceId);
+
+        var repair = () => ExecAsync(db, AddOtherModuleForeignKeys39e.RepairOtherModuleReferencesSql);
+
+        var thrown = (await repair.Should().ThrowAsync<SqlException>()).Which;
+        thrown.Number.Should().Be(50039);
+        thrown.Message.Should().Contain("activity_snapshots.agent_device_id=1");
+        (await ScalarAsync(db, $"SELECT COUNT(*) FROM dbo.tray_device_registrations WHERE id = '{deviceId}'"))
+            .Should().Be(0);
+    }
+
+    [Fact]
+    public async Task Repair_maps_a_user_id_in_device_change_requests_to_its_employee()
+    {
+        var (db, userId, employeeId) = await SeedAsync();
+        var requestId = Guid.NewGuid();
+        // What TrayEnrollmentService used to write: the requesting user's id in employee_id.
+        await ExecAsync(db, $"""
+            {Admin}
+            ALTER TABLE dbo.device_change_requests NOCHECK CONSTRAINT fk_device_change_requests_employees_employee_id;
+            INSERT INTO dbo.device_change_requests (id, tenant_id, employee_id, new_device_fingerprint, new_device_name,
+                new_device_os, status, requested_at)
+            VALUES ('{requestId}', '{db.TenantId}', '{userId}', 'fp', 'Second Laptop', 'macOS', 'pending', SYSDATETIMEOFFSET());
+            {Reset}
+            """);
+
+        await ExecAsync(db, AddOtherModuleForeignKeys39e.RepairOtherModuleReferencesSql);
+
+        (await ScalarAsync(db, $"SELECT employee_id FROM dbo.device_change_requests WHERE id = '{requestId}'"))
+            .Should().Be(employeeId);
+    }
+
+    [Fact]
     public async Task Status_check_passes_on_clean_data()
     {
         var (db, _, _) = await SeedAsync();
@@ -109,6 +163,18 @@ public sealed class OtherModuleRepairTests
         {Admin}
         ALTER TABLE dbo.users NOCHECK CONSTRAINT {SuspendedByKey};
         UPDATE dbo.users SET suspended_by_id = '{value}' WHERE id = '{userId}';
+        {Reset}
+        """);
+
+    private static Task AddSnapshotWithUnknownDeviceAsync(MyTeamDb db, string tenantId, Guid employeeId, Guid deviceId) =>
+        ExecAsync(db, $"""
+        {Admin}
+        ALTER TABLE dbo.activity_snapshots NOCHECK CONSTRAINT fk_activity_snapshots_tray_device_registrations_agent_device_id;
+        ALTER TABLE dbo.activity_snapshots NOCHECK CONSTRAINT fk_activity_snapshots_tenants_tenant_id;
+        ALTER TABLE dbo.tray_device_registrations NOCHECK CONSTRAINT fk_tray_device_registrations_tenants_tenant_id;
+        INSERT INTO dbo.activity_snapshots (id, tenant_id, employee_id, agent_device_id, captured_at, created_at, active_seconds,
+            idle_seconds, intensity_score, keyboard_events_count, mouse_events_count)
+        VALUES (NEWID(), '{tenantId}', '{employeeId}', '{deviceId}', SYSDATETIMEOFFSET(), SYSDATETIMEOFFSET(), 60, 0, 1, 1, 1);
         {Reset}
         """);
 

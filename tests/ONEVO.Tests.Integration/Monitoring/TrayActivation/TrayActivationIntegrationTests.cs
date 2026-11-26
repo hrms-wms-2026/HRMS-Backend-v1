@@ -650,8 +650,9 @@ public sealed class TrayActivationIntegrationTests : IClassFixture<TrayActivatio
         var firstDevice = await db.TrayDeviceRegistrations
             .SingleAsync(d => d.UserId == user.UserId && d.DeviceFingerprint == "fp-device-first");
 
+        var employeeId = await db.Employees.Where(e => e.UserId == user.UserId).Select(e => e.Id).SingleAsync();
         var changeRequest = await db.DeviceChangeRequests
-            .SingleAsync(r => r.EmployeeId == user.UserId);
+            .SingleAsync(r => r.EmployeeId == employeeId);
         changeRequest.Status.Should().Be(DeviceChangeRequest.StatusPending);
         changeRequest.LegalEntityId.Should().NotBeNull("the seeded user has a resolvable legal entity");
         changeRequest.CurrentDeviceRegistrationId.Should().Be(firstDevice.Id);

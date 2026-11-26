@@ -38,6 +38,7 @@ None of them was applied to a shared database by the agent.
 
 1. `Guid.Empty` becomes `NULL` on the nullable columns.
 2. A value found in another identity table (`users`, `platform_users`, `employees`) but not in the key's target becomes `NULL` on a nullable column. The counts are printed.
+   - 2b. The Dapi demo seeder wrote one device id per employee into `activity_snapshots`, `app_usage_snapshots` and `device_state_snapshots` without creating its `tray_device_registrations` row. The bad-data check found 12281 of 12281 rows unknown in each, all in tenant `6b0874ab-71db-401f-859f-bdd50c1317fb`. For that demo tenant only, the repair adds the missing registration with the same id, for the employee's user (or the demo owner), named "Demo laptop", with first and last seen taken from the snapshots. The count is printed. `DapiHistorySeeder` now creates the same rows itself, so a fresh seed is clean.
 3. Any other value that is not a row of its parent stops the migration with 50039, naming each `table.column=rows`. Nothing is deleted.
 
 The `payment_gateway` tables are not touched by these migrations: `CredentialOwnershipCompletionArchitectureTests` allows a later migration on them only the 39c audit key. So `payment_gateway_credentials.rotated_by_id` and `deactivated_by_id` stay on the allow-list, and the two `payment_gateway` cascades stay as they are (configs are never removed, so they never fire). Changing them needs that test's owner to agree; the first gate run found this (the generated operations failed the test), and the test was not widened.
@@ -105,11 +106,15 @@ The agent cannot connect to the database (the connection needs the `sa` password
 - Part 2 (39f): the distinct values and row counts of every column that was `todo` (all 98), so the constrained ones can be checked and the remaining ones get their value lists.
 - Part 3 (39g): the foreign keys that cascade in the database, with child row counts, and the latest applied migration.
 
-It runs in the `admin` tenant context mode, resets it at the end, and changes nothing (its only `INSERT`s fill table variables). Result: to be filled in after the user runs it.
+It runs in the `admin` tenant context mode, resets it at the end, and changes nothing (its only `INSERT`s fill table variables). Result: the user ran it on the local database on 2026-11-25 (file `C:\Users\User\Desktop\orphans39efg-result.txt`).
+
+- Part 1: every key shows 0 unknown, 0 `Guid.Empty` and 0 wrong-kind ids, except `activity_snapshots`, `app_usage_snapshots` and `device_state_snapshots.agent_device_id`. Those have 12281 of 12281 rows unknown each, all `NOT NULL`, none in `tray_device_registrations`. The cause was the Dapi demo seeder (step 2b above). `NULL` was not possible and no row is deleted: the repair adds the missing demo registrations, and the seeder now creates them.
+- Part 2: all 38 values found in the 60 newly constrained columns are on their lists. SQL Server lets `NULL` through a check, and the 39f pre-check counts it the same way, so the 30 `NULL` rows of `sprint_activity_logs.from_status` are fine. `tenant_subscriptions.maintenance_status` (2 `NULL` rows) and the other 14 columns listed are still `todo`, without a check.
+- Part 3: informational, nothing unexpected.
 
 ## Tests
 
-`OtherModuleRepairTests` (integration, `SqlServerMigration`): the 39e repair passes on clean data, sets `Guid.Empty` and an employees id in `users.suspended_by_id` to `NULL`, and stops with 50039 naming `users.suspended_by_id=1` on an unknown id without changing it; the 39f check passes on clean data and stops naming `clock_in_policies.scope_type=1` without changing the row.
+`OtherModuleRepairTests` (integration, `SqlServerMigration`): the 39e repair passes on clean data, adds the missing registration for an unknown device of the Dapi demo tenant (the snapshot is kept), still stops naming `activity_snapshots.agent_device_id=1` for any other tenant without adding one, sets `Guid.Empty` and an employees id in `users.suspended_by_id` to `NULL`, and stops with 50039 naming `users.suspended_by_id=1` on an unknown id without changing it; the 39f check passes on clean data and stops naming `clock_in_policies.scope_type=1` without changing the row.
 
 ## Gate
 
@@ -118,6 +123,7 @@ Fast gate only (Execution's instruction: the full integration run happens on fea
 - `verify-20261125-123611`: build PASS, unit 8371 passed, architecture 1022 passed.
 - SqlServerMigration tests alone (Testcontainers SQL Server, all migrations applied to a fresh database): 305 of 305 passed, `OtherModuleRepairTests` 6 of 6 included.
 - The read-only desktop check was run once on a migrated test database to confirm it runs; that temporary test was not committed.
+- After the Dapi device fix (commit aa535975f): `verify-20261125-154107` build PASS, unit 8371 passed, architecture 1022 passed. SqlServerMigration alone: 307 of 307 passed, including the 2 new device repair tests. The first gate run that day (`verify-20261125-153523`) had one timing failure, `WidgetDataOrchestratorTests.Slow_provider_times_out_into_error`, while the main checkout's full gate ran at the same time. That test is outside this change, and it passed 3 of 3 times on its own and in the rerun.
 
 Earlier runs, both fixed without weakening a test:
 
@@ -125,3 +131,31 @@ Earlier runs, both fixed without weakening a test:
 2. `verify-20261125-110210`: `CredentialOwnershipCompletionArchitectureTests` failed on the generated `payment_gateway` operations. Those tables were left out of 39e and 39g, and the test was not widened.
 
 After each, the three migrations were removed, the snapshot restored from the commit, and the migrations generated again in order (39e, 39f, 39g).
+
+## Full gate on feature/testing (dfd3c4ac7): 26 integration failures
+
+All 26 came from the new keys. Each was either a fixture writing a made-up parent id, or an app bug that the key exposed.
+
+| Group | Failing key or check | Tests | Cause | Fix |
+|---|---|---|---|---|
+| 1 | `fk_user_dashboards_users_user_id` | 6 `UserDashboardRepositoryTests` | Fixture: made-up user id | `TestUsers.NewAsync` (new helper) saves the user first |
+| 2 | `fk_monitoring_policy_overrides_users_set_by_id` | 4 `MonitoringPolicyOverrideIntegrationTests`, 4 `MonitoringLegalEntityScopingIntegrationTests` | Fixture: made-up `set_by_id` | `TestUsers.New` |
+| 3 | `fk_app_usage_snapshots_tray_device_registrations_agent_device_id` | 4 `MeetingComplianceTaskMeetingIntegrationTests`, 1 `MeetingLeakIntegrationTests` | Fixture: made-up device id | `TestDevices.ForEmployeeAsync` (new helper) registers a device of the employee's user |
+| 4 | `fk_user_roles_users_user_id` | 2 `OfficeProjectReconcilerIntegrationTests` | Fixture: an owner without an employee had no `users` row either | `OfficeProjectDb.AssignRoleAsync` adds the user when it is missing |
+| 5 | `fk_sessions_users_user_id` | 1 `SessionRevocationTests` | Fixture: made-up user ids | `TestUsers.New` |
+| 6 | `ck_calendar_event_meetings_owner` (a 2026-11-07 check, not task 39) | 1 `MeetingProvisioningIntegrationTests` | **App**: the new key `calendar_event_meetings.calendar_event_id` was `NoAction`. `DeleteCalendarEvent` removes the event (soft delete, so the row stays), and EF then set the tracked meeting's key to `NULL`, which broke the owner check | Reference keys are now `ClientNoAction` (below) |
+| 7 | `fk_device_change_requests_employees_employee_id` (500, not 409) | 1 `TrayActivationIntegrationTests` | **App**: `TrayEnrollmentService` wrote the user's id into `device_change_requests.employee_id`, while the approval workflow reads it back as an employee id, so the approver could never find the requester. The bug was older than task 39; the key exposed it | The service stores the user's default employee; a user without an employee is still refused, but no request is raised. The test looks the request up by employee id. The 39e repair step 2c maps existing user ids to their employee |
+| 8 | `fk_notifications_users_recipient_user_id` | 2 `OutboxProcessorBehaviourIntegrationTests` | Fixture: the test handler staged a notification for a made-up recipient, so the staged save failed | The payload carries a saved recipient user |
+
+### ClientNoAction for the reference keys
+
+Every key from `ReferenceForeignKeys` (tasks 39b-39e, through `Fk<>` and the `created_by_id` loop) was `DeleteBehavior.NoAction`. On a tracked child, EF then sets a nullable key to `NULL`, and refuses a required one, whenever the parent is removed. The soft-delete interceptor keeps the parent row, so this silently cut a valid link (group 6). Before task 39 these columns had no key, so EF did nothing.
+
+`ClientNoAction` keeps `ON DELETE NO ACTION` in the database, so a real hard delete of a parent with children still fails there, and EF leaves tracked children alone, as it did before task 39. The `tenant_id` keys stay `NoAction`: tenants are never removed, and unit tests pin that. The explicit `Restrict` keys and the 39g cascade review are unchanged.
+
+The change is model only. `20261125114212_ReferenceKeysClientNoAction39e` was generated on top of 39g: it has no operations (empty `Up` and `Down`), and its snapshot moves 278 keys from `NoAction` to `ClientNoAction`. No earlier migration was edited.
+
+New tests:
+- `OtherModuleRepairTests.Repair_maps_a_user_id_in_device_change_requests_to_its_employee` (integration).
+- `TrayEnrollmentServiceTests.IssueAsync_WhenDifferentFingerprintAndUserHasNoEmployee_RefusesWithoutRaisingARequest` (unit).
+- The device change unit test now checks `EmployeeId`.

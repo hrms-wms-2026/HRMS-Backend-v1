@@ -154,7 +154,7 @@ public static class ReferenceForeignKeys
                 .HasOne(typeof(User))
                 .WithMany()
                 .HasForeignKey(nameof(BaseEntity.CreatedById))
-                .OnDelete(DeleteBehavior.NoAction);
+                .OnDelete(DeleteBehavior.ClientNoAction);
         }
 
         Fk<ClockInPolicy, User>(b, x => x.CreatedById);
@@ -448,8 +448,16 @@ public static class ReferenceForeignKeys
         Fk<UserDashboard, User>(b, x => x.UserId);
     }
 
+    /// <summary>
+    /// A reference key. The default is <see cref="DeleteBehavior.ClientNoAction"/>: <c>ON DELETE NO ACTION</c> in the
+    /// database, and EF leaves tracked children alone when a parent is removed. With <see cref="DeleteBehavior.NoAction"/>
+    /// EF would set a nullable key of every tracked child to <c>NULL</c> (and refuse a required one) even though the
+    /// soft-delete interceptor keeps the parent row, which silently cut valid links (DeleteCalendarEvent cleared
+    /// calendar_event_meetings.calendar_event_id and failed ck_calendar_event_meetings_owner). A real hard delete of a
+    /// parent that still has children fails in the database, as intended.
+    /// </summary>
     private static void Fk<TChild, TParent>(
-        ModelBuilder modelBuilder, Expression<Func<TChild, object?>> key, DeleteBehavior onDelete = DeleteBehavior.NoAction)
+        ModelBuilder modelBuilder, Expression<Func<TChild, object?>> key, DeleteBehavior onDelete = DeleteBehavior.ClientNoAction)
         where TChild : class
         where TParent : class
         => modelBuilder.Entity<TChild>()

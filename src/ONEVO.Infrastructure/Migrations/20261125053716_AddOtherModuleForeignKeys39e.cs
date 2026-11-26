@@ -10,6 +10,7 @@ namespace ONEVO.Infrastructure.Migrations
         /// <summary>
         /// Hand-written (task 39e). Runs before the keys, in the admin tenant mode (RLS applies to sa): Guid.Empty becomes NULL,
         /// an id of the wrong identity table (users, platform_users, employees) becomes NULL on a nullable column,
+        /// the Dapi demo tenant's seeded device ids get their missing tray_device_registrations row (same id),
         /// and any other value that is not a row of its parent stops the migration with 50039, naming each column.
         /// Nothing is deleted. The payment-gateway credential columns are left out (CredentialOwnershipCompletionArchitectureTests).
         /// </summary>
@@ -100,6 +101,31 @@ namespace ONEVO.Infrastructure.Migrations
         IF @n > 0 BEGIN UPDATE x SET approved_user_id = NULL FROM tray_device_authorizations x WHERE x.approved_user_id IS NOT NULL AND NOT EXISTS (SELECT 1 FROM users p WHERE p.id = x.approved_user_id) AND (EXISTS (SELECT 1 FROM platform_users p WHERE p.id = x.approved_user_id) OR EXISTS (SELECT 1 FROM employees p WHERE p.id = x.approved_user_id)); SET @wrongkind = CONCAT(@wrongkind, N' tray_device_authorizations.approved_user_id=', @n); END
         SELECT @n = COUNT(*) FROM users x WHERE x.suspended_by_id IS NOT NULL AND NOT EXISTS (SELECT 1 FROM users p WHERE p.id = x.suspended_by_id) AND (EXISTS (SELECT 1 FROM platform_users p WHERE p.id = x.suspended_by_id) OR EXISTS (SELECT 1 FROM employees p WHERE p.id = x.suspended_by_id));
         IF @n > 0 BEGIN UPDATE x SET suspended_by_id = NULL FROM users x WHERE x.suspended_by_id IS NOT NULL AND NOT EXISTS (SELECT 1 FROM users p WHERE p.id = x.suspended_by_id) AND (EXISTS (SELECT 1 FROM platform_users p WHERE p.id = x.suspended_by_id) OR EXISTS (SELECT 1 FROM employees p WHERE p.id = x.suspended_by_id)); SET @wrongkind = CONCAT(@wrongkind, N' users.suspended_by_id=', @n); END
+        -- 2b. The Dapi demo seeder (DapiHistorySeeder, tenant 6b0874ab-71db-401f-859f-bdd50c1317fb) wrote one device id per
+        --     employee into the monitoring snapshots without its tray_device_registrations row. For that demo tenant only,
+        --     add the missing row with the same id, for the employee's user (or the demo owner). Any other tenant's unknown
+        --     device id still stops the migration in step 3.
+        INSERT INTO tray_device_registrations (id, tenant_id, user_id, legal_entity_id, device_name, device_os, device_fingerprint, is_active, activated_at, last_seen_at, deactivated_at, created_at)
+        SELECT d.agent_device_id, d.tenant_id, COALESCE(u.id, o.id), l.id, N'Demo laptop', N'Windows 11', CONCAT(N'dapi-demo:', LOWER(CONVERT(nchar(36), d.agent_device_id))), 1, d.first_seen, d.last_seen, NULL, d.first_seen
+        FROM (SELECT s.tenant_id, s.agent_device_id, CONVERT(uniqueidentifier, MIN(CONVERT(nchar(36), s.employee_id))) AS employee_id, MIN(s.captured_at) AS first_seen, MAX(s.captured_at) AS last_seen
+              FROM (SELECT tenant_id, agent_device_id, employee_id, captured_at FROM activity_snapshots UNION ALL SELECT tenant_id, agent_device_id, employee_id, captured_at FROM app_usage_snapshots UNION ALL SELECT tenant_id, agent_device_id, employee_id, captured_at FROM device_state_snapshots) s
+              WHERE s.tenant_id = '6b0874ab-71db-401f-859f-bdd50c1317fb' AND NOT EXISTS (SELECT 1 FROM tray_device_registrations p WHERE p.id = s.agent_device_id)
+              GROUP BY s.tenant_id, s.agent_device_id) d
+        LEFT JOIN employees e ON e.id = d.employee_id
+        LEFT JOIN users u ON u.id = e.user_id
+        LEFT JOIN users o ON o.id = 'cd49a0c2-e978-4055-b8be-7d46a3727e94'
+        LEFT JOIN legal_entities l ON l.id = e.legal_entity_id
+        WHERE COALESCE(u.id, o.id) IS NOT NULL;
+        SET @n = @@ROWCOUNT;
+        IF @n > 0 PRINT CONCAT(N'Task 39e: added ', @n, N' tray_device_registrations rows for the Dapi demo devices.');
+        -- 2c. TrayEnrollmentService wrote the requesting user's id into device_change_requests.employee_id (fixed in this
+        --     task). Map it to that user's employee when the user has exactly one in the tenant; anything else stops in step 3.
+        UPDATE x SET employee_id = (SELECT e.id FROM employees e WHERE e.user_id = x.employee_id AND e.tenant_id = x.tenant_id)
+        FROM device_change_requests x
+        WHERE NOT EXISTS (SELECT 1 FROM employees p WHERE p.id = x.employee_id)
+          AND (SELECT COUNT(*) FROM employees e WHERE e.user_id = x.employee_id AND e.tenant_id = x.tenant_id) = 1;
+        SET @n = @@ROWCOUNT;
+        IF @n > 0 PRINT CONCAT(N'Task 39e: mapped ', @n, N' device_change_requests.employee_id values from a user id to its employee.');
         -- 3. Any other value that is not a row of the parent stops the migration. Nothing is deleted.
         SELECT @n = COUNT(*) FROM activity_daily_summary x WHERE x.employee_id IS NOT NULL AND NOT EXISTS (SELECT 1 FROM employees p WHERE p.id = x.employee_id);
         IF @n > 0 SET @unknown = CONCAT(@unknown, N' activity_daily_summary.employee_id=', @n);

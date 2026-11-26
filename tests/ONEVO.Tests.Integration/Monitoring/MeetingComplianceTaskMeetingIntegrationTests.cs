@@ -14,6 +14,7 @@ using ONEVO.Infrastructure.Persistence.Repositories.WorkManagement.Meetings;
 using ONEVO.Tests.Integration.WorkManagement.Meetings;
 using Xunit;
 using static ONEVO.Tests.Integration.WorkManagement.Meetings.MeetingAttendanceWorld;
+using ONEVO.Tests.Integration.Support;
 
 namespace ONEVO.Tests.Integration.Monitoring;
 
@@ -51,17 +52,18 @@ public sealed class MeetingComplianceTaskMeetingIntegrationTests
     private static async Task SeedUsageAsync(World w, string providerProcess = "teams.exe", string otherProcess = "zoom.exe")
     {
         await using var db = w.H.NewContext();
+        var deviceId = await TestDevices.ForEmployeeAsync(db, w.H.TenantId, w.Attendee);
         for (var i = 0; i < TeamsSamples; i++)
             db.AppUsageSnapshots.Add(new AppUsageSnapshot
             {
-                Id = Guid.NewGuid(), TenantId = w.H.TenantId, EmployeeId = w.Attendee, AgentDeviceId = Guid.NewGuid(),
+                Id = Guid.NewGuid(), TenantId = w.H.TenantId, EmployeeId = w.Attendee, AgentDeviceId = deviceId,
                 CapturedAt = Week(0).AddMinutes(i), ProcessName = providerProcess, CreatedAt = Week(0),
             });
         // The other provider's app inside the same window: it must not count for a Teams meeting.
         for (var i = 0; i < 3; i++)
             db.AppUsageSnapshots.Add(new AppUsageSnapshot
             {
-                Id = Guid.NewGuid(), TenantId = w.H.TenantId, EmployeeId = w.Attendee, AgentDeviceId = Guid.NewGuid(),
+                Id = Guid.NewGuid(), TenantId = w.H.TenantId, EmployeeId = w.Attendee, AgentDeviceId = deviceId,
                 CapturedAt = Week(0).AddMinutes(20 + i), ProcessName = otherProcess, CreatedAt = Week(0),
             });
         await db.SaveChangesAsync();

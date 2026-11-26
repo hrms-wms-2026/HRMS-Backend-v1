@@ -71,14 +71,19 @@ public sealed class TrayEnrollmentService : ITrayEnrollmentService
             // request is still visible in ListPendingEmployeeIdsAsync/ListApprovalInboxAsync,
             // which filter by a specific non-null legal entity. Without this fallback a
             // null-LegalEntityId request would never surface in any approver's inbox.
-            var legalEntityId = request.LegalEntityId
-                ?? (await _employees.GetDefaultForUserAsync(request.TenantId, request.UserId, ct))?.LegalEntityId;
+            // The request belongs to the user's employee (device_change_requests.employee_id is an employees id, which the
+            // approval workflow reads back with IEmployeeRepository.GetByIdAsync). A user without an employee has no
+            // approver, so the second device is still refused but no request is raised.
+            var employee = await _employees.GetDefaultForUserAsync(request.TenantId, request.UserId, ct);
+            if (employee is null)
+                throw new DeviceChangePendingException();
+            var legalEntityId = request.LegalEntityId ?? employee.LegalEntityId;
 
             await _deviceChangeRequests.UpsertPendingAsync(new DeviceChangeRequest
             {
                 Id = Guid.NewGuid(),
                 TenantId = request.TenantId,
-                EmployeeId = request.UserId,
+                EmployeeId = employee.Id,
                 LegalEntityId = legalEntityId,
                 CurrentDeviceRegistrationId = existingDevice.Id,
                 NewDeviceFingerprint = request.DeviceFingerprint,

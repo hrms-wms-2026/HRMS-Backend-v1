@@ -4,6 +4,7 @@ using ONEVO.Domain.Features.Monitoring.ActivityMonitoring.Entities;
 using ONEVO.Domain.Features.Monitoring.AppUsage.Entities;
 using ONEVO.Domain.Features.Monitoring.CheckIn.Entities;
 using ONEVO.Domain.Features.Monitoring.DeviceState.Entities;
+using ONEVO.Domain.Features.Monitoring.TrayActivation.Entities;
 using ONEVO.Domain.Features.TimeAttendance.Entities;
 
 namespace ONEVO.Infrastructure.Persistence.Seeders;
@@ -103,6 +104,8 @@ public sealed partial class DapiHistorySeeder
         if (ctx.ClockInTester is not null)
             await RemoveSeededAttendanceAsync(db, ctx.ClockInTester.Id, allDates, ct);
 
+        await SeedDevicesAsync(db, ctx, rangeStart, ct);
+
         var showcase = ShowcaseEmployeeIds();
         for (var index = 0; index < ctx.Employees.Count; index++)
         {
@@ -132,6 +135,39 @@ public sealed partial class DapiHistorySeeder
 
             if ((index + 1) % 4 == 0)
                 await db.SaveChangesAsync(ct);
+        }
+
+        await db.SaveChangesAsync(ct);
+    }
+
+    /// <summary>
+    /// One tray device per seeded employee, with the id the monitoring snapshots use (task 39e: their agent_device_id
+    /// has a foreign key to tray_device_registrations). Migration AddOtherModuleForeignKeys39e adds the same rows on a
+    /// database seeded before this existed.
+    /// </summary>
+    private static async Task SeedDevicesAsync(
+        ApplicationDbContext db, SeedContext ctx, DateTimeOffset activatedAt, CancellationToken ct)
+    {
+        var existing = await ExistingIdsAsync(
+            db.TrayDeviceRegistrations.Where(x => x.TenantId == DapiTenantId).Select(x => x.Id), ct);
+        foreach (var employee in ctx.Employees)
+        {
+            var deviceId = SeedId($"device:{employee.Id:N}");
+            if (!existing.Add(deviceId))
+                continue;
+            db.TrayDeviceRegistrations.Add(new TrayDeviceRegistration
+            {
+                Id = deviceId,
+                TenantId = DapiTenantId,
+                UserId = employee.UserId == Guid.Empty ? DapiOwnerUserId : employee.UserId,
+                LegalEntityId = employee.LegalEntityId,
+                DeviceName = "Demo laptop",
+                DeviceOs = "Windows 11",
+                DeviceFingerprint = $"dapi-demo:{deviceId:D}",
+                IsActive = true,
+                ActivatedAt = activatedAt,
+                CreatedAt = activatedAt
+            });
         }
 
         await db.SaveChangesAsync(ct);
