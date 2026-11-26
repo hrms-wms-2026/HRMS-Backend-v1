@@ -114,6 +114,8 @@ public sealed class TryReservePositionAssignmentTests : IAsyncLifetime
         var employees = new List<Guid>();
         for (var i = 0; i < callers; i++)
             employees.Add(await SeedEmployeeAsync());
+        // created_by_id has a key to users, so the creator must be a real user.
+        var createdById = await TestUsers.NewAsync(() => CreateContext(_tenantId, "try-reserve"), _tenantId);
         var contexts = employees.Select(_ => CreateContext(_tenantId, "try-reserve")).ToList();
         try
         {
@@ -125,7 +127,7 @@ public sealed class TryReservePositionAssignmentTests : IAsyncLifetime
                 await contexts[i].Database.OpenConnectionAsync();
                 await start.WaitAsync();
                 return await repo.TryReservePositionAssignmentAsync(
-                    _tenantId, employeeId, _positionId, effectiveFrom, Guid.NewGuid(), reportsToEmployeeId: null);
+                    _tenantId, employeeId, _positionId, effectiveFrom, createdById, reportsToEmployeeId: null);
             })).ToList();
             start.Release(callers);
             var results = await Task.WhenAll(calls);
