@@ -69,6 +69,12 @@ public sealed class EfAttendanceAlertRepository : IAttendanceAlertRepository
             .Take(take)
             .ToListAsync(ct);
 
+    public Task<int> CountOpenAsync(
+        Guid tenantId, Guid legalEntityId, IReadOnlyCollection<Guid> employeeIds, CancellationToken ct) =>
+        employeeIds.Count == 0 ? Task.FromResult(0) : _db.AttendanceAlerts.AsNoTracking().CountAsync(a =>
+            a.TenantId == tenantId && a.LegalEntityId == legalEntityId && a.Status == AttendanceAlertStatuses.Open
+            && employeeIds.Contains(a.EmployeeId), ct);
+
     public void Add(AttendanceAlert alert) => _db.AttendanceAlerts.Add(alert);
 
     public void Remove(AttendanceAlert alert) => _db.AttendanceAlerts.Remove(alert);

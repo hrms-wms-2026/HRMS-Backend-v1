@@ -14,6 +14,9 @@ public sealed record ResolvedLeavePolicy(
     Guid SourceTargetId,
     string SourceTargetName);
 
+/// <summary>One (employee, leave type, date) question for <see cref="ILeavePolicyResolver.ResolveManyAsync"/>.</summary>
+public sealed record LeavePolicyLookup(Guid EmployeeId, Guid LeaveTypeId, DateOnly AsOf);
+
 /// <summary>Per leave type the most specific assignment wins: the employee, then their primary
 /// position, then their department (walking up parent departments, nearest first), then their
 /// company. Only assignments and versions in force on the date count.</summary>
@@ -27,4 +30,9 @@ public interface ILeavePolicyResolver
 
     Task<IReadOnlyDictionary<Guid, IReadOnlyList<ResolvedLeavePolicy>>> ResolveForEmployeesAsync(
         Guid tenantId, IReadOnlyCollection<Guid> employeeIds, DateOnly asOf, CancellationToken ct);
+
+    /// <summary><see cref="ResolveAsync"/> for several lookups (any employees, leave types and dates) over one snapshot
+    /// read. Every lookup is a key of the result; it maps to null where <see cref="ResolveAsync"/> would.</summary>
+    Task<IReadOnlyDictionary<LeavePolicyLookup, ResolvedLeavePolicy?>> ResolveManyAsync(
+        Guid tenantId, IReadOnlyCollection<LeavePolicyLookup> lookups, CancellationToken ct);
 }

@@ -73,6 +73,17 @@ public class EfWorkApprovalRequestRepository : IWorkApprovalRequestRepository
             && r.ApproverEmployeeId == approverEmployeeId && r.Status == WorkApprovalRequestStatuses.Pending
             && actionTypes.Contains(r.ActionType)).ToListAsync(ct);
 
+    public async Task<IReadOnlyList<WorkApprovalRequest>> ListPendingForProjectsAsync(
+        Guid tenantId, IReadOnlyCollection<Guid> projectIds, CancellationToken ct = default)
+    {
+        if (projectIds.Count == 0)
+            return [];
+        var ids = projectIds.Distinct().ToList();
+        return await _db.WorkApprovalRequests.AsNoTracking()
+            .Where(r => r.TenantId == tenantId && ids.Contains(r.ProjectId) && r.Status == WorkApprovalRequestStatuses.Pending)
+            .ToListAsync(ct);
+    }
+
     public async Task<IReadOnlySet<Guid>> ListProjectsWithPendingAsync(
         Guid tenantId, IReadOnlyCollection<Guid> projectIds, IReadOnlySet<string> actionTypes, CancellationToken ct = default)
     {

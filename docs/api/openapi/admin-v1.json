@@ -4189,6 +4189,47 @@
             "description": "OK"
           }
         }
+      },
+      "patch": {
+        "tags": [
+          "TenantSubscriptions"
+        ],
+        "parameters": [
+          {
+            "name": "tenantId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateTenantSubscriptionRequest"
+              }
+            },
+            "text/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateTenantSubscriptionRequest"
+              }
+            },
+            "application/*+json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateTenantSubscriptionRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
       }
     },
     "/admin/v1/auth/google-config": {
@@ -6081,6 +6122,25 @@
               "string"
             ],
             "format": "int32"
+          },
+          "included_seats": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "null",
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "overage_allowed": {
+            "type": [
+              "null",
+              "boolean"
+            ]
+          },
+          "is_test": {
+            "type": "boolean",
+            "default": false
           }
         }
       },
@@ -6583,6 +6643,32 @@
             "type": [
               "null",
               "string"
+            ]
+          }
+        }
+      },
+      "UpdateTenantSubscriptionRequest": {
+        "type": "object",
+        "properties": {
+          "included_seats": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "null",
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "overage_allowed": {
+            "type": [
+              "null",
+              "boolean"
+            ]
+          },
+          "is_test": {
+            "type": [
+              "null",
+              "boolean"
             ]
           }
         }

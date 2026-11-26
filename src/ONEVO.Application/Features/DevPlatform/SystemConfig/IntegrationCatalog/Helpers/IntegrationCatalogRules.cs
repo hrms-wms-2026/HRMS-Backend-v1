@@ -10,6 +10,7 @@ public static class IntegrationCatalogRules
         "slack",
         "resend",
         "sendgrid",
+        "brevo",
         "cloudflare",
         "r2",
         "stripe",

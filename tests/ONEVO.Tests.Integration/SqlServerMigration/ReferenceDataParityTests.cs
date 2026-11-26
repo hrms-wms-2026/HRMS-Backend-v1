@@ -220,6 +220,12 @@ public sealed class ReferenceDataParityTests(SqlServerFixture fixture, ITestOutp
         "support_ticket_status_changed", // 20261112072239_AddPlatformSupport
     ];
 
+    // Provider cards (platform_providers.provider_key) seeded for integrations added after the baseline.
+    private static readonly string[] PlatformProviderKeysAddedAfterBaseline =
+    [
+        "brevo", // 20261123122014_AddBrevoEmailProvider
+    ];
+
     private static bool IsAddedAfterBaseline(string table, JsonObject row, IReadOnlySet<string> postBaselineTemplateIds) =>
         table switch
         {
@@ -227,6 +233,7 @@ public sealed class ReferenceDataParityTests(SqlServerFixture fixture, ITestOutp
             "module_permission_ownership" => PermissionCodesAddedAfterBaseline.Contains((string?)row["permission_code"]),
             "notification_templates" => NotificationTemplateCodesAddedAfterBaseline.Contains((string?)row["code"]),
             "notification_template_versions" => postBaselineTemplateIds.Contains(row["template_id"]?.ToString() ?? string.Empty),
+            "platform_providers" => PlatformProviderKeysAddedAfterBaseline.Contains((string?)row["provider_key"]),
             _ => false,
         };
 

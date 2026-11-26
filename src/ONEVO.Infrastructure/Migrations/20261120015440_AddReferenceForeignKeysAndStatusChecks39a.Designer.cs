@@ -15197,9 +15197,6 @@ namespace ONEVO.Infrastructure.Migrations
                     b.HasKey("Id")
                         .HasName("pk_wm_notification_log");
 
-                    b.HasIndex("ActorEmployeeId")
-                        .HasDatabaseName("ix_wm_notification_log_actor_employee_id");
-
                     b.HasIndex("ApprovalRequestId")
                         .HasDatabaseName("ix_wm_notification_log_approval_request_id");
 
@@ -19527,13 +19524,6 @@ namespace ONEVO.Infrastructure.Migrations
 
             modelBuilder.Entity("ONEVO.Domain.Features.WorkManagement.Notifications.Entities.WorkNotificationLog", b =>
                 {
-                    b.HasOne("ONEVO.Domain.Features.CoreHr.Entities.Employee", null)
-                        .WithMany()
-                        .HasForeignKey("ActorEmployeeId")
-                        .OnDelete(DeleteBehavior.NoAction)
-                        .IsRequired()
-                        .HasConstraintName("fk_wm_notification_log_employees_actor_employee_id");
-
                     b.HasOne("ONEVO.Domain.Features.WorkManagement.Approvals.Entities.WorkApprovalRequest", null)
                         .WithMany()
                         .HasForeignKey("ApprovalRequestId")

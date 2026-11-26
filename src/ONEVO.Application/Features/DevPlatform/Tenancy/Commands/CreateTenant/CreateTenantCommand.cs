@@ -11,7 +11,10 @@ public sealed record SubscriptionInfo(
     string BillingCycle,
     string CommercialModel,
     int? TrialPeriodDays = null,
-    int? UnpaidGracePeriodDays = null);
+    int? UnpaidGracePeriodDays = null,
+    int? IncludedSeats = null,
+    bool? OverageAllowed = null,
+    bool IsTest = false);
 
 public sealed record CreateTenantCommand(
     string Name,

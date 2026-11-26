@@ -15,6 +15,7 @@ public sealed class GetTenantSubscriptionQueryHandlerTests
     private readonly ITenantSubscriptionRepository _subscriptionRepo = Substitute.For<ITenantSubscriptionRepository>();
     private readonly ISubscriptionPlanRepository _planRepo = Substitute.For<ISubscriptionPlanRepository>();
     private readonly IDateTimeProvider _clock = Substitute.For<IDateTimeProvider>();
+    private readonly ISeatEntitlementService _seats = Substitute.For<ISeatEntitlementService>();
     private readonly GetTenantSubscriptionQueryHandler _handler;
     private readonly DateTimeOffset _now = new(2026, 8, 13, 12, 0, 0, TimeSpan.Zero);
     private readonly Guid _tenantId = Guid.NewGuid();
@@ -23,11 +24,35 @@ public sealed class GetTenantSubscriptionQueryHandlerTests
     public GetTenantSubscriptionQueryHandlerTests()
     {
         _clock.UtcNow.Returns(_now);
+        _seats.EvaluateAsync(Arg.Any<Guid>(), Arg.Any<CancellationToken>())
+            .Returns(new SeatDecision(SeatDecisionStatus.Approved, 10, 3, 0, 7, false, false, "ok"));
         _handler = new GetTenantSubscriptionQueryHandler(
             _tenantRepo,
             _subscriptionRepo,
             _planRepo,
-            _clock);
+            _clock,
+            _seats);
+    }
+
+    [Fact]
+    public async Task Handle_ReturnsSeatAllocationAndTestFlag()
+    {
+        var tenant = new Tenant { Id = _tenantId, Name = "Seat Co", Slug = "seat-co" };
+        var subscription = BuildSubscription("active", trialEnd: null, accessEndsAt: null);
+        subscription.IncludedSeats = 10;
+        subscription.OverageAllowed = false;
+        subscription.CommercialModel = "test";
+
+        _tenantRepo.GetByIdAsync(_tenantId, Arg.Any<CancellationToken>()).Returns(tenant);
+        _subscriptionRepo.GetByTenantIdAsync(_tenantId, Arg.Any<CancellationToken>()).Returns(subscription);
+
+        var result = await _handler.Handle(new GetTenantSubscriptionQuery(_tenantId), CancellationToken.None);
+
+        result.IsSuccess.Should().BeTrue();
+        result.Value!.IncludedSeats.Should().Be(10);
+        result.Value.OverageAllowed.Should().BeFalse();
+        result.Value.UsedSeats.Should().Be(3);
+        result.Value.IsTest.Should().BeTrue();
     }
 
     [Fact]

@@ -213,6 +213,10 @@ public class ApplicationDbContext : DbContext
 
     // SharedPlatform
     public DbSet<SubscriptionPlan> SubscriptionPlans => Set<SubscriptionPlan>();
+    public DbSet<ONEVO.Domain.Features.SharedPlatform.RateLimiting.Entities.RateLimitSetting> RateLimitSettings
+        => Set<ONEVO.Domain.Features.SharedPlatform.RateLimiting.Entities.RateLimitSetting>();
+    public DbSet<ONEVO.Domain.Features.SharedPlatform.RateLimiting.Entities.RateLimitSettingChange> RateLimitSettingChanges
+        => Set<ONEVO.Domain.Features.SharedPlatform.RateLimiting.Entities.RateLimitSettingChange>();
     public DbSet<ModuleCatalogItem> ModuleCatalog => Set<ModuleCatalogItem>();
     public DbSet<ModuleFeature> ModuleFeatures => Set<ModuleFeature>();
     public DbSet<ModulePermissionOwnership> ModulePermissionOwnerships => Set<ModulePermissionOwnership>();

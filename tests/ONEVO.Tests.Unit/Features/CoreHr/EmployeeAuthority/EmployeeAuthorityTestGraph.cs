@@ -517,6 +517,8 @@ internal sealed class EmployeeAuthorityTestGraph
             => throw new NotImplementedException();
         public Task<int> CountActiveByDepartmentAsync(Guid tenantId, Guid legalEntityId, Guid departmentId, CancellationToken ct = default)
             => throw new NotImplementedException();
+        public Task<bool> AnyActiveWithDepartmentAsync(Guid tenantId, CancellationToken ct = default)
+            => throw new NotImplementedException();
         public Task<IReadOnlyDictionary<Guid, int>> CountActiveByDepartmentIdsAsync(
             Guid tenantId, Guid legalEntityId, IReadOnlyCollection<Guid> departmentIds, CancellationToken ct = default)
             => throw new NotImplementedException();
@@ -632,6 +634,8 @@ internal sealed class EmployeeAuthorityTestGraph
             Guid tenantId, Guid legalEntityId, string code, Guid? excludingDepartmentId, CancellationToken ct = default)
             => throw new NotImplementedException();
         public Task<bool> ExistsAsync(Guid tenantId, Guid legalEntityId, Guid departmentId, CancellationToken ct = default)
+            => throw new NotImplementedException();
+        public Task<bool> AnyActiveAsync(Guid tenantId, CancellationToken ct = default)
             => throw new NotImplementedException();
         public Task<bool> IsDescendantAsync(
             Guid tenantId, Guid legalEntityId, Guid departmentId, Guid possibleDescendantId, CancellationToken ct = default)

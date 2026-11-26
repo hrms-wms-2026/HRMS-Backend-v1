@@ -323,6 +323,61 @@ public class TransactionalEmailPlatformKeyTests
         Assert.DoesNotContain(FakeKey, result.SafeError);
     }
 
+    // 3b. Brevo adapter
+
+    [Fact]
+    public async Task BrevoAdapter_Builds_ApiKey_Request_And_Parses_MessageId()
+    {
+        var response = new HttpResponseMessage(HttpStatusCode.Created)
+        {
+            Content = new StringContent("{\"messageId\":\"<brevo-msg-7@smtp-relay.mailin.fr>\"}")
+        };
+        var handler = new CapturingHandler(response);
+        var adapter = new BrevoEmailAdapter(
+            new FakeHttpClientFactory(handler), FixedClock(DateTimeOffset.UtcNow),
+            NullLogger<BrevoEmailAdapter>.Instance);
+
+        var result = await adapter.SendAsync(FakeKey, Options(), Request("dest@example.com"), CancellationToken.None);
+
+        Assert.True(result.Success);
+        Assert.Equal("brevo", result.Provider);
+        Assert.Equal("<brevo-msg-7@smtp-relay.mailin.fr>", result.ProviderMessageId);
+        Assert.Equal("https://api.brevo.com/v3/smtp/email", handler.LastRequest!.RequestUri!.ToString());
+        Assert.Null(handler.LastRequest.Headers.Authorization);
+        Assert.Equal(FakeKey, handler.LastRequest.Headers.GetValues("api-key").Single());
+
+        using var body = JsonDocument.Parse(handler.LastRequestBody!);
+        var root = body.RootElement;
+        Assert.Equal("dest@example.com", root.GetProperty("to")[0].GetProperty("email").GetString());
+        Assert.Equal("no-reply@onevo.io", root.GetProperty("sender").GetProperty("email").GetString());
+        Assert.Equal("ONEVO", root.GetProperty("sender").GetProperty("name").GetString());
+        Assert.Equal("Hello", root.GetProperty("subject").GetString());
+        Assert.Equal("<p>Hi</p>", root.GetProperty("htmlContent").GetString());
+        Assert.Equal("Hi", root.GetProperty("textContent").GetString());
+        Assert.False(root.TryGetProperty("attachment", out _));
+        Assert.DoesNotContain(FakeKey, handler.LastRequestBody);
+    }
+
+    [Fact]
+    public async Task BrevoAdapter_NonSuccess_Status_Returns_Safe_Error_Without_Key()
+    {
+        var response = new HttpResponseMessage(HttpStatusCode.BadRequest)
+        {
+            Content = new StringContent("{\"code\":\"invalid_parameter\",\"message\":\"sender not valid\"}")
+        };
+        var adapter = new BrevoEmailAdapter(
+            new FakeHttpClientFactory(new CapturingHandler(response)),
+            FixedClock(DateTimeOffset.UtcNow), NullLogger<BrevoEmailAdapter>.Instance);
+
+        var result = await adapter.SendAsync(FakeKey, Options(), Request(), CancellationToken.None);
+
+        Assert.False(result.Success);
+        Assert.Equal("brevo", result.Provider);
+        Assert.Contains("400", result.SafeError);
+        Assert.DoesNotContain(FakeKey, result.SafeError);
+        Assert.DoesNotContain("sender not valid", result.SafeError);
+    }
+
     // 4. IEmailService wrapper (outbox-facing behavior)
 
     private sealed class FakeSender : ITransactionalEmailSender
@@ -408,6 +463,35 @@ public class TransactionalEmailPlatformKeyTests
         Assert.Equal("owner@acme.test", request.RecipientEmail);
         Assert.Contains("Acme Corp", request.Subject);
         Assert.Contains("invite-token-1", request.HtmlBody);
+    }
+
+    [Fact]
+    public async Task InviteOutboxHandler_Passes_The_Tenant_Slug_To_The_Template()
+    {
+        var sender = new FakeSender();
+        var renderer = new Mock<IEmailTemplateRenderer>();
+        object? captured = null;
+        renderer.Setup(r => r.Render("tenant_owner_invite", It.IsAny<object>()))
+            .Callback<string, object>((_, data) => captured = data)
+            .Returns(new RenderedEmail("s", "<p>h</p>", "t"));
+        var service = new TransactionalEmailService(
+            sender, renderer.Object, NullLogger<TransactionalEmailService>.Instance);
+        var tenantId = Guid.NewGuid();
+        var tenants = new Mock<ITenantRepository>();
+        tenants.Setup(t => t.GetByIdAsync(tenantId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new ONEVO.Domain.Features.InfrastructureModule.Entities.Tenant
+            {
+                Id = tenantId, Name = "Acme Corp", Slug = "acme"
+            });
+        var handler = new TenantOwnerInviteEmailOutboxHandler(service, tenants.Object);
+
+        var payload = new TenantOwnerInviteEmailPayload(
+            tenantId, "Acme Corp", "owner@acme.test", "Ada",
+            "invite-token-1", DateTimeOffset.UtcNow.AddDays(3));
+        await handler.HandleAsync(JsonSerializer.Serialize(payload), CancellationToken.None);
+
+        Assert.NotNull(captured);
+        Assert.Equal("acme", captured!.GetType().GetProperty("tenant_slug")!.GetValue(captured));
     }
 
     [Fact]

@@ -22,9 +22,12 @@ public class WorkHierarchyServiceTests
     private readonly Guid _root = Guid.NewGuid();
     private readonly Guid _p = Guid.NewGuid();
     private readonly Guid _c = Guid.NewGuid();
+    private readonly HashSet<Guid> _active = new();
 
     public WorkHierarchyServiceTests()
     {
+        _membership.Setup(x => x.GetActiveAssigneeIdsAsync(TenantId, It.IsAny<IReadOnlyCollection<Guid>>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((Guid _, IReadOnlyCollection<Guid> ids, CancellationToken _) => ids.Where(_active.Contains).ToHashSet());
         _objectives.Setup(x => x.GetAllByProjectIdAsync(TenantId, ProjectId, It.IsAny<CancellationToken>()))
             .ReturnsAsync(new List<Objective>
             {
@@ -35,8 +38,11 @@ public class WorkHierarchyServiceTests
     }
 
     private void Active(Guid employeeId)
-        => _membership.Setup(x => x.GetActiveAssigneeAsync(TenantId, employeeId, It.IsAny<CancellationToken>()))
+    {
+        _active.Add(employeeId);
+        _membership.Setup(x => x.GetActiveAssigneeAsync(TenantId, employeeId, It.IsAny<CancellationToken>()))
             .ReturnsAsync(new Employee { Id = employeeId, UserId = Guid.NewGuid() });
+    }
 
     private WorkHierarchyService Build() => new(_objectives.Object, _membership.Object);
 
@@ -64,6 +70,31 @@ public class WorkHierarchyServiceTests
         var service = Build();
         var tree = await service.LoadTreeAsync(TenantId, ProjectId);
         (await service.FindActiveHolderAsync(TenantId, tree, _p, Cc)).Should().BeNull();
+    }
+
+    [Fact]
+    public async Task FindActiveHolders_GivesEachPositionTheSameHolderAsTheSingleLookup_InOneEmployeeRead()
+    {
+        Active(Lead); // A is inactive, so _p walks up to Lead; _c's own owner Cc is active
+        Active(Cc);
+        var service = Build();
+        var tree = await service.LoadTreeAsync(TenantId, ProjectId);
+
+        var holders = await service.FindActiveHoldersAsync(TenantId, tree, [_p, _c, _root]);
+
+        holders.Should().BeEquivalentTo(new Dictionary<Guid, Guid?> { [_p] = Lead, [_c] = Cc, [_root] = Lead });
+        foreach (var position in new[] { _p, _c, _root })
+            holders[position].Should().Be(await service.FindActiveHolderAsync(TenantId, tree, position, Guid.Empty));
+        _membership.Verify(x => x.GetActiveAssigneeIdsAsync(TenantId, It.IsAny<IReadOnlyCollection<Guid>>(), It.IsAny<CancellationToken>()),
+            Times.Once);
+    }
+
+    [Fact]
+    public async Task FindActiveHolders_NobodyActive_GivesNull()
+    {
+        var service = Build();
+        var tree = await service.LoadTreeAsync(TenantId, ProjectId);
+        (await service.FindActiveHoldersAsync(TenantId, tree, [_c]))[_c].Should().BeNull();
     }
 
     [Fact]

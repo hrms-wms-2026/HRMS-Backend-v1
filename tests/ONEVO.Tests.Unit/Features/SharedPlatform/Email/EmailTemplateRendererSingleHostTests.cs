@@ -84,6 +84,57 @@ public sealed class EmailTemplateRendererSingleHostTests
     }
 
     [Fact]
+    public void TenantOwnerInvite_SingleHost_KeepsHostAndAddsTenantQuery()
+    {
+        var rendered = Create("SingleHost", "https://test.crownus.example")
+            .Render("tenant_owner_invite", new
+            {
+                tenant_company = "Acme",
+                invited_first_name = "Ada",
+                invite_token = "tok-own",
+                invite_expires_at = "2026-12-01",
+                tenant_slug = "acme"
+            });
+
+        rendered.TextBody.Should().Contain("https://test.crownus.example/auth/invitations/tok-own?tenant=acme");
+        rendered.HtmlBody.Should().Contain("https://test.crownus.example/auth/invitations/tok-own?tenant=acme");
+        rendered.TextBody.Should().NotContain("acme.test.crownus.example");
+    }
+
+    [Fact]
+    public void TenantOwnerInvite_Subdomain_PrefixesSlugOntoHost()
+    {
+        var rendered = Create("Subdomain", "https://test.crownus.example")
+            .Render("tenant_owner_invite", new
+            {
+                tenant_company = "Acme",
+                invited_first_name = "Ada",
+                invite_token = "tok-own",
+                invite_expires_at = "2026-12-01",
+                tenant_slug = "acme"
+            });
+
+        rendered.TextBody.Should().Contain("https://acme.test.crownus.example/auth/invitations/tok-own");
+        rendered.TextBody.Should().NotContain("tenant=");
+    }
+
+    [Fact]
+    public void TenantOwnerInvite_WithoutSlug_KeepsTheBareLink()
+    {
+        var rendered = Create("SingleHost", "https://test.crownus.example")
+            .Render("tenant_owner_invite", new
+            {
+                tenant_company = "Acme",
+                invited_first_name = "Ada",
+                invite_token = "tok-own",
+                invite_expires_at = "2026-12-01"
+            });
+
+        rendered.TextBody.Should().Contain("https://test.crownus.example/auth/invitations/tok-own");
+        rendered.TextBody.Should().NotContain("tenant=");
+    }
+
+    [Fact]
     public void PositionApproval_SingleHost_KeepsHostAndAddsTenantQuery()
     {
         var rendered = Create("SingleHost", "https://test.crownus.example")

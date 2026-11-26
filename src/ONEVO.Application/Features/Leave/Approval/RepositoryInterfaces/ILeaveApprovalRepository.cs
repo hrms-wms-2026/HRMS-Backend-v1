@@ -7,6 +7,9 @@ namespace ONEVO.Application.Features.Leave.Approval.RepositoryInterfaces;
 
 public interface ILeaveApprovalRepository
 {
+    /// <summary>Pending requests this approver can act on now, including in-order gating.</summary>
+    Task<int> CountActionableAsync(Guid tenantId, Guid approverEmployeeId, CancellationToken ct = default);
+
     Task<LeaveApprovalState?> GetStateAsync(Guid tenantId, Guid requestId, CancellationToken ct = default);
 
     Task<IReadOnlyList<LeavePendingApprovalListRow>> ListPendingForApproverAsync(

@@ -9,12 +9,13 @@ public static class PlatformServiceKeyCatalog
 {
     public const string Resend = "resend";
     public const string Sendgrid = "sendgrid";
+    public const string Brevo = "brevo";
     public const string Cloudflare = "cloudflare";
     public const string CloudflareR2 = "cloudflare_r2";
     public const string AwsRekognition = "aws_rekognition";
 
     public static readonly IReadOnlyList<string> SupportedServiceKeys =
-        new[] { Resend, Sendgrid, Cloudflare, CloudflareR2, AwsRekognition };
+        new[] { Resend, Sendgrid, Brevo, Cloudflare, CloudflareR2, AwsRekognition };
 
     /// <summary>
     /// Service keys that represent transactional email providers. This is a Phase 1
@@ -23,7 +24,7 @@ public static class PlatformServiceKeyCatalog
     /// schema, so "which rows are email providers" is answered here.
     /// </summary>
     public static readonly IReadOnlyList<string> TransactionalEmailProviders =
-        new[] { Sendgrid, Resend };
+        new[] { Sendgrid, Resend, Brevo };
 
     public static bool IsSupported(string serviceKey)
     {

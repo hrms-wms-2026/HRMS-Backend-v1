@@ -1,5 +1,9 @@
 using Microsoft.EntityFrameworkCore;
 using ONEVO.Application.Features.Conversations.Contracts;
+using ONEVO.Application.Features.Conversations.Services;
+using ONEVO.Application.Features.Monitoring.Exceptions.RepositoryInterfaces;
+using ONEVO.Domain.Features.Monitoring.Exceptions.Entities;
+using ONEVO.Infrastructure.Persistence.Repositories.Monitoring.Exceptions;
 using ONEVO.Domain.Features.CoreHr.Entities;
 using ONEVO.Infrastructure.Identity.Time;
 using ONEVO.Infrastructure.Services.OrgStructure;
@@ -13,6 +17,8 @@ using ONEVO.Tests.Integration.MyTeam;
 using Xunit;
 
 namespace ONEVO.Tests.Integration.SqlServerMigration;
+
+using MonitoringExceptionRow = ONEVO.Domain.Features.Monitoring.Exceptions.Entities.Exception;
 
 /// <summary>
 /// Queries the translation sweep can't reach with generated arguments because they only run once
@@ -52,6 +58,71 @@ public sealed class DataDependentQueryTests
         var counts = await new EfConversationRepository(read).CountUnreadAsync(h.TenantId, me, [subject]);
 
         Assert.Equal(1, Assert.Single(counts).Value);
+    }
+
+    [Fact]
+    public async Task UnreadInListedChats_CountsPeopleChatsAndCaseGroupsInOneQuery()
+    {
+        var h = await MyTeamDb.CreateAsync();
+        await using var db = h.NewContext();
+        var me = h.AddEmployee(db).Id;
+        var other = h.AddEmployee(db).Id;
+        Conversation Chat(string source) => new()
+        {
+            Id = Guid.NewGuid(), TenantId = h.TenantId, SubjectSource = source, SubjectKind = "k", SubjectId = Guid.NewGuid(),
+            LastMessageAt = DateTimeOffset.UtcNow,
+        };
+        var direct = Chat(ConversationSources.Direct);
+        var plainCase = Chat("work");
+        var caseGroup = Chat("work");
+        db.Conversations.AddRange(direct, plainCase, caseGroup);
+        foreach (var c in new[] { direct, plainCase, caseGroup })
+            db.ConversationParticipants.Add(new ConversationParticipant
+            {
+                Id = Guid.NewGuid(), TenantId = h.TenantId, ConversationId = c.Id, EmployeeId = me,
+                JoinReason = ConversationJoinReasons.Base, AddedAt = DateTimeOffset.UtcNow.AddHours(-2),
+                LastReadAt = DateTimeOffset.UtcNow.AddHours(-1),
+            });
+        var groupEvent = new ConversationMessage
+        {
+            Id = Guid.NewGuid(), TenantId = h.TenantId, ConversationId = caseGroup.Id, Kind = ConversationMessageKinds.System,
+            BodyHtml = "", SystemEventJson = ConversationUnreadCounts.CaseGroupEventPrefix + "}",
+        };
+        db.ConversationMessages.AddRange(
+            Message(h, direct.Id, other), Message(h, direct.Id, me), Message(h, plainCase.Id, other), groupEvent, Message(h, caseGroup.Id, other));
+        await db.SaveChangesAsync();
+
+        await using var read = h.NewTenantContext();
+        var total = await new EfConversationRepository(read).CountUnreadInListedChatsAsync(h.TenantId, me, ConversationUnreadCounts.CaseGroupEventPrefix);
+
+        Assert.Equal(3, total); // direct 1 + case group 2 (its event and the message); the plain case chat is not listed
+    }
+
+    [Fact]
+    public async Task ExceptionInboxCount_AppliesEveryVisibilityPathOnSqlServer()
+    {
+        var h = await MyTeamDb.CreateAsync();
+        await using var db = h.NewContext();
+        var caller = h.AddEmployee(db).Id;
+        var routed = h.AddEmployee(db).Id;
+        var noApprover = h.AddEmployee(db).Id;
+        MonitoringExceptionRow Case(Guid employee, ExceptionStatus status = ExceptionStatus.Open, ExceptionType type = ExceptionType.SustainedLowActivity)
+            => new() { Id = Guid.NewGuid(), TenantId = h.TenantId, EmployeeId = employee, Type = type, Status = status,
+                Title = "t", Description = "d", DetectedAt = DateTimeOffset.UtcNow };
+        var journaled = Case(noApprover, ExceptionStatus.Escalated);
+        db.Exceptions.AddRange(
+            Case(caller), Case(routed), Case(noApprover), journaled, Case(routed, ExceptionStatus.Resolved),
+            Case(routed, type: ExceptionType.MeetingNoShow));
+        await db.SaveChangesAsync();
+
+        await using var read = h.NewTenantContext();
+        var repo = new EfExceptionRepository(read);
+        var count = await repo.CountActiveInboxAsync(h.TenantId, new ExceptionInboxCountCriteria(
+            caller, [routed], [noApprover], [Guid.NewGuid()], [Guid.NewGuid()], true, [journaled.Id], Calendar: false), default);
+        var candidates = await repo.ListActiveInboxEmployeeIdsAsync(h.TenantId, calendar: false, default);
+
+        Assert.Equal(3, count); // own, routed, HR no-approver; the journaled escalation, resolved and calendar cases are out
+        Assert.Equal(new[] { caller, routed, noApprover }.OrderBy(x => x), candidates.OrderBy(x => x));
     }
 
     [Fact]

@@ -41,6 +41,35 @@ public sealed class LeavePolicyResolver : ILeavePolicyResolver
             employee => (IReadOnlyList<ResolvedLeavePolicy>)index.Resolve(employee));
     }
 
+    public async Task<IReadOnlyDictionary<LeavePolicyLookup, ResolvedLeavePolicy?>> ResolveManyAsync(
+        Guid tenantId, IReadOnlyCollection<LeavePolicyLookup> lookups, CancellationToken ct)
+    {
+        var result = new Dictionary<LeavePolicyLookup, ResolvedLeavePolicy?>();
+        if (lookups.Count == 0)
+            return result;
+
+        // The snapshot is per employee and date-free; only the index applies the date, so one read serves every date.
+        var snapshot = await _repository.LoadAsync(tenantId, lookups.Select(l => l.EmployeeId).Distinct().ToList(), ct);
+        var employees = snapshot.Employees.ToDictionary(e => e.Id);
+        foreach (var onDate in lookups.Distinct().GroupBy(l => l.AsOf))
+        {
+            var index = new SnapshotIndex(snapshot, onDate.Key);
+            var resolvedByEmployee = new Dictionary<Guid, List<ResolvedLeavePolicy>>();
+            foreach (var lookup in onDate)
+            {
+                if (!employees.TryGetValue(lookup.EmployeeId, out var employee))
+                {
+                    result[lookup] = null;
+                    continue;
+                }
+                if (!resolvedByEmployee.TryGetValue(employee.Id, out var resolved))
+                    resolvedByEmployee[employee.Id] = resolved = index.Resolve(employee);
+                result[lookup] = resolved.FirstOrDefault(r => r.LeaveTypeId == lookup.LeaveTypeId);
+            }
+        }
+        return result;
+    }
+
     private sealed class SnapshotIndex
     {
         private readonly LeavePolicyResolutionSnapshot _snapshot;

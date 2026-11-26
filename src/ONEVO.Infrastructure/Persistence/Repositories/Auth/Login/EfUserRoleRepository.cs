@@ -40,6 +40,14 @@ public sealed class EfUserRoleRepository : IUserRoleRepository
         return userIds;
     }
 
+    public async Task<bool> ExistsAsync(Guid userId, Guid roleId, CancellationToken ct = default)
+    {
+        var exists = await _db.UserRoles
+            .AsNoTracking()
+            .AnyAsync(ur => ur.UserId == userId && ur.RoleId == roleId, ct);
+        return exists;
+    }
+
     public Task AddAsync(UserRole userRole, CancellationToken ct = default)
     {
         var addTask = _db.UserRoles.AddAsync(userRole, ct).AsTask();

@@ -22,6 +22,25 @@ public sealed class EfOnboardingInboxRepository(ApplicationDbContext db) : IOnbo
 {
     private const string AccessPending = "Pending";
 
+    public async Task<OnboardingPendingCounts> CountPendingReceivedAsync(
+        Guid tenantId, Guid userId, bool positionApprover, bool seatApprover, CancellationToken ct = default)
+    {
+        var positions = positionApprover
+            ? await db.AccessGrantRequests.AsNoTracking().CountAsync(x =>
+                x.TenantId == tenantId
+                && x.OnboardingDraftId != null
+                && x.ApprovalStatus == AccessPending
+                && x.RequestedByUserId != userId, ct)
+            : 0;
+        var seats = seatApprover
+            ? await db.SeatIncreaseRequests.AsNoTracking().CountAsync(x =>
+                x.TenantId == tenantId
+                && x.Status == SeatIncreaseRequestStatus.Pending
+                && x.RequestedByUserId != userId, ct)
+            : 0;
+        return new OnboardingPendingCounts(positions, seats);
+    }
+
     public async Task<IReadOnlyList<OnboardingInboxRow>> ListAsync(
         Guid tenantId, Guid userId, bool positionApprover, bool seatApprover, DateTimeOffset decidedSince, CancellationToken ct = default)
     {
