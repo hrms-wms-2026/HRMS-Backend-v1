@@ -4,4 +4,4 @@ using ONEVO.Application.Features.DevPlatform.Subscription.DTOs.Responses;
 
 namespace ONEVO.Application.Features.DevPlatform.Subscription.Queries.GetSubscriptionPlan;
 
-public record GetSubscriptionPlanQuery(Guid PlanId) : IRequest<Result<SubscriptionPlanDetailDto>>;
+public record GetSubscriptionPlanQuery(Guid PlanId, bool IncludeRateLimits = false) : IRequest<Result<SubscriptionPlanDetailDto>>;

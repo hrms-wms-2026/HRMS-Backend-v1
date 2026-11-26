@@ -98,7 +98,10 @@ public class TenantsController : ControllerBase
                     request.Subscription.BillingCycle,
                     request.Subscription.CommercialModel,
                     request.Subscription.TrialPeriodDays,
-                    request.Subscription.UnpaidGracePeriodDays),
+                    request.Subscription.UnpaidGracePeriodDays,
+                    request.Subscription.IncludedSeats,
+                    request.Subscription.OverageAllowed,
+                    request.Subscription.IsTest),
                 OwnerInvite: request.OwnerInvite),
             ct);
 

@@ -19,6 +19,10 @@ public static class RlsTableRegistry
             ["support_tickets"] = RlsPredicate.Tenant,
             ["support_ticket_comments"] = RlsPredicate.Tenant,
             ["support_ticket_attachments"] = RlsPredicate.Tenant,
+            // AddRateLimitSettings (task 45): admin mode writes, system mode (the settings loader)
+            // reads. Global and plan rows have a null tenant_id, so tenant mode never sees them.
+            ["rate_limit_settings"] = RlsPredicate.TenantOrSystem,
+            ["rate_limit_setting_changes"] = RlsPredicate.TenantOrSystem,
             // 20261120141304_AddInboxItems (task 37)
             ["inbox_items"] = RlsPredicate.Tenant,
             ["inbox_item_assignees"] = RlsPredicate.Tenant,
