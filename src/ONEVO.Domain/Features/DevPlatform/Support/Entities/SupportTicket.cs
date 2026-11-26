@@ -48,6 +48,12 @@ public class SupportTicket : ITenantOwnedEntity
     /// </summary>
     public bool AwaitingSupport { get; set; }
 
+    /// <summary>
+    /// Comma-separated correlation ids of the tenant user's recent failed requests, attached when the ticket is
+    /// raised (DEC-114). Support staff search Application Insights by them. Null when none were sent.
+    /// </summary>
+    public string? CorrelationIds { get; set; }
+
     public DateTimeOffset CreatedAt { get; set; }
     public DateTimeOffset? UpdatedAt { get; set; }
     public DateTimeOffset? ResolvedAt { get; set; }

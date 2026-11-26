@@ -57,7 +57,19 @@ public sealed class CreateSupportTicketCommandValidator : SupportTicketInputVali
 
 public sealed class UpdateSupportTicketCommandValidator : SupportTicketInputValidator<UpdateSupportTicketCommand> { }
 
-public sealed class CreateTenantSupportTicketCommandValidator : SupportTicketInputValidator<CreateTenantSupportTicketCommand> { }
+/// <summary>Correlation ids (DEC-114): at most 5, each 1 to 100 characters of [A-Za-z0-9-] only.</summary>
+public sealed class CreateTenantSupportTicketCommandValidator : SupportTicketInputValidator<CreateTenantSupportTicketCommand>
+{
+    public CreateTenantSupportTicketCommandValidator()
+    {
+        RuleFor(x => x.CorrelationIds)
+            .Must(ids => ids is null || ids.Count <= SupportTicketRules.MaxCorrelationIds)
+            .WithMessage(SupportTicketRules.CorrelationIdsCountError);
+        RuleForEach(x => x.CorrelationIds)
+            .Must(SupportTicketRules.IsValidCorrelationId)
+            .WithMessage(SupportTicketRules.CorrelationIdFormatError);
+    }
+}
 
 public sealed class UpdateTenantSupportTicketCommandValidator : SupportTicketInputValidator<UpdateTenantSupportTicketCommand> { }
 

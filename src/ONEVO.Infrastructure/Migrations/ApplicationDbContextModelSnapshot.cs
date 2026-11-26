@@ -6042,6 +6042,11 @@ namespace ONEVO.Infrastructure.Migrations
                         .HasColumnType("nvarchar(80)")
                         .HasColumnName("category");
 
+                    b.Property<string>("CorrelationIds")
+                        .HasMaxLength(1000)
+                        .HasColumnType("nvarchar(1000)")
+                        .HasColumnName("correlation_ids");
+
                     b.Property<DateTimeOffset>("CreatedAt")
                         .HasColumnType("datetimeoffset")
                         .HasColumnName("created_at");

@@ -60,7 +60,8 @@ public sealed record SupportTicketAttachmentDto(
 public sealed record SupportTicketDetailDto(
     [property: JsonPropertyName("ticket")] SupportTicketDto Ticket,
     [property: JsonPropertyName("comments")] IReadOnlyList<SupportTicketCommentDto> Comments,
-    [property: JsonPropertyName("attachments")] IReadOnlyList<SupportTicketAttachmentDto> Attachments);
+    [property: JsonPropertyName("attachments")] IReadOnlyList<SupportTicketAttachmentDto> Attachments,
+    [property: JsonPropertyName("correlation_ids")] IReadOnlyList<string> CorrelationIds);
 
 public sealed record SupportAssigneeDto(
     [property: JsonPropertyName("id")] Guid Id,
@@ -128,4 +129,5 @@ public sealed record TenantSupportTicketAttachmentDto(
 public sealed record TenantSupportTicketDetailDto(
     [property: JsonPropertyName("ticket")] TenantSupportTicketDto Ticket,
     [property: JsonPropertyName("comments")] IReadOnlyList<TenantSupportTicketCommentDto> Comments,
-    [property: JsonPropertyName("attachments")] IReadOnlyList<TenantSupportTicketAttachmentDto> Attachments);
+    [property: JsonPropertyName("attachments")] IReadOnlyList<TenantSupportTicketAttachmentDto> Attachments,
+    [property: JsonPropertyName("correlation_ids")] IReadOnlyList<string> CorrelationIds);

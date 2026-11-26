@@ -74,7 +74,13 @@ public sealed class GetTenantSupportTicketQueryHandler
     }
 }
 
-public sealed record CreateTenantSupportTicketCommand(string? Subject, string? Description, string? Priority, string? Category)
+/// <summary>
+/// <paramref name="CorrelationIds"/>: references of the user's recent failed requests (DEC-114), stored on the
+/// ticket so support staff can search Application Insights. They are never copied into an audit row.
+/// </summary>
+public sealed record CreateTenantSupportTicketCommand(
+    string? Subject, string? Description, string? Priority, string? Category,
+    IReadOnlyList<string?>? CorrelationIds = null)
     : IRequest<Result<TenantSupportTicketDto>>, ISupportTicketInput;
 
 public sealed class CreateTenantSupportTicketCommandHandler
@@ -103,7 +109,8 @@ public sealed class CreateTenantSupportTicketCommandHandler
     public async Task<Result<TenantSupportTicketDto>> Handle(
         CreateTenantSupportTicketCommand request, CancellationToken cancellationToken)
     {
-        var error = SupportTicketRules.ValidateTicket(request.Subject, request.Description, request.Priority, request.Category);
+        var error = SupportTicketRules.ValidateTicket(request.Subject, request.Description, request.Priority, request.Category)
+            ?? SupportTicketRules.ValidateCorrelationIds(request.CorrelationIds);
         if (error is not null) return Result<TenantSupportTicketDto>.Failure(error);
 
         var name = await TenantActor.NameAsync(_repository, _currentUser, cancellationToken);
@@ -120,6 +127,7 @@ public sealed class CreateTenantSupportTicketCommandHandler
             CreatedByUserId = _currentUser.UserId,
             CreatedByName = name,
             AwaitingSupport = true,
+            CorrelationIds = SupportTicketRules.JoinCorrelationIds(request.CorrelationIds),
             CreatedAt = _clock.UtcNow,
         };
 

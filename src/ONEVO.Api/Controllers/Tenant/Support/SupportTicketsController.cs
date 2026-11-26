@@ -41,9 +41,10 @@ public sealed class SupportTicketsController : ControllerBase
     [HttpPost]
     public async Task<IActionResult> Create([FromBody] CreateTenantSupportTicketRequest request, CancellationToken ct)
         => ToResponse(await _mediator.Send(new CreateTenantSupportTicketCommand(
-            request.Subject, request.Description, request.Priority, request.Category), ct));
+            request.Subject, request.Description, request.Priority, request.Category, request.CorrelationIds), ct));
 
-    /// <summary>Edit while the ticket is open or in progress. Same body as create.</summary>
+    /// <summary>Edit while the ticket is open or in progress. Same body as create; correlation_ids is ignored
+    /// (references are attached only when the ticket is raised).</summary>
     [HttpPut("{id:guid}")]
     public async Task<IActionResult> Update(Guid id, [FromBody] CreateTenantSupportTicketRequest request, CancellationToken ct)
         => ToResponse(await _mediator.Send(new UpdateTenantSupportTicketCommand(

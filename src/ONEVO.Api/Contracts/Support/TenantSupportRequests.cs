@@ -7,7 +7,8 @@ public sealed record CreateTenantSupportTicketRequest(
     [property: JsonPropertyName("subject")] string? Subject,
     [property: JsonPropertyName("description")] string? Description,
     [property: JsonPropertyName("priority")] string? Priority,
-    [property: JsonPropertyName("category")] string? Category);
+    [property: JsonPropertyName("category")] string? Category,
+    [property: JsonPropertyName("correlation_ids")] IReadOnlyList<string?>? CorrelationIds = null);
 
 /// <summary>No is_internal: tenant comments are always visible to both sides.</summary>
 public sealed record AddTenantSupportTicketCommentRequest(

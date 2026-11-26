@@ -1,3 +1,4 @@
+using System.Text.RegularExpressions;
 using ONEVO.Application.Common.Helpers;
 using ONEVO.Domain.Features.DevPlatform.Support.Entities;
 
@@ -15,6 +16,19 @@ public static class SupportTicketRules
     public const int MaxAttachmentsPerTicket = 20;
     public const int MaxPageSize = 100;
     public const int DefaultPageSize = 20;
+
+    /// <summary>A ticket carries at most this many correlation ids (the tenant app keeps the last 5 failed requests).</summary>
+    public const int MaxCorrelationIds = 5;
+    public const int CorrelationIdMaxLength = 100;
+
+    /// <summary>support_tickets.correlation_ids is nvarchar(1000); 5 ids of 100 chars plus separators fit.</summary>
+    public const int CorrelationIdsColumnMaxLength = 1000;
+
+    public const string CorrelationIdsCountError = "correlation_ids must contain at most 5 items.";
+    public const string CorrelationIdFormatError =
+        "each correlation id must be 1 to 100 characters of letters, digits and '-'.";
+
+    private static readonly Regex CorrelationIdPattern = new("^[A-Za-z0-9-]+$", RegexOptions.CultureInvariant);
 
     public static readonly TimeSpan DownloadUrlLifetime = TimeSpan.FromMinutes(5);
 
@@ -37,6 +51,28 @@ public static class SupportTicketRules
             return $"category must be at most {CategoryMaxLength} characters.";
         return null;
     }
+
+    /// <summary>Returns an error message, or null when the correlation ids are valid. A null or empty list is valid.</summary>
+    public static string? ValidateCorrelationIds(IReadOnlyList<string?>? correlationIds)
+    {
+        if (correlationIds is null || correlationIds.Count == 0) return null;
+        if (correlationIds.Count > MaxCorrelationIds) return CorrelationIdsCountError;
+        return correlationIds.All(IsValidCorrelationId) ? null : CorrelationIdFormatError;
+    }
+
+    public static bool IsValidCorrelationId(string? id) =>
+        id is not null && id.Length <= CorrelationIdMaxLength && CorrelationIdPattern.IsMatch(id);
+
+    /// <summary>Stores already-validated ids comma-separated, duplicates removed, order kept. Null when none.</summary>
+    public static string? JoinCorrelationIds(IReadOnlyList<string?>? correlationIds) =>
+        correlationIds is null || correlationIds.Count == 0
+            ? null
+            : string.Join(',', correlationIds.Distinct(StringComparer.Ordinal));
+
+    public static IReadOnlyList<string> SplitCorrelationIds(string? stored) =>
+        string.IsNullOrEmpty(stored)
+            ? []
+            : stored.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
 
     public static string? ValidateComment(string? body)
     {

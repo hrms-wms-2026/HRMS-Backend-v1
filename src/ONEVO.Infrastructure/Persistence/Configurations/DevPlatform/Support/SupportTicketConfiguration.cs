@@ -24,6 +24,7 @@ public sealed class SupportTicketConfiguration : IEntityTypeConfiguration<Suppor
         builder.Property(x => x.Priority).HasMaxLength(20).IsRequired();
         builder.Property(x => x.Category).HasMaxLength(80);
         builder.Property(x => x.CreatedByName).HasMaxLength(200).IsRequired();
+        builder.Property(x => x.CorrelationIds).HasMaxLength(1000);
         builder.Property(x => x.CreatedAt).IsRequired();
         builder.Property(x => x.AwaitingSupport).IsRequired();
 

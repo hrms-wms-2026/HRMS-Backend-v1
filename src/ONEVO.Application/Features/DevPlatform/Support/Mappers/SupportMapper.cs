@@ -1,3 +1,4 @@
+using ONEVO.Application.Features.DevPlatform.Support.Helpers;
 using ONEVO.Application.Features.DevPlatform.Support.DTOs;
 using ONEVO.Domain.Features.DevPlatform.Support.Entities;
 
@@ -20,7 +21,8 @@ public static class SupportMapper
     public static SupportTicketDetailDto ToDetailDto(SupportTicket t, string tenantName, string? assignedToName) => new(
         ToDto(t, tenantName, assignedToName),
         t.Comments.OrderBy(c => c.CreatedAt).Select(ToDto).ToList(),
-        t.Attachments.OrderBy(a => a.CreatedAt).Select(ToDto).ToList());
+        t.Attachments.OrderBy(a => a.CreatedAt).Select(ToDto).ToList(),
+        SupportTicketRules.SplitCorrelationIds(t.CorrelationIds));
 
     public static TenantSupportTicketDto ToTenantDto(SupportTicket t) => new(
         t.Id, t.Subject, t.Description, t.Status, t.Priority, t.Category, t.CreatedByName,
@@ -37,7 +39,8 @@ public static class SupportMapper
     public static TenantSupportTicketDetailDto ToTenantDetailDto(SupportTicket t) => new(
         ToTenantDto(t),
         t.Comments.Where(c => !c.IsInternal).OrderBy(c => c.CreatedAt).Select(ToTenantDto).ToList(),
-        t.Attachments.Where(a => !a.IsInternal).OrderBy(a => a.CreatedAt).Select(ToTenantDto).ToList());
+        t.Attachments.Where(a => !a.IsInternal).OrderBy(a => a.CreatedAt).Select(ToTenantDto).ToList(),
+        SupportTicketRules.SplitCorrelationIds(t.CorrelationIds));
 
     public static PlatformAnnouncementDto ToDto(PlatformAnnouncement a) => new(
         a.Id, a.Title, a.Body, a.Severity, a.Audience, a.IsPublished, a.PublishedAt, a.StartsAt, a.EndsAt,
