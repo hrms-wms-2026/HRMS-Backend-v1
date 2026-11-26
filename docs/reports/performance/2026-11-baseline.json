@@ -1,0 +1,2688 @@
+{
+ "run": "2026-11-26 05:38 UTC",
+ "runs": 20,
+ "rows": [
+  {
+   "route": "/api/v1/announcements/active",
+   "url": "https://dapi.onexso.com:7339/api/v1/announcements/active",
+   "status": 200,
+   "p50": 12.9,
+   "p95": 19.5,
+   "max": 19.7,
+   "client_p50": 18.26100000016595,
+   "sql": 3,
+   "sql_ms": 1.0,
+   "samples": 20
+  },
+  {
+   "route": "/api/v1/attendance/clock-in-policies",
+   "url": "https://dapi.onexso.com:7339/api/v1/attendance/clock-in-policies",
+   "status": 400,
+   "error": "legalEntityId query parameter is required."
+  },
+  {
+   "route": "/api/v1/attendance/corrections/approvals",
+   "url": "https://dapi.onexso.com:7339/api/v1/attendance/corrections/approvals?from=2026-10-27&to=2026-11-26",
+   "status": 200,
+   "p50": 72.2,
+   "p95": 79.3,
+   "max": 107.2,
+   "client_p50": 79.45989999916492,
+   "sql": 12,
+   "sql_ms": 38.3,
+   "samples": 20
+  },
+  {
+   "route": "/api/v1/attendance/corrections/my",
+   "url": "https://dapi.onexso.com:7339/api/v1/attendance/corrections/my?from=2026-10-27&to=2026-11-26",
+   "status": 200,
+   "p50": 22.2,
+   "p95": 25.1,
+   "max": 25.2,
+   "client_p50": 27.714399999240413,
+   "sql": 6,
+   "sql_ms": 2.4,
+   "samples": 20
+  },
+  {
+   "route": "/api/v1/attendance/location-change-requests/approvals",
+   "url": "https://dapi.onexso.com:7339/api/v1/attendance/location-change-requests/approvals",
+   "status": 200,
+   "p50": 5.2,
+   "p95": 7.4,
+   "max": 7.9,
+   "client_p50": 10.431100000459992,
+   "sql": 5,
+   "sql_ms": 1.6,
+   "samples": 20
+  },
+  {
+   "route": "/api/v1/attendance/location-change-requests/my",
+   "url": "https://dapi.onexso.com:7339/api/v1/attendance/location-change-requests/my",
+   "status": 200,
+   "p50": 5.7,
+   "p95": 6.5,
+   "max": 7.2,
+   "client_p50": 10.766400000647991,
+   "sql": 6,
+   "sql_ms": 2.0,
+   "samples": 20
+  },
+  {
+   "route": "/api/v1/attendance/monitoring/policy",
+   "url": "https://dapi.onexso.com:7339/api/v1/attendance/monitoring/policy",
+   "status": 200,
+   "p50": 3.7,
+   "p95": 4.5,
+   "max": 5.3,
+   "client_p50": 9.192599999551021,
+   "sql": 4,
+   "sql_ms": 1.2,
+   "samples": 20
+  },
+  {
+   "route": "/api/v1/attendance/time-tracking/covered-history",
+   "url": "https://dapi.onexso.com:7339/api/v1/attendance/time-tracking/covered-history?from=2026-10-27&to=2026-11-26",
+   "status": 200,
+   "p50": 204.0,
+   "p95": 221.2,
+   "max": 222.0,
+   "client_p50": 216.80230000038136,
+   "sql": 16,
+   "sql_ms": 184.6,
+   "samples": 20
+  },
+  {
+   "route": "/api/v1/attendance/time-tracking/history",
+   "url": "https://dapi.onexso.com:7339/api/v1/attendance/time-tracking/history?from=2026-10-27&to=2026-11-26",
+   "status": 200,
+   "p50": 20.5,
+   "p95": 33.4,
+   "max": 34.2,
+   "client_p50": 30.803699999523815,
+   "sql": 10,
+   "sql_ms": 4.3,
+   "samples": 20
+  },
+  {
+   "route": "/api/v1/attendance/time-tracking/history-detail",
+   "url": "https://dapi.onexso.com:7339/api/v1/attendance/time-tracking/history-detail?date=2026-11-26",
+   "status": 403,
+   "error": "Access denied."
+  },
+  {
+   "route": "/api/v1/attendance/time-tracking/monthly-summary",
+   "url": "https://dapi.onexso.com:7339/api/v1/attendance/time-tracking/monthly-summary?from=2026-10-27&to=2026-11-26",
+   "status": 200,
+   "p50": 18.6,
+   "p95": 21.1,
+   "max": 21.3,
+   "client_p50": 24.551000000428758,
+   "sql": 12,
+   "sql_ms": 4.1,
+   "samples": 20
+  },
+  {
+   "route": "/api/v1/attendance/time-tracking/team/attendance-employees",
+   "url": "https://dapi.onexso.com:7339/api/v1/attendance/time-tracking/team/attendance-employees?anchor=2026-11-26",
+   "status": 200,
+   "p50": 427.6,
+   "p95": 490.2,
+   "max": 530.0,
+   "client_p50": 435.5407000002742,
+   "sql": 32,
+   "sql_ms": 357.0,
+   "samples": 20
+  },
+  {
+   "route": "/api/v1/attendance/time-tracking/team/attendance-summary",
+   "url": "https://dapi.onexso.com:7339/api/v1/attendance/time-tracking/team/attendance-summary?anchor=2026-11-26",
+   "status": 200,
+   "p50": 426.2,
+   "p95": 507.8,
+   "max": 614.4,
+   "client_p50": 432.28929999986576,
+   "sql": 32,
+   "sql_ms": 354.4,
+   "samples": 20
+  },
+  {
+   "route": "/api/v1/attendance/time-tracking/team/today",
+   "url": "https://dapi.onexso.com:7339/api/v1/attendance/time-tracking/team/today",
+   "status": 200,
+   "p50": 152.0,
+   "p95": 177.8,
+   "max": 179.3,
+   "client_p50": 165.86139999981242,
+   "sql": 19,
+   "sql_ms": 126.0,
+   "samples": 20
+  },
+  {
+   "route": "/api/v1/attendance/time-tracking/team/work-vs-task",
+   "url": "https://dapi.onexso.com:7339/api/v1/attendance/time-tracking/team/work-vs-task?anchor=2026-11-26",
+   "status": 200,
+   "p50": 262.3,
+   "p95": 521.1,
+   "max": 561.1,
+   "client_p50": 274.2957000000388,
+   "sql": 15,
+   "sql_ms": 211.6,
+   "samples": 20
+  },
+  {
+   "route": "/api/v1/attendance/time-tracking/team/working-hours",
+   "url": "https://dapi.onexso.com:7339/api/v1/attendance/time-tracking/team/working-hours?weekStart=2026-11-23",
+   "status": 200,
+   "p50": 431.3,
+   "p95": 632.5,
+   "max": 672.8,
+   "client_p50": 435.64320000041334,
+   "sql": 16,
+   "sql_ms": 366.8,
+   "samples": 20
+  },
+  {
+   "route": "/api/v1/attendance/time-tracking/today",
+   "url": "https://dapi.onexso.com:7339/api/v1/attendance/time-tracking/today",
+   "status": 200,
+   "p50": 48.1,
+   "p95": 52.6,
+   "max": 57.8,
+   "client_p50": 54.018200000427896,
+   "sql": 22,
+   "sql_ms": 26.3,
+   "samples": 20
+  },
+  {
+   "route": "/api/v1/attendance/work-area-change-requests/approvals",
+   "url": "https://dapi.onexso.com:7339/api/v1/attendance/work-area-change-requests/approvals?from=2026-10-27&to=2026-11-26",
+   "status": 200,
+   "p50": 19.9,
+   "p95": 22.1,
+   "max": 24.4,
+   "client_p50": 24.615999999696214,
+   "sql": 6,
+   "sql_ms": 1.8,
+   "samples": 20
+  },
+  {
+   "route": "/api/v1/attendance/work-area-change-requests/my",
+   "url": "https://dapi.onexso.com:7339/api/v1/attendance/work-area-change-requests/my?from=2026-10-27&to=2026-11-26",
+   "status": 200,
+   "p50": 18.5,
+   "p95": 21.8,
+   "max": 24.4,
+   "client_p50": 23.60359999966022,
+   "sql": 7,
+   "sql_ms": 2.3,
+   "samples": 20
+  },
+  {
+   "route": "/api/v1/auth/me",
+   "url": "https://dapi.onexso.com:7339/api/v1/auth/me",
+   "status": 200,
+   "p50": 29.5,
+   "p95": 96.6,
+   "max": 138.9,
+   "client_p50": 42.3412999998618,
+   "sql": 9,
+   "sql_ms": 23.6,
+   "samples": 20
+  },
+  {
+   "route": "/api/v1/calendar",
+   "url": "https://dapi.onexso.com:7339/api/v1/calendar?from=2026-10-27T00%3A00%3A00Z&to=2026-11-26T00%3A00%3A00Z",
+   "status": 200,
+   "p50": 12.5,
+   "p95": 14.6,
+   "max": 16.3,
+   "client_p50": 17.814100000578037,
+   "sql": 14,
+   "sql_ms": 6.3,
+   "samples": 20
+  },
+  {
+   "route": "/api/v1/calendar/connections",
+   "url": "https://dapi.onexso.com:7339/api/v1/calendar/connections",
+   "status": 200,
+   "p50": 3.4,
+   "p95": 5.7,
+   "max": 7.9,
+   "client_p50": 8.611700000074052,
+   "sql": 3,
+   "sql_ms": 0.9,
+   "samples": 20
+  },
+  {
+   "route": "/api/v1/calendar/holiday-settings",
+   "url": "https://dapi.onexso.com:7339/api/v1/calendar/holiday-settings",
+   "status": 404,
+   "error": "Holiday calendar settings have not been set up for this company yet."
+  },
+  {
+   "route": "/api/v1/calendar/my-timezone",
+   "url": "https://dapi.onexso.com:7339/api/v1/calendar/my-timezone",
+   "status": 200,
+   "p50": 4.0,
+   "p95": 86.9,
+   "max": 103.8,
+   "client_p50": 17.359200000100827,
+   "sql": 4,
+   "sql_ms": 1.2,
+   "samples": 20
+  },
+  {
+   "route": "/api/v1/conversations/people",
+   "url": "https://dapi.onexso.com:7339/api/v1/conversations/people",
+   "status": 200,
+   "p50": 15.3,
+   "p95": 672.2,
+   "max": 727.5,
+   "client_p50": 30.525500000294414,
+   "sql": 26,
+   "sql_ms": 8.0,
+   "samples": 20
+  },
+  {
+   "route": "/api/v1/dashboard/team/action-items",
+   "url": "https://dapi.onexso.com:7339/api/v1/dashboard/team/action-items",
+   "status": 200,
+   "p50": 233.8,
+   "p95": 539.2,
+   "max": 649.2,
+   "client_p50": 244.63960000048246,
+   "sql": 307,
+   "sql_ms": 154.5,
+   "samples": 20
+  },
+  {
+   "route": "/api/v1/dashboard/team/capabilities",
+   "url": "https://dapi.onexso.com:7339/api/v1/dashboard/team/capabilities",
+   "status": 200,
+   "p50": 30.2,
+   "p95": 245.0,
+   "max": 556.1,
+   "client_p50": 35.63309999935882,
+   "sql": 24,
+   "sql_ms": 8.9,
+   "samples": 20
+  },
+  {
+   "route": "/api/v1/dashboards/me",
+   "url": "https://dapi.onexso.com:7339/api/v1/dashboards/me",
+   "status": 200,
+   "p50": 3.8,
+   "p95": 5.9,
+   "max": 6.6,
+   "client_p50": 8.099599999695783,
+   "sql": 3,
+   "sql_ms": 0.9,
+   "samples": 20
+  },
+  {
+   "route": "/api/v1/employees",
+   "url": "https://dapi.onexso.com:7339/api/v1/employees",
+   "status": 200,
+   "p50": 178.1,
+   "p95": 211.7,
+   "max": 216.4,
+   "client_p50": 183.04790000001958,
+   "sql": 19,
+   "sql_ms": 150.5,
+   "samples": 20
+  },
+  {
+   "route": "/api/v1/employees/me",
+   "url": "https://dapi.onexso.com:7339/api/v1/employees/me",
+   "status": 200,
+   "p50": 22.0,
+   "p95": 68.3,
+   "max": 564.5,
+   "client_p50": 33.875399999487854,
+   "sql": 14,
+   "sql_ms": 4.2,
+   "samples": 20
+  },
+  {
+   "route": "/api/v1/employees/me/documents",
+   "url": "https://dapi.onexso.com:7339/api/v1/employees/me/documents",
+   "status": 200,
+   "p50": 11.0,
+   "p95": 19.0,
+   "max": 33.5,
+   "client_p50": 20.484399999986636,
+   "sql": 4,
+   "sql_ms": 2.6,
+   "samples": 20
+  },
+  {
+   "route": "/api/v1/employees/me/payroll",
+   "url": "https://dapi.onexso.com:7339/api/v1/employees/me/payroll",
+   "status": 200,
+   "p50": 18.9,
+   "p95": 23.0,
+   "max": 25.5,
+   "client_p50": 24.84550000008312,
+   "sql": 4,
+   "sql_ms": 1.8,
+   "samples": 20
+  },
+  {
+   "route": "/api/v1/employees/offboarding-overview",
+   "url": "https://dapi.onexso.com:7339/api/v1/employees/offboarding-overview",
+   "status": 200,
+   "p50": 96.6,
+   "p95": 120.2,
+   "max": 161.0,
+   "client_p50": 105.46059999978752,
+   "sql": 11,
+   "sql_ms": 80.7,
+   "samples": 20
+  },
+  {
+   "route": "/api/v1/employees/{employeeId}/checklist-tasks",
+   "url": "https://dapi.onexso.com:7339/api/v1/employees/29585964-aa3e-a81e-15a3-dae09f2089f1/checklist-tasks",
+   "status": 200,
+   "p50": 64.1,
+   "p95": 85.2,
+   "max": 86.4,
+   "client_p50": 73.60279999920749,
+   "sql": 11,
+   "sql_ms": 55.3,
+   "samples": 20
+  },
+  {
+   "route": "/api/v1/employees/{employeeId}/leave-policies",
+   "url": "https://dapi.onexso.com:7339/api/v1/employees/29585964-aa3e-a81e-15a3-dae09f2089f1/leave-policies",
+   "status": 200,
+   "p50": 59.3,
+   "p95": 63.8,
+   "max": 65.4,
+   "client_p50": 65.31530000029306,
+   "sql": 20,
+   "sql_ms": 48.5,
+   "samples": 20
+  },
+  {
+   "route": "/api/v1/employees/{employeeId}/meeting-attendance",
+   "url": "https://dapi.onexso.com:7339/api/v1/employees/29585964-aa3e-a81e-15a3-dae09f2089f1/meeting-attendance?from=2026-10-27T00%3A00%3A00Z&to=2026-11-26T00%3A00%3A00Z",
+   "status": 200,
+   "p50": 21.1,
+   "p95": 29.8,
+   "max": 44.4,
+   "client_p50": 28.11420000034559,
+   "sql": 9,
+   "sql_ms": 12.7,
+   "samples": 20
+  },
+  {
+   "route": "/api/v1/employees/{employeeId}/offboarding",
+   "url": "https://dapi.onexso.com:7339/api/v1/employees/29585964-aa3e-a81e-15a3-dae09f2089f1/offboarding",
+   "status": 204,
+   "p50": 62.6,
+   "p95": 91.8,
+   "max": 93.7,
+   "client_p50": 73.52440000067872,
+   "sql": 11,
+   "sql_ms": 54.3,
+   "samples": 20
+  },
+  {
+   "route": "/api/v1/employees/{employeeId}/offboarding/checklist-matches",
+   "url": "https://dapi.onexso.com:7339/api/v1/employees/29585964-aa3e-a81e-15a3-dae09f2089f1/offboarding/checklist-matches",
+   "status": 200,
+   "p50": 55.3,
+   "p95": 59.3,
+   "max": 62.5,
+   "client_p50": 61.28720000015164,
+   "sql": 13,
+   "sql_ms": 46.6,
+   "samples": 20
+  },
+  {
+   "route": "/api/v1/employees/{employeeId}/offboarding/open-work-tasks",
+   "url": "https://dapi.onexso.com:7339/api/v1/employees/29585964-aa3e-a81e-15a3-dae09f2089f1/offboarding/open-work-tasks",
+   "status": 200,
+   "p50": 49.8,
+   "p95": 53.7,
+   "max": 54.3,
+   "client_p50": 54.859400000168534,
+   "sql": 14,
+   "sql_ms": 40.5,
+   "samples": 20
+  },
+  {
+   "route": "/api/v1/employees/{id}",
+   "url": "https://dapi.onexso.com:7339/api/v1/employees/049131ce-1f13-2490-81a0-9b8697750452",
+   "status": 200,
+   "p50": 47.9,
+   "p95": 51.9,
+   "max": 60.7,
+   "client_p50": 54.06479999965086,
+   "sql": 12,
+   "sql_ms": 40.3,
+   "samples": 20
+  },
+  {
+   "route": "/api/v1/employees/{id}/detail",
+   "url": "https://dapi.onexso.com:7339/api/v1/employees/049131ce-1f13-2490-81a0-9b8697750452/detail",
+   "status": 200,
+   "p50": 27.2,
+   "p95": 35.1,
+   "max": 36.8,
+   "client_p50": 33.14940000018396,
+   "sql": 20,
+   "sql_ms": 6.4,
+   "samples": 20
+  },
+  {
+   "route": "/api/v1/employees/{id}/documents",
+   "url": "https://dapi.onexso.com:7339/api/v1/employees/049131ce-1f13-2490-81a0-9b8697750452/documents",
+   "status": 200,
+   "p50": 5.4,
+   "p95": 6.5,
+   "max": 7.3,
+   "client_p50": 18.783100000291597,
+   "sql": 6,
+   "sql_ms": 1.9,
+   "samples": 20
+  },
+  {
+   "route": "/api/v1/employees/{id}/identity",
+   "url": "https://dapi.onexso.com:7339/api/v1/employees/049131ce-1f13-2490-81a0-9b8697750452/identity",
+   "status": 200,
+   "p50": 3.4,
+   "p95": 4.5,
+   "max": 4.7,
+   "client_p50": 7.731299999250041,
+   "sql": 4,
+   "sql_ms": 1.0,
+   "samples": 20
+  },
+  {
+   "route": "/api/v1/employees/{id}/overview/activity",
+   "url": "https://dapi.onexso.com:7339/api/v1/employees/049131ce-1f13-2490-81a0-9b8697750452/overview/activity?from=2026-10-27&to=2026-11-26",
+   "status": 200,
+   "p50": 47.6,
+   "p95": 51.9,
+   "max": 59.0,
+   "client_p50": 52.26980000043113,
+   "sql": 12,
+   "sql_ms": 39.3,
+   "samples": 20
+  },
+  {
+   "route": "/api/v1/employees/{id}/overview/approvals",
+   "url": "https://dapi.onexso.com:7339/api/v1/employees/049131ce-1f13-2490-81a0-9b8697750452/overview/approvals?from=2026-10-27&to=2026-11-26",
+   "status": 200,
+   "p50": 49.8,
+   "p95": 54.8,
+   "max": 57.8,
+   "client_p50": 57.459300000118674,
+   "sql": 21,
+   "sql_ms": 40.7,
+   "samples": 20
+  },
+  {
+   "route": "/api/v1/employees/{id}/overview/attendance",
+   "url": "https://dapi.onexso.com:7339/api/v1/employees/049131ce-1f13-2490-81a0-9b8697750452/overview/attendance?from=2026-10-27&to=2026-11-26",
+   "status": 200,
+   "p50": 51.3,
+   "p95": 56.2,
+   "max": 57.0,
+   "client_p50": 55.87479999940115,
+   "sql": 21,
+   "sql_ms": 41.2,
+   "samples": 20
+  },
+  {
+   "route": "/api/v1/employees/{id}/overview/attendance-discipline",
+   "url": "https://dapi.onexso.com:7339/api/v1/employees/049131ce-1f13-2490-81a0-9b8697750452/overview/attendance-discipline?from=2026-10-27&to=2026-11-26",
+   "status": 200,
+   "p50": 53.1,
+   "p95": 65.3,
+   "max": 66.2,
+   "client_p50": 61.345900000560505,
+   "sql": 21,
+   "sql_ms": 42.3,
+   "samples": 20
+  },
+  {
+   "route": "/api/v1/employees/{id}/overview/attendance/days",
+   "url": "https://dapi.onexso.com:7339/api/v1/employees/049131ce-1f13-2490-81a0-9b8697750452/overview/attendance/days?from=2026-10-27&to=2026-11-26",
+   "status": 200,
+   "p50": 53.0,
+   "p95": 59.9,
+   "max": 61.7,
+   "client_p50": 63.571499999852676,
+   "sql": 21,
+   "sql_ms": 43.8,
+   "samples": 20
+  },
+  {
+   "route": "/api/v1/employees/{id}/overview/checklists",
+   "url": "https://dapi.onexso.com:7339/api/v1/employees/049131ce-1f13-2490-81a0-9b8697750452/overview/checklists",
+   "status": 200,
+   "p50": 58.2,
+   "p95": 63.2,
+   "max": 66.1,
+   "client_p50": 67.41790000069159,
+   "sql": 14,
+   "sql_ms": 38.9,
+   "samples": 20
+  },
+  {
+   "route": "/api/v1/employees/{id}/overview/delivery",
+   "url": "https://dapi.onexso.com:7339/api/v1/employees/049131ce-1f13-2490-81a0-9b8697750452/overview/delivery?from=2026-10-27&to=2026-11-26",
+   "status": 200,
+   "p50": 49.4,
+   "p95": 54.4,
+   "max": 57.9,
+   "client_p50": 54.92020000019693,
+   "sql": 14,
+   "sql_ms": 40.0,
+   "samples": 20
+  },
+  {
+   "route": "/api/v1/employees/{id}/overview/history",
+   "url": "https://dapi.onexso.com:7339/api/v1/employees/049131ce-1f13-2490-81a0-9b8697750452/overview/history",
+   "status": 200,
+   "p50": 49.8,
+   "p95": 54.4,
+   "max": 57.0,
+   "client_p50": 57.191599999896425,
+   "sql": 18,
+   "sql_ms": 40.6,
+   "samples": 20
+  },
+  {
+   "route": "/api/v1/employees/{id}/overview/recent-activity",
+   "url": "https://dapi.onexso.com:7339/api/v1/employees/049131ce-1f13-2490-81a0-9b8697750452/overview/recent-activity",
+   "status": 200,
+   "p50": 69.5,
+   "p95": 101.9,
+   "max": 125.7,
+   "client_p50": 77.73840000027121,
+   "sql": 27,
+   "sql_ms": 58.0,
+   "samples": 20
+  },
+  {
+   "route": "/api/v1/employees/{id}/overview/signals",
+   "url": "https://dapi.onexso.com:7339/api/v1/employees/049131ce-1f13-2490-81a0-9b8697750452/overview/signals?from=2026-10-27&to=2026-11-26",
+   "status": 200,
+   "p50": 78.0,
+   "p95": 83.7,
+   "max": 86.1,
+   "client_p50": 86.04780000041501,
+   "sql": 64,
+   "sql_ms": 56.3,
+   "samples": 20
+  },
+  {
+   "route": "/api/v1/employees/{id}/overview/signals/{key}/items",
+   "url": "https://dapi.onexso.com:7339/api/v1/employees/049131ce-1f13-2490-81a0-9b8697750452/overview/signals/my-work/items?from=2026-10-27&to=2026-11-26",
+   "status": 404,
+   "error": "Unknown overview signal 'my-work'."
+  },
+  {
+   "route": "/api/v1/employees/{id}/overview/time-off",
+   "url": "https://dapi.onexso.com:7339/api/v1/employees/049131ce-1f13-2490-81a0-9b8697750452/overview/time-off?year=2026",
+   "status": 200,
+   "p50": 59.6,
+   "p95": 65.8,
+   "max": 68.1,
+   "client_p50": 64.43430000035733,
+   "sql": 43,
+   "sql_ms": 46.1,
+   "samples": 20
+  },
+  {
+   "route": "/api/v1/employees/{id}/overview/upcoming",
+   "url": "https://dapi.onexso.com:7339/api/v1/employees/049131ce-1f13-2490-81a0-9b8697750452/overview/upcoming",
+   "status": 200,
+   "p50": 49.5,
+   "p95": 54.5,
+   "max": 57.1,
+   "client_p50": 62.10409999948752,
+   "sql": 17,
+   "sql_ms": 40.2,
+   "samples": 20
+  },
+  {
+   "route": "/api/v1/employees/{id}/overview/work",
+   "url": "https://dapi.onexso.com:7339/api/v1/employees/049131ce-1f13-2490-81a0-9b8697750452/overview/work?from=2026-10-27&to=2026-11-26",
+   "status": 200,
+   "p50": 48.7,
+   "p95": 53.0,
+   "max": 57.4,
+   "client_p50": 54.07299999933457,
+   "sql": 14,
+   "sql_ms": 39.7,
+   "samples": 20
+  },
+  {
+   "route": "/api/v1/employees/{id}/overview/work/tasks",
+   "url": "https://dapi.onexso.com:7339/api/v1/employees/049131ce-1f13-2490-81a0-9b8697750452/overview/work/tasks?from=2026-10-27&to=2026-11-26",
+   "status": 200,
+   "p50": 47.8,
+   "p95": 54.7,
+   "max": 65.7,
+   "client_p50": 60.21529999998165,
+   "sql": 14,
+   "sql_ms": 39.1,
+   "samples": 20
+  },
+  {
+   "route": "/api/v1/employees/{id}/position-history",
+   "url": "https://dapi.onexso.com:7339/api/v1/employees/049131ce-1f13-2490-81a0-9b8697750452/position-history",
+   "status": 200,
+   "p50": 6.4,
+   "p95": 7.9,
+   "max": 8.3,
+   "client_p50": 11.798200000157522,
+   "sql": 8,
+   "sql_ms": 2.2,
+   "samples": 20
+  },
+  {
+   "route": "/api/v1/employees/{id}/work-activity/activity-by-hour",
+   "url": "https://dapi.onexso.com:7339/api/v1/employees/049131ce-1f13-2490-81a0-9b8697750452/work-activity/activity-by-hour?from=2026-10-27&to=2026-11-26",
+   "status": 200,
+   "p50": 46.8,
+   "p95": 59.3,
+   "max": 68.3,
+   "client_p50": 59.333000000151515,
+   "sql": 13,
+   "sql_ms": 39.3,
+   "samples": 20
+  },
+  {
+   "route": "/api/v1/employees/{id}/work-activity/app-usage",
+   "url": "https://dapi.onexso.com:7339/api/v1/employees/049131ce-1f13-2490-81a0-9b8697750452/work-activity/app-usage?from=2026-10-27&to=2026-11-26",
+   "status": 200,
+   "p50": 46.9,
+   "p95": 54.5,
+   "max": 59.3,
+   "client_p50": 60.34170000020822,
+   "sql": 12,
+   "sql_ms": 38.8,
+   "samples": 20
+  },
+  {
+   "route": "/api/v1/employees/{id}/work-activity/delivery-trend",
+   "url": "https://dapi.onexso.com:7339/api/v1/employees/049131ce-1f13-2490-81a0-9b8697750452/work-activity/delivery-trend?to=2026-11-26",
+   "status": 200,
+   "p50": 48.4,
+   "p95": 55.3,
+   "max": 65.4,
+   "client_p50": 61.50580000030459,
+   "sql": 14,
+   "sql_ms": 40.3,
+   "samples": 20
+  },
+  {
+   "route": "/api/v1/employees/{id}/work-activity/needs-attention",
+   "url": "https://dapi.onexso.com:7339/api/v1/employees/049131ce-1f13-2490-81a0-9b8697750452/work-activity/needs-attention",
+   "status": 200,
+   "p50": 48.3,
+   "p95": 52.5,
+   "max": 54.6,
+   "client_p50": 60.32890000005864,
+   "sql": 14,
+   "sql_ms": 40.1,
+   "samples": 20
+  },
+  {
+   "route": "/api/v1/employees/{id}/work-activity/recent-tasks",
+   "url": "https://dapi.onexso.com:7339/api/v1/employees/049131ce-1f13-2490-81a0-9b8697750452/work-activity/recent-tasks",
+   "status": 200,
+   "p50": 50.7,
+   "p95": 62.1,
+   "max": 64.2,
+   "client_p50": 63.465300000643765,
+   "sql": 15,
+   "sql_ms": 40.8,
+   "samples": 20
+  },
+  {
+   "route": "/api/v1/employees/{id}/work-activity/work-pattern",
+   "url": "https://dapi.onexso.com:7339/api/v1/employees/049131ce-1f13-2490-81a0-9b8697750452/work-activity/work-pattern?from=2026-10-27&to=2026-11-26",
+   "status": 200,
+   "p50": 47.4,
+   "p95": 50.3,
+   "max": 59.1,
+   "client_p50": 60.08960000053776,
+   "sql": 12,
+   "sql_ms": 38.6,
+   "samples": 20
+  },
+  {
+   "route": "/api/v1/employees/{id}/work-graph",
+   "url": "https://dapi.onexso.com:7339/api/v1/employees/049131ce-1f13-2490-81a0-9b8697750452/work-graph",
+   "status": 200,
+   "p50": 101.5,
+   "p95": 110.5,
+   "max": 117.2,
+   "client_p50": 111.67930000010529,
+   "sql": 43,
+   "sql_ms": 87.6,
+   "samples": 20
+  },
+  {
+   "route": "/api/v1/inbox",
+   "url": "https://dapi.onexso.com:7339/api/v1/inbox?From=2026-10-27T00%3A00%3A00Z&To=2026-11-26T00%3A00%3A00Z",
+   "status": 200,
+   "p50": 284.0,
+   "p95": 307.8,
+   "max": 321.7,
+   "client_p50": 294.0685999992638,
+   "sql": 300,
+   "sql_ms": 148.1,
+   "samples": 20
+  },
+  {
+   "route": "/api/v1/inbox/chats",
+   "url": "https://dapi.onexso.com:7339/api/v1/inbox/chats",
+   "status": 200,
+   "p50": 319.0,
+   "p95": 349.5,
+   "max": 349.8,
+   "client_p50": 327.4280000005092,
+   "sql": 328,
+   "sql_ms": 166.1,
+   "samples": 20
+  },
+  {
+   "route": "/api/v1/inbox/chats/{conversationId}/media",
+   "url": "https://dapi.onexso.com:7339/api/v1/inbox/chats/4fb52d80-ffa3-81b3-bad8-76cc25409a35/media",
+   "status": 200,
+   "p50": 18.5,
+   "p95": 20.6,
+   "max": 20.6,
+   "client_p50": 23.551400000542344,
+   "sql": 12,
+   "sql_ms": 3.3,
+   "samples": 20
+  },
+  {
+   "route": "/api/v1/inbox/chats/{conversationId}/search",
+   "url": "https://dapi.onexso.com:7339/api/v1/inbox/chats/4fb52d80-ffa3-81b3-bad8-76cc25409a35/search",
+   "status": 200,
+   "p50": 14.6,
+   "p95": 16.1,
+   "max": 16.2,
+   "client_p50": 25.073699999666132,
+   "sql": 3,
+   "sql_ms": 1.2,
+   "samples": 20
+  },
+  {
+   "route": "/api/v1/inbox/counts",
+   "url": "https://dapi.onexso.com:7339/api/v1/inbox/counts",
+   "status": 200,
+   "p50": 275.6,
+   "p95": 292.1,
+   "max": 292.8,
+   "client_p50": 283.76939999998285,
+   "sql": 320,
+   "sql_ms": 132.2,
+   "samples": 20
+  },
+  {
+   "route": "/api/v1/inbox/filters",
+   "url": "https://dapi.onexso.com:7339/api/v1/inbox/filters",
+   "status": 200,
+   "p50": 287.7,
+   "p95": 324.1,
+   "max": 342.7,
+   "client_p50": 297.30469999958586,
+   "sql": 297,
+   "sql_ms": 146.9,
+   "samples": 20
+  },
+  {
+   "route": "/api/v1/inbox/history",
+   "url": "https://dapi.onexso.com:7339/api/v1/inbox/history?from=2026-10-27T00%3A00%3A00Z&to=2026-11-26T00%3A00%3A00Z",
+   "status": 200,
+   "p50": 100.4,
+   "p95": 104.9,
+   "max": 108.0,
+   "client_p50": 108.66950000036013,
+   "sql": 194,
+   "sql_ms": 57.9,
+   "samples": 20
+  },
+  {
+   "route": "/api/v1/inbox/kinds",
+   "url": "https://dapi.onexso.com:7339/api/v1/inbox/kinds",
+   "status": 200,
+   "p50": 12.9,
+   "p95": 14.5,
+   "max": 15.0,
+   "client_p50": 26.322699999582255,
+   "sql": 2,
+   "sql_ms": 0.6,
+   "samples": 20
+  },
+  {
+   "route": "/api/v1/inbox/people/{employeeId}/cases",
+   "url": "https://dapi.onexso.com:7339/api/v1/inbox/people/049131ce-1f13-2490-81a0-9b8697750452/cases?from=2026-10-27T00%3A00%3A00Z&to=2026-11-26T00%3A00%3A00Z",
+   "status": 400,
+   "error": "One or more validation errors occurred."
+  },
+  {
+   "route": "/api/v1/inbox/people/{employeeId}/cases/months",
+   "url": "https://dapi.onexso.com:7339/api/v1/inbox/people/049131ce-1f13-2490-81a0-9b8697750452/cases/months?year=2026",
+   "status": 400,
+   "error": "One or more validation errors occurred."
+  },
+  {
+   "route": "/api/v1/integrations/github/status",
+   "url": "https://dapi.onexso.com:7339/api/v1/integrations/github/status",
+   "status": 200,
+   "p50": 3.1,
+   "p95": 5.1,
+   "max": 5.2,
+   "client_p50": 16.468199999508215,
+   "sql": 3,
+   "sql_ms": 0.8,
+   "samples": 20
+  },
+  {
+   "route": "/api/v1/integrations/github/tenant/status",
+   "url": "https://dapi.onexso.com:7339/api/v1/integrations/github/tenant/status",
+   "status": 403,
+   "error": "Permission 'integrations:manage' required."
+  },
+  {
+   "route": "/api/v1/leave/approval-delegates",
+   "url": "https://dapi.onexso.com:7339/api/v1/leave/approval-delegates",
+   "status": 200,
+   "p50": 3.8,
+   "p95": 4.8,
+   "max": 7.5,
+   "client_p50": 16.9700999995257,
+   "sql": 4,
+   "sql_ms": 1.2,
+   "samples": 20
+  },
+  {
+   "route": "/api/v1/leave/balance-audit",
+   "url": "https://dapi.onexso.com:7339/api/v1/leave/balance-audit?fromDate=2026-10-27&toDate=2026-11-26",
+   "status": 200,
+   "p50": 5.7,
+   "p95": 7.6,
+   "max": 7.9,
+   "client_p50": 11.507299999720999,
+   "sql": 3,
+   "sql_ms": 2.6,
+   "samples": 20
+  },
+  {
+   "route": "/api/v1/leave/balances/all",
+   "url": "https://dapi.onexso.com:7339/api/v1/leave/balances/all?year=2026",
+   "status": 200,
+   "p50": 170.0,
+   "p95": 184.6,
+   "max": 191.7,
+   "client_p50": 176.3983000000735,
+   "sql": 33,
+   "sql_ms": 111.2,
+   "samples": 20
+  },
+  {
+   "route": "/api/v1/leave/balances/my",
+   "url": "https://dapi.onexso.com:7339/api/v1/leave/balances/my?year=2026",
+   "status": 200,
+   "p50": 14.0,
+   "p95": 16.1,
+   "max": 17.3,
+   "client_p50": 19.87619999999879,
+   "sql": 33,
+   "sql_ms": 7.3,
+   "samples": 20
+  },
+  {
+   "route": "/api/v1/leave/balances/team",
+   "url": "https://dapi.onexso.com:7339/api/v1/leave/balances/team?year=2026",
+   "status": 200,
+   "p50": 203.8,
+   "p95": 224.3,
+   "max": 228.8,
+   "client_p50": 214.22780000011699,
+   "sql": 35,
+   "sql_ms": 146.3,
+   "samples": 20
+  },
+  {
+   "route": "/api/v1/leave/balances/work-window",
+   "url": "https://dapi.onexso.com:7339/api/v1/leave/balances/work-window",
+   "status": 200,
+   "p50": 3.8,
+   "p95": 5.2,
+   "max": 5.2,
+   "client_p50": 16.885500000171305,
+   "sql": 4,
+   "sql_ms": 1.1,
+   "samples": 20
+  },
+  {
+   "route": "/api/v1/leave/calendar",
+   "url": "https://dapi.onexso.com:7339/api/v1/leave/calendar?year=2026&month=11",
+   "status": 200,
+   "p50": 10.3,
+   "p95": 11.7,
+   "max": 12.2,
+   "client_p50": 22.640999999566702,
+   "sql": 4,
+   "sql_ms": 2.6,
+   "samples": 20
+  },
+  {
+   "route": "/api/v1/leave/entitlements",
+   "url": "https://dapi.onexso.com:7339/api/v1/leave/entitlements?year=2026",
+   "status": 200,
+   "p50": 100.8,
+   "p95": 136.5,
+   "max": 136.9,
+   "client_p50": 112.04249999991589,
+   "sql": 13,
+   "sql_ms": 61.9,
+   "samples": 20
+  },
+  {
+   "route": "/api/v1/leave/holidays",
+   "url": "https://dapi.onexso.com:7339/api/v1/leave/holidays?from=2026-10-27&to=2026-11-26",
+   "status": 200,
+   "p50": 4.0,
+   "p95": 6.1,
+   "max": 7.3,
+   "client_p50": 9.362200000396115,
+   "sql": 3,
+   "sql_ms": 1.0,
+   "samples": 20
+  },
+  {
+   "route": "/api/v1/leave/policies",
+   "url": "https://dapi.onexso.com:7339/api/v1/leave/policies",
+   "status": 200,
+   "p50": 5.9,
+   "p95": 7.1,
+   "max": 9.0,
+   "client_p50": 10.660599999937403,
+   "sql": 7,
+   "sql_ms": 2.0,
+   "samples": 20
+  },
+  {
+   "route": "/api/v1/leave/requests/all",
+   "url": "https://dapi.onexso.com:7339/api/v1/leave/requests/all?fromDate=2026-10-27&toDate=2026-11-26",
+   "status": 200,
+   "p50": 6.2,
+   "p95": 8.6,
+   "max": 9.2,
+   "client_p50": 12.983699999495002,
+   "sql": 4,
+   "sql_ms": 1.9,
+   "samples": 20
+  },
+  {
+   "route": "/api/v1/leave/requests/my",
+   "url": "https://dapi.onexso.com:7339/api/v1/leave/requests/my?fromDate=2026-10-27&toDate=2026-11-26",
+   "status": 200,
+   "p50": 5.8,
+   "p95": 74.5,
+   "max": 88.0,
+   "client_p50": 19.79230000051757,
+   "sql": 5,
+   "sql_ms": 1.8,
+   "samples": 20
+  },
+  {
+   "route": "/api/v1/leave/requests/pending-approvals",
+   "url": "https://dapi.onexso.com:7339/api/v1/leave/requests/pending-approvals?fromDate=2026-10-27&toDate=2026-11-26",
+   "status": 200,
+   "p50": 37.8,
+   "p95": 181.3,
+   "max": 181.9,
+   "client_p50": 88.73149999999441,
+   "sql": 4,
+   "sql_ms": 18.5,
+   "samples": 20
+  },
+  {
+   "route": "/api/v1/leave/requests/{requestId}/approval",
+   "url": "https://dapi.onexso.com:7339/api/v1/leave/requests/844d0efd-9fb1-512a-b3c0-0301f06df859/approval",
+   "status": 403,
+   "error": "This request is not assigned to you"
+  },
+  {
+   "route": "/api/v1/leave/requests/{requestId}/detail",
+   "url": "https://dapi.onexso.com:7339/api/v1/leave/requests/844d0efd-9fb1-512a-b3c0-0301f06df859/detail",
+   "status": 200,
+   "p50": 11.1,
+   "p95": 12.1,
+   "max": 12.2,
+   "client_p50": 15.739399999802117,
+   "sql": 19,
+   "sql_ms": 5.0,
+   "samples": 20
+  },
+  {
+   "route": "/api/v1/leave/types",
+   "url": "https://dapi.onexso.com:7339/api/v1/leave/types",
+   "status": 200,
+   "p50": 4.2,
+   "p95": 5.5,
+   "max": 5.8,
+   "client_p50": 8.59649999983958,
+   "sql": 4,
+   "sql_ms": 1.2,
+   "samples": 20
+  },
+  {
+   "route": "/api/v1/leave/types/{leaveTypeId}",
+   "url": "https://dapi.onexso.com:7339/api/v1/leave/types/4931cd00-20cb-ed2d-07c4-a7e79e50ccaa",
+   "status": 200,
+   "p50": 4.0,
+   "p95": 5.9,
+   "max": 6.5,
+   "client_p50": 9.68170000032842,
+   "sql": 4,
+   "sql_ms": 1.1,
+   "samples": 20
+  },
+  {
+   "route": "/api/v1/legal/documents/current",
+   "url": "https://dapi.onexso.com:7339/api/v1/legal/documents/current",
+   "status": 200,
+   "p50": 2.9,
+   "p95": 5.2,
+   "max": 6.0,
+   "client_p50": 7.3013999999602675,
+   "sql": 1,
+   "sql_ms": 0.4,
+   "samples": 20
+  },
+  {
+   "route": "/api/v1/legal/pending",
+   "url": "https://dapi.onexso.com:7339/api/v1/legal/pending",
+   "status": 200,
+   "p50": 3.2,
+   "p95": 11.3,
+   "max": 16.7,
+   "client_p50": 17.526399999951536,
+   "sql": 4,
+   "sql_ms": 1.2,
+   "samples": 20
+  },
+  {
+   "route": "/api/v1/meetings",
+   "url": "https://dapi.onexso.com:7339/api/v1/meetings?from=2026-10-27T00%3A00%3A00Z&to=2026-11-26T00%3A00%3A00Z",
+   "status": 200,
+   "p50": 83.1,
+   "p95": 246.9,
+   "max": 435.5,
+   "client_p50": 102.84299999966606,
+   "sql": 7,
+   "sql_ms": 33.5,
+   "samples": 20
+  },
+  {
+   "route": "/api/v1/meetings/occurrences/{taskId}",
+   "url": "https://dapi.onexso.com:7339/api/v1/meetings/occurrences/d4bf31b2-fd51-f3c1-6dd2-84cc2ebf880a",
+   "status": 404,
+   "error": "Meeting not found."
+  },
+  {
+   "route": "/api/v1/meetings/occurrences/{taskId}/action-items",
+   "url": "https://dapi.onexso.com:7339/api/v1/meetings/occurrences/d4bf31b2-fd51-f3c1-6dd2-84cc2ebf880a/action-items",
+   "status": 404,
+   "error": "Meeting not found."
+  },
+  {
+   "route": "/api/v1/meetings/series/{seriesId}",
+   "url": "https://dapi.onexso.com:7339/api/v1/meetings/series/8ff10bf4-6b70-662e-7273-70541316f5ce",
+   "status": 200,
+   "p50": 10.6,
+   "p95": 85.8,
+   "max": 200.0,
+   "client_p50": 16.61690000037197,
+   "sql": 14,
+   "sql_ms": 4.6,
+   "samples": 20
+  },
+  {
+   "route": "/api/v1/meetings/series/{seriesId}/link",
+   "url": "https://dapi.onexso.com:7339/api/v1/meetings/series/8ff10bf4-6b70-662e-7273-70541316f5ce/link",
+   "status": 200,
+   "p50": 18.9,
+   "p95": 21.0,
+   "max": 21.0,
+   "client_p50": 23.724800000309187,
+   "sql": 5,
+   "sql_ms": 1.7,
+   "samples": 20
+  },
+  {
+   "route": "/api/v1/monitoring/activation/status",
+   "url": "https://dapi.onexso.com:7339/api/v1/monitoring/activation/status",
+   "status": 200,
+   "p50": 3.4,
+   "p95": 4.9,
+   "max": 8.0,
+   "client_p50": 8.537499999874854,
+   "sql": 2,
+   "sql_ms": 0.7,
+   "samples": 20
+  },
+  {
+   "route": "/api/v1/monitoring/activity/daily-range",
+   "url": "https://dapi.onexso.com:7339/api/v1/monitoring/activity/daily-range?from=2026-10-27&to=2026-11-26",
+   "status": 403,
+   "error": "You do not have access to this employee."
+  },
+  {
+   "route": "/api/v1/monitoring/activity/daily-summary",
+   "url": "https://dapi.onexso.com:7339/api/v1/monitoring/activity/daily-summary?date=2026-11-26",
+   "status": 403,
+   "error": "You do not have access to this employee."
+  },
+  {
+   "route": "/api/v1/monitoring/activity/my-focus-status",
+   "url": "https://dapi.onexso.com:7339/api/v1/monitoring/activity/my-focus-status",
+   "status": 200,
+   "p50": 4.4,
+   "p95": 159.3,
+   "max": 180.4,
+   "client_p50": 18.501699999433185,
+   "sql": 4,
+   "sql_ms": 1.3,
+   "samples": 20
+  },
+  {
+   "route": "/api/v1/monitoring/activity/my-timeline",
+   "url": "https://dapi.onexso.com:7339/api/v1/monitoring/activity/my-timeline?date=2026-11-26",
+   "status": 200,
+   "p50": 4.7,
+   "p95": 12.6,
+   "max": 17.7,
+   "client_p50": 10.692300000300747,
+   "sql": 5,
+   "sql_ms": 1.6,
+   "samples": 20
+  },
+  {
+   "route": "/api/v1/monitoring/activity/my-work-pattern",
+   "url": "https://dapi.onexso.com:7339/api/v1/monitoring/activity/my-work-pattern?from=2026-10-27&to=2026-11-26",
+   "status": 200,
+   "p50": 40.9,
+   "p95": 44.8,
+   "max": 45.3,
+   "client_p50": 48.99699999987206,
+   "sql": 26,
+   "sql_ms": 32.2,
+   "samples": 20
+  },
+  {
+   "route": "/api/v1/monitoring/activity/snapshots",
+   "url": "https://dapi.onexso.com:7339/api/v1/monitoring/activity/snapshots?date=2026-11-26",
+   "status": 403,
+   "error": "You do not have access to this employee."
+  },
+  {
+   "route": "/api/v1/monitoring/app-usage/snapshots",
+   "url": "https://dapi.onexso.com:7339/api/v1/monitoring/app-usage/snapshots?date=2026-11-26",
+   "status": 403,
+   "error": "You do not have access to this employee."
+  },
+  {
+   "route": "/api/v1/monitoring/check-in/face-reference",
+   "url": "https://dapi.onexso.com:7339/api/v1/monitoring/check-in/face-reference",
+   "status": 401,
+   "error": "A valid tray device token is required to access this resource."
+  },
+  {
+   "route": "/api/v1/monitoring/daily-report",
+   "url": "https://dapi.onexso.com:7339/api/v1/monitoring/daily-report?date=2026-11-26",
+   "status": 403,
+   "error": "You do not have access to this employee."
+  },
+  {
+   "route": "/api/v1/monitoring/device-authorization/{requestId}",
+   "url": "https://dapi.onexso.com:7339/api/v1/monitoring/device-authorization/844d0efd-9fb1-512a-b3c0-0301f06df859",
+   "status": 400,
+   "error": "One or more validation errors occurred."
+  },
+  {
+   "route": "/api/v1/monitoring/device-change-requests/approvals",
+   "url": "https://dapi.onexso.com:7339/api/v1/monitoring/device-change-requests/approvals",
+   "status": 200,
+   "p50": 4.5,
+   "p95": 5.9,
+   "max": 6.8,
+   "client_p50": 10.113000000274042,
+   "sql": 4,
+   "sql_ms": 1.4,
+   "samples": 20
+  },
+  {
+   "route": "/api/v1/monitoring/device-state/snapshots",
+   "url": "https://dapi.onexso.com:7339/api/v1/monitoring/device-state/snapshots?date=2026-11-26",
+   "status": 403,
+   "error": "You do not have access to this employee."
+  },
+  {
+   "route": "/api/v1/monitoring/exceptions",
+   "url": "https://dapi.onexso.com:7339/api/v1/monitoring/exceptions",
+   "status": 200,
+   "p50": 8.4,
+   "p95": 59.4,
+   "max": 59.6,
+   "client_p50": 14.779900000576163,
+   "sql": 7,
+   "sql_ms": 3.2,
+   "samples": 20
+  },
+  {
+   "route": "/api/v1/monitoring/location-change-requests/pending",
+   "url": "https://dapi.onexso.com:7339/api/v1/monitoring/location-change-requests/pending",
+   "status": 401,
+   "error": "A valid tray device token is required to access this resource."
+  },
+  {
+   "route": "/api/v1/monitoring/meetings/signals",
+   "url": "https://dapi.onexso.com:7339/api/v1/monitoring/meetings/signals?date=2026-11-26",
+   "status": 403,
+   "error": "You do not have access to this employee."
+  },
+  {
+   "route": "/api/v1/monitoring/notifications",
+   "url": "https://dapi.onexso.com:7339/api/v1/monitoring/notifications",
+   "status": 200,
+   "p50": 4.4,
+   "p95": 30.8,
+   "max": 36.0,
+   "client_p50": 17.597600000044622,
+   "sql": 5,
+   "sql_ms": 1.5,
+   "samples": 20
+  },
+  {
+   "route": "/api/v1/monitoring/permission-consent",
+   "url": "https://dapi.onexso.com:7339/api/v1/monitoring/permission-consent",
+   "status": 401,
+   "error": "A valid tray device token is required to access this resource."
+  },
+  {
+   "route": "/api/v1/monitoring/reports/productivity",
+   "url": "https://dapi.onexso.com:7339/api/v1/monitoring/reports/productivity?from=2026-10-27&to=2026-11-26",
+   "status": 400,
+   "error": "scopeId is required for employee/department scope."
+  },
+  {
+   "route": "/api/v1/monitoring/screenshots",
+   "url": "https://dapi.onexso.com:7339/api/v1/monitoring/screenshots?from=2026-10-27&to=2026-11-26",
+   "status": 200,
+   "p50": 81.0,
+   "p95": 515.0,
+   "max": 530.6,
+   "client_p50": 88.64949999951932,
+   "sql": 11,
+   "sql_ms": 72.5,
+   "samples": 20
+  },
+  {
+   "route": "/api/v1/monitoring/settings",
+   "url": "https://dapi.onexso.com:7339/api/v1/monitoring/settings",
+   "status": 200,
+   "p50": 5.2,
+   "p95": 11.4,
+   "max": 18.4,
+   "client_p50": 12.98529999985476,
+   "sql": 5,
+   "sql_ms": 1.9,
+   "samples": 20
+  },
+  {
+   "route": "/api/v1/monitoring/tray/attendance-status",
+   "url": "https://dapi.onexso.com:7339/api/v1/monitoring/tray/attendance-status",
+   "status": 401,
+   "error": "A valid tray device token is required to access this resource."
+  },
+  {
+   "route": "/api/v1/monitoring/tray/commands",
+   "url": "https://dapi.onexso.com:7339/api/v1/monitoring/tray/commands",
+   "status": 401,
+   "error": "A valid tray device token is required to access this resource."
+  },
+  {
+   "route": "/api/v1/monitoring/tray/daily-tasks",
+   "url": "https://dapi.onexso.com:7339/api/v1/monitoring/tray/daily-tasks",
+   "status": 401,
+   "error": "A valid tray device token is required to access this resource."
+  },
+  {
+   "route": "/api/v1/monitoring/tray/notifications/deliveries/pending",
+   "url": "https://dapi.onexso.com:7339/api/v1/monitoring/tray/notifications/deliveries/pending",
+   "status": 401,
+   "error": "A valid tray device token is required to access this resource."
+  },
+  {
+   "route": "/api/v1/monitoring/tray/notifications/pending",
+   "url": "https://dapi.onexso.com:7339/api/v1/monitoring/tray/notifications/pending",
+   "status": 401,
+   "error": "A valid tray device token is required to access this resource."
+  },
+  {
+   "route": "/api/v1/monitoring/tray/policy",
+   "url": "https://dapi.onexso.com:7339/api/v1/monitoring/tray/policy",
+   "status": 401,
+   "error": "A valid tray device token is required to access this resource."
+  },
+  {
+   "route": "/api/v1/notifications",
+   "url": "https://dapi.onexso.com:7339/api/v1/notifications",
+   "status": 200,
+   "p50": 4.0,
+   "p95": 5.9,
+   "max": 6.0,
+   "client_p50": 10.103299999173032,
+   "sql": 3,
+   "sql_ms": 1.2,
+   "samples": 20
+  },
+  {
+   "route": "/api/v1/notifications/unread-count",
+   "url": "https://dapi.onexso.com:7339/api/v1/notifications/unread-count",
+   "status": 200,
+   "p50": 3.3,
+   "p95": 5.1,
+   "max": 5.2,
+   "client_p50": 17.002200000206358,
+   "sql": 3,
+   "sql_ms": 0.9,
+   "samples": 20
+  },
+  {
+   "route": "/api/v1/offboarding-bypass-requests",
+   "url": "https://dapi.onexso.com:7339/api/v1/offboarding-bypass-requests",
+   "status": 200,
+   "p50": 3.6,
+   "p95": 4.9,
+   "max": 5.6,
+   "client_p50": 10.104599999976926,
+   "sql": 3,
+   "sql_ms": 0.9,
+   "samples": 20
+  },
+  {
+   "route": "/api/v1/onboarding/access-grant-requests",
+   "url": "https://dapi.onexso.com:7339/api/v1/onboarding/access-grant-requests",
+   "status": 200,
+   "p50": 4.6,
+   "p95": 8.6,
+   "max": 13.2,
+   "client_p50": 8.708200000000943,
+   "sql": 4,
+   "sql_ms": 1.2,
+   "samples": 20
+  },
+  {
+   "route": "/api/v1/onboarding/access-grant-requests/pending-for-me",
+   "url": "https://dapi.onexso.com:7339/api/v1/onboarding/access-grant-requests/pending-for-me",
+   "status": 200,
+   "p50": 3.9,
+   "p95": 5.3,
+   "max": 5.4,
+   "client_p50": 8.56629999998404,
+   "sql": 3,
+   "sql_ms": 1.0,
+   "samples": 20
+  },
+  {
+   "route": "/api/v1/onboarding/bulk-batches/template",
+   "url": "https://dapi.onexso.com:7339/api/v1/onboarding/bulk-batches/template",
+   "status": 400,
+   "error": "One or more validation errors occurred."
+  },
+  {
+   "route": "/api/v1/onboarding/checklist-templates/matches",
+   "url": "https://dapi.onexso.com:7339/api/v1/onboarding/checklist-templates/matches?legalEntityId=57fecfe8-1c1e-4a82-be4b-2c8451436420&departmentId=3ef91ef9-6528-7f50-ec07-5fa6bdc24705&positionId=3ad310b5-181d-14d4-10eb-b1c31936d193",
+   "status": 200,
+   "p50": 3.6,
+   "p95": 6.6,
+   "max": 7.2,
+   "client_p50": 17.516599999908067,
+   "sql": 3,
+   "sql_ms": 0.9,
+   "samples": 20,
+   "note": "needs an id filter the API description marks optional"
+  },
+  {
+   "route": "/api/v1/onboarding/drafts",
+   "url": "https://dapi.onexso.com:7339/api/v1/onboarding/drafts",
+   "status": 200,
+   "p50": 4.3,
+   "p95": 5.8,
+   "max": 6.0,
+   "client_p50": 8.714699999472941,
+   "sql": 4,
+   "sql_ms": 1.2,
+   "samples": 20
+  },
+  {
+   "route": "/api/v1/onboarding/drafts/approval-preview",
+   "url": "https://dapi.onexso.com:7339/api/v1/onboarding/drafts/approval-preview",
+   "status": 200,
+   "p50": 6.3,
+   "p95": 9.0,
+   "max": 9.9,
+   "client_p50": 10.55140000062238,
+   "sql": 7,
+   "sql_ms": 2.9,
+   "samples": 20
+  },
+  {
+   "route": "/api/v1/onboarding/drafts/clock-in-defaults",
+   "url": "https://dapi.onexso.com:7339/api/v1/onboarding/drafts/clock-in-defaults",
+   "status": 200,
+   "p50": 14.6,
+   "p95": 16.5,
+   "max": 16.9,
+   "client_p50": 19.963300000199524,
+   "sql": 5,
+   "sql_ms": 1.4,
+   "samples": 20
+  },
+  {
+   "route": "/api/v1/onboarding/drafts/manager-candidates",
+   "url": "https://dapi.onexso.com:7339/api/v1/onboarding/drafts/manager-candidates",
+   "status": 200,
+   "p50": 13.1,
+   "p95": 14.2,
+   "max": 15.2,
+   "client_p50": 26.071800000863732,
+   "sql": 2,
+   "sql_ms": 0.6,
+   "samples": 20
+  },
+  {
+   "route": "/api/v1/onboarding/drafts/reporting-chain",
+   "url": "https://dapi.onexso.com:7339/api/v1/onboarding/drafts/reporting-chain",
+   "status": 200,
+   "p50": 13.5,
+   "p95": 16.1,
+   "max": 19.1,
+   "client_p50": 22.606999999879918,
+   "sql": 3,
+   "sql_ms": 0.9,
+   "samples": 20
+  },
+  {
+   "route": "/api/v1/onboarding/drafts/self-setup",
+   "url": "https://dapi.onexso.com:7339/api/v1/onboarding/drafts/self-setup",
+   "status": 200,
+   "p50": 4.7,
+   "p95": 6.2,
+   "max": 6.8,
+   "client_p50": 9.089199999834818,
+   "sql": 7,
+   "sql_ms": 1.6,
+   "samples": 20
+  },
+  {
+   "route": "/api/v1/onboarding/employee-number-availability",
+   "url": "https://dapi.onexso.com:7339/api/v1/onboarding/employee-number-availability",
+   "status": 400,
+   "error": "Employee number is required."
+  },
+  {
+   "route": "/api/v1/onboarding/employee-number-suggestion",
+   "url": "https://dapi.onexso.com:7339/api/v1/onboarding/employee-number-suggestion?legalEntityId=57fecfe8-1c1e-4a82-be4b-2c8451436420",
+   "status": 200,
+   "p50": 4.1,
+   "p95": 5.1,
+   "max": 5.4,
+   "client_p50": 8.357499999874562,
+   "sql": 5,
+   "sql_ms": 1.3,
+   "samples": 20,
+   "note": "needs an id filter the API description marks optional"
+  },
+  {
+   "route": "/api/v1/org/legal-entities",
+   "url": "https://dapi.onexso.com:7339/api/v1/org/legal-entities",
+   "status": 200,
+   "p50": 3.8,
+   "p95": 4.9,
+   "max": 6.0,
+   "client_p50": 8.754700000281446,
+   "sql": 4,
+   "sql_ms": 1.1,
+   "samples": 20
+  },
+  {
+   "route": "/api/v1/org/legal-entities/{id}/general-settings",
+   "url": "https://dapi.onexso.com:7339/api/v1/org/legal-entities/57fecfe8-1c1e-4a82-be4b-2c8451436420/general-settings",
+   "status": 200,
+   "p50": 4.2,
+   "p95": 6.3,
+   "max": 6.7,
+   "client_p50": 18.06659999965632,
+   "sql": 5,
+   "sql_ms": 1.2,
+   "samples": 20
+  },
+  {
+   "route": "/api/v1/org/legal-entities/{legalEntityId}/departments",
+   "url": "https://dapi.onexso.com:7339/api/v1/org/legal-entities/57fecfe8-1c1e-4a82-be4b-2c8451436420/departments",
+   "status": 200,
+   "p50": 6.2,
+   "p95": 8.1,
+   "max": 8.2,
+   "client_p50": 10.826799999449577,
+   "sql": 7,
+   "sql_ms": 2.5,
+   "samples": 20
+  },
+  {
+   "route": "/api/v1/org/legal-entities/{legalEntityId}/departments/{departmentId}",
+   "url": "https://dapi.onexso.com:7339/api/v1/org/legal-entities/57fecfe8-1c1e-4a82-be4b-2c8451436420/departments/3ef91ef9-6528-7f50-ec07-5fa6bdc24705",
+   "status": 200,
+   "p50": 4.1,
+   "p95": 6.2,
+   "max": 8.4,
+   "client_p50": 8.372599999347585,
+   "sql": 5,
+   "sql_ms": 1.2,
+   "samples": 20
+  },
+  {
+   "route": "/api/v1/org/legal-entities/{legalEntityId}/positions",
+   "url": "https://dapi.onexso.com:7339/api/v1/org/legal-entities/57fecfe8-1c1e-4a82-be4b-2c8451436420/positions",
+   "status": 200,
+   "p50": 7.9,
+   "p95": 9.2,
+   "max": 9.3,
+   "client_p50": 12.289299999793002,
+   "sql": 7,
+   "sql_ms": 3.6,
+   "samples": 20
+  },
+  {
+   "route": "/api/v1/org/legal-entities/{legalEntityId}/positions/coverage/resolve",
+   "url": "https://dapi.onexso.com:7339/api/v1/org/legal-entities/57fecfe8-1c1e-4a82-be4b-2c8451436420/positions/coverage/resolve",
+   "status": 400,
+   "error": "One or more validation errors occurred."
+  },
+  {
+   "route": "/api/v1/org/legal-entities/{legalEntityId}/positions/people-chart",
+   "url": "https://dapi.onexso.com:7339/api/v1/org/legal-entities/57fecfe8-1c1e-4a82-be4b-2c8451436420/positions/people-chart",
+   "status": 200,
+   "p50": 10.4,
+   "p95": 14.2,
+   "max": 19.2,
+   "client_p50": 15.054099999360915,
+   "sql": 4,
+   "sql_ms": 2.6,
+   "samples": 20
+  },
+  {
+   "route": "/api/v1/org/legal-entities/{legalEntityId}/positions/tree",
+   "url": "https://dapi.onexso.com:7339/api/v1/org/legal-entities/57fecfe8-1c1e-4a82-be4b-2c8451436420/positions/tree",
+   "status": 200,
+   "p50": 9.2,
+   "p95": 11.0,
+   "max": 15.5,
+   "client_p50": 19.367299999430543,
+   "sql": 5,
+   "sql_ms": 4.4,
+   "samples": 20
+  },
+  {
+   "route": "/api/v1/org/legal-entities/{legalEntityId}/positions/{positionId}",
+   "url": "https://dapi.onexso.com:7339/api/v1/org/legal-entities/57fecfe8-1c1e-4a82-be4b-2c8451436420/positions/c6648b96-213c-2043-6600-04b60b854671",
+   "status": 200,
+   "p50": 5.2,
+   "p95": 7.2,
+   "max": 7.8,
+   "client_p50": 11.411299999963376,
+   "sql": 8,
+   "sql_ms": 2.0,
+   "samples": 20
+  },
+  {
+   "route": "/api/v1/org/legal-entities/{legalEntityId}/positions/{positionId}/access",
+   "url": "https://dapi.onexso.com:7339/api/v1/org/legal-entities/57fecfe8-1c1e-4a82-be4b-2c8451436420/positions/c6648b96-213c-2043-6600-04b60b854671/access",
+   "status": 200,
+   "p50": 3.7,
+   "p95": 5.8,
+   "max": 6.2,
+   "client_p50": 8.570599999984552,
+   "sql": 4,
+   "sql_ms": 1.0,
+   "samples": 20
+  },
+  {
+   "route": "/api/v1/org/legal-entities/{legalEntityId}/positions/{positionId}/active-holders",
+   "url": "https://dapi.onexso.com:7339/api/v1/org/legal-entities/57fecfe8-1c1e-4a82-be4b-2c8451436420/positions/c6648b96-213c-2043-6600-04b60b854671/active-holders",
+   "status": 200,
+   "p50": 4.5,
+   "p95": 5.5,
+   "max": 5.9,
+   "client_p50": 9.224700000231678,
+   "sql": 4,
+   "sql_ms": 1.5,
+   "samples": 20
+  },
+  {
+   "route": "/api/v1/org/legal-entities/{legalEntityId}/positions/{positionId}/coverage",
+   "url": "https://dapi.onexso.com:7339/api/v1/org/legal-entities/57fecfe8-1c1e-4a82-be4b-2c8451436420/positions/c6648b96-213c-2043-6600-04b60b854671/coverage",
+   "status": 200,
+   "p50": 4.1,
+   "p95": 6.4,
+   "max": 6.8,
+   "client_p50": 17.29440000053728,
+   "sql": 5,
+   "sql_ms": 1.3,
+   "samples": 20
+  },
+  {
+   "route": "/api/v1/org/legal-entities/{legalEntityId}/positions/{positionId}/coverage-visualization",
+   "url": "https://dapi.onexso.com:7339/api/v1/org/legal-entities/57fecfe8-1c1e-4a82-be4b-2c8451436420/positions/c6648b96-213c-2043-6600-04b60b854671/coverage-visualization",
+   "status": 200,
+   "p50": 5.6,
+   "p95": 7.2,
+   "max": 8.0,
+   "client_p50": 9.65120000000752,
+   "sql": 7,
+   "sql_ms": 2.3,
+   "samples": 20
+  },
+  {
+   "route": "/api/v1/org/position-template-packs",
+   "url": "https://dapi.onexso.com:7339/api/v1/org/position-template-packs",
+   "status": 200,
+   "p50": 6.4,
+   "p95": 8.6,
+   "max": 9.1,
+   "client_p50": 19.915300000320713,
+   "sql": 10,
+   "sql_ms": 2.7,
+   "samples": 20
+  },
+  {
+   "route": "/api/v1/people/checklist-assignee-positions",
+   "url": "https://dapi.onexso.com:7339/api/v1/people/checklist-assignee-positions",
+   "status": 404,
+   "error": "Company not found."
+  },
+  {
+   "route": "/api/v1/people/checklist-assignees",
+   "url": "https://dapi.onexso.com:7339/api/v1/people/checklist-assignees",
+   "status": 404,
+   "error": "Company not found."
+  },
+  {
+   "route": "/api/v1/people/checklist-templates",
+   "url": "https://dapi.onexso.com:7339/api/v1/people/checklist-templates?legalEntityId=57fecfe8-1c1e-4a82-be4b-2c8451436420&departmentId=3ef91ef9-6528-7f50-ec07-5fa6bdc24705&positionId=c6648b96-213c-2043-6600-04b60b854671",
+   "status": 200,
+   "p50": 3.7,
+   "p95": 4.8,
+   "max": 7.2,
+   "client_p50": 8.039199999984703,
+   "sql": 4,
+   "sql_ms": 1.2,
+   "samples": 20,
+   "note": "needs an id filter the API description marks optional"
+  },
+  {
+   "route": "/api/v1/permissions",
+   "url": "https://dapi.onexso.com:7339/api/v1/permissions",
+   "status": 200,
+   "p50": 4.3,
+   "p95": 5.7,
+   "max": 6.4,
+   "client_p50": 8.409199999732664,
+   "sql": 5,
+   "sql_ms": 1.7,
+   "samples": 20
+  },
+  {
+   "route": "/api/v1/planner/employees/{employeeId}",
+   "url": "https://dapi.onexso.com:7339/api/v1/planner/employees/fb65a0df-8d7f-73a1-8ca2-afaf15560cbe?date=2026-11-26",
+   "status": 200,
+   "p50": 10.2,
+   "p95": 12.6,
+   "max": 13.7,
+   "client_p50": 16.29719999982626,
+   "sql": 12,
+   "sql_ms": 5.3,
+   "samples": 20
+  },
+  {
+   "route": "/api/v1/planner/employees/{employeeId}/range",
+   "url": "https://dapi.onexso.com:7339/api/v1/planner/employees/fb65a0df-8d7f-73a1-8ca2-afaf15560cbe/range?from=2026-10-27&to=2026-11-26",
+   "status": 200,
+   "p50": 14.7,
+   "p95": 16.6,
+   "max": 20.5,
+   "client_p50": 26.73609999965265,
+   "sql": 14,
+   "sql_ms": 8.7,
+   "samples": 20
+  },
+  {
+   "route": "/api/v1/planner/me",
+   "url": "https://dapi.onexso.com:7339/api/v1/planner/me?date=2026-11-26",
+   "status": 200,
+   "p50": 9.4,
+   "p95": 12.3,
+   "max": 17.0,
+   "client_p50": 22.28949999971519,
+   "sql": 11,
+   "sql_ms": 4.7,
+   "samples": 20
+  },
+  {
+   "route": "/api/v1/planner/me/focus",
+   "url": "https://dapi.onexso.com:7339/api/v1/planner/me/focus",
+   "status": 200,
+   "p50": 6.7,
+   "p95": 8.3,
+   "max": 8.4,
+   "client_p50": 19.737999999961175,
+   "sql": 8,
+   "sql_ms": 2.9,
+   "samples": 20
+  },
+  {
+   "route": "/api/v1/planner/me/range",
+   "url": "https://dapi.onexso.com:7339/api/v1/planner/me/range?from=2026-10-27&to=2026-11-26",
+   "status": 200,
+   "p50": 7.1,
+   "p95": 7.7,
+   "max": 9.3,
+   "client_p50": 11.936900000364403,
+   "sql": 9,
+   "sql_ms": 3.5,
+   "samples": 20
+  },
+  {
+   "route": "/api/v1/planner/team",
+   "url": "https://dapi.onexso.com:7339/api/v1/planner/team?date=2026-11-26",
+   "status": 200,
+   "p50": 18.5,
+   "p95": 20.8,
+   "max": 21.6,
+   "client_p50": 32.75800000028539,
+   "sql": 29,
+   "sql_ms": 10.4,
+   "samples": 20
+  },
+  {
+   "route": "/api/v1/planner/team/range",
+   "url": "https://dapi.onexso.com:7339/api/v1/planner/team/range?from=2026-10-27&to=2026-11-26",
+   "status": 200,
+   "p50": 27.8,
+   "p95": 29.9,
+   "max": 30.6,
+   "client_p50": 32.777700000224286,
+   "sql": 29,
+   "sql_ms": 18.2,
+   "samples": 20
+  },
+  {
+   "route": "/api/v1/planner/team/schedule",
+   "url": "https://dapi.onexso.com:7339/api/v1/planner/team/schedule?date=2026-11-26",
+   "status": 200,
+   "p50": 335.3,
+   "p95": 358.0,
+   "max": 361.4,
+   "client_p50": 344.61689999989176,
+   "sql": 34,
+   "sql_ms": 278.2,
+   "samples": 20
+  },
+  {
+   "route": "/api/v1/planner/team/week",
+   "url": "https://dapi.onexso.com:7339/api/v1/planner/team/week?weekStart=2026-11-23",
+   "status": 200,
+   "p50": 230.2,
+   "p95": 249.1,
+   "max": 253.0,
+   "client_p50": 239.53780000010738,
+   "sql": 16,
+   "sql_ms": 173.7,
+   "samples": 20
+  },
+  {
+   "route": "/api/v1/roles",
+   "url": "https://dapi.onexso.com:7339/api/v1/roles",
+   "status": 200,
+   "p50": 7.1,
+   "p95": 8.6,
+   "max": 9.3,
+   "client_p50": 12.29570000032254,
+   "sql": 11,
+   "sql_ms": 3.1,
+   "samples": 20
+  },
+  {
+   "route": "/api/v1/roles/{id}",
+   "url": "https://dapi.onexso.com:7339/api/v1/roles/80af7155-ee31-a347-e03d-523e4ef3ccc2",
+   "status": 200,
+   "p50": 5.4,
+   "p95": 7.3,
+   "max": 7.6,
+   "client_p50": 9.545900000375696,
+   "sql": 9,
+   "sql_ms": 2.3,
+   "samples": 20
+  },
+  {
+   "route": "/api/v1/session/companies",
+   "url": "https://dapi.onexso.com:7339/api/v1/session/companies",
+   "status": 200,
+   "p50": 3.4,
+   "p95": 3.7,
+   "max": 3.8,
+   "client_p50": 7.483200000024226,
+   "sql": 4,
+   "sql_ms": 1.0,
+   "samples": 20
+  },
+  {
+   "route": "/api/v1/settings/notifications",
+   "url": "https://dapi.onexso.com:7339/api/v1/settings/notifications",
+   "status": 200,
+   "p50": 4.2,
+   "p95": 5.3,
+   "max": 5.4,
+   "client_p50": 17.950700000255893,
+   "sql": 4,
+   "sql_ms": 1.3,
+   "samples": 20
+  },
+  {
+   "route": "/api/v1/subscription-plans",
+   "url": "https://dapi.onexso.com:7339/api/v1/subscription-plans",
+   "status": 200,
+   "p50": 3.1,
+   "p95": 4.5,
+   "max": 5.1,
+   "client_p50": 7.222499999443244,
+   "sql": 3,
+   "sql_ms": 1.0,
+   "samples": 20
+  },
+  {
+   "route": "/api/v1/subscription-plans/{id}",
+   "url": "https://dapi.onexso.com:7339/api/v1/subscription-plans/a1b2c3d4-0001-0001-0001-000000000001",
+   "status": 200,
+   "p50": 3.2,
+   "p95": 5.9,
+   "max": 6.2,
+   "client_p50": 10.345000000597793,
+   "sql": 3,
+   "sql_ms": 0.9,
+   "samples": 20
+  },
+  {
+   "route": "/api/v1/support/tickets",
+   "url": "https://dapi.onexso.com:7339/api/v1/support/tickets",
+   "status": 200,
+   "p50": 3.5,
+   "p95": 4.9,
+   "max": 6.6,
+   "client_p50": 7.833399999981339,
+   "sql": 4,
+   "sql_ms": 1.1,
+   "samples": 20
+  },
+  {
+   "route": "/api/v1/tray/releases/check",
+   "url": "https://dapi.onexso.com:7339/api/v1/tray/releases/check",
+   "status": 400,
+   "error": "One or more validation errors occurred."
+  },
+  {
+   "route": "/api/v1/tray/releases/latest",
+   "url": "https://dapi.onexso.com:7339/api/v1/tray/releases/latest",
+   "status": 404,
+   "error": "No tray installer has been published yet."
+  },
+  {
+   "route": "/api/v1/users",
+   "url": "https://dapi.onexso.com:7339/api/v1/users",
+   "status": 200,
+   "p50": 81.4,
+   "p95": 94.6,
+   "max": 111.5,
+   "client_p50": 92.4961999999141,
+   "sql": 8,
+   "sql_ms": 70.6,
+   "samples": 20
+  },
+  {
+   "route": "/api/v1/users/{id}/sessions",
+   "url": "https://dapi.onexso.com:7339/api/v1/users/cd49a0c2-e978-4055-b8be-7d46a3727e94/sessions",
+   "status": 200,
+   "p50": 5.8,
+   "p95": 7.8,
+   "max": 8.2,
+   "client_p50": 19.76250000006985,
+   "sql": 10,
+   "sql_ms": 2.4,
+   "samples": 20
+  },
+  {
+   "route": "/api/v1/work-modes",
+   "url": "https://dapi.onexso.com:7339/api/v1/work-modes",
+   "status": 200,
+   "p50": 3.2,
+   "p95": 3.9,
+   "max": 4.4,
+   "client_p50": 7.765599999402184,
+   "sql": 3,
+   "sql_ms": 0.9,
+   "samples": 20
+  },
+  {
+   "route": "/api/v1/work/forecast/employees",
+   "url": "https://dapi.onexso.com:7339/api/v1/work/forecast/employees",
+   "status": 200,
+   "p50": 601.2,
+   "p95": 644.8,
+   "max": 668.1,
+   "client_p50": 605.0251000006028,
+   "sql": 20,
+   "sql_ms": 295.8,
+   "samples": 20
+  },
+  {
+   "route": "/api/v1/work/forecast/modules",
+   "url": "https://dapi.onexso.com:7339/api/v1/work/forecast/modules",
+   "status": 200,
+   "p50": 49.2,
+   "p95": 53.7,
+   "max": 97.6,
+   "client_p50": 59.48600000010629,
+   "sql": 23,
+   "sql_ms": 38.5,
+   "samples": 20
+  },
+  {
+   "route": "/api/v1/work/led-progress",
+   "url": "https://dapi.onexso.com:7339/api/v1/work/led-progress",
+   "status": 200,
+   "p50": 63.2,
+   "p95": 73.8,
+   "max": 77.3,
+   "client_p50": 77.13570000032632,
+   "sql": 13,
+   "sql_ms": 45.7,
+   "samples": 20
+  },
+  {
+   "route": "/api/v1/work/led-progress/employees",
+   "url": "https://dapi.onexso.com:7339/api/v1/work/led-progress/employees",
+   "status": 200,
+   "p50": 112.1,
+   "p95": 129.7,
+   "max": 130.2,
+   "client_p50": 123.36530000084167,
+   "sql": 10,
+   "sql_ms": 94.6,
+   "samples": 20
+  },
+  {
+   "route": "/api/v1/work/led-progress/period",
+   "url": "https://dapi.onexso.com:7339/api/v1/work/led-progress/period?projectId=8bf962dc-b0f4-32f7-9674-404c36b02a90&objectiveId=c6f16e39-6add-c7c3-c43b-ff92b915426f",
+   "status": 400,
+   "error": "One or more validation errors occurred.",
+   "note": "needs an id filter the API description marks optional"
+  },
+  {
+   "route": "/api/v1/work/led-progress/tasks",
+   "url": "https://dapi.onexso.com:7339/api/v1/work/led-progress/tasks",
+   "status": 200,
+   "p50": 67.3,
+   "p95": 81.1,
+   "max": 100.4,
+   "client_p50": 79.34039999963716,
+   "sql": 10,
+   "sql_ms": 50.0,
+   "samples": 20
+  },
+  {
+   "route": "/api/v1/work/led-progress/time",
+   "url": "https://dapi.onexso.com:7339/api/v1/work/led-progress/time?projectId=797e8ece-1afb-ea13-6279-e9357471749e&objectiveId=c6f16e39-6add-c7c3-c43b-ff92b915426f",
+   "status": 400,
+   "error": "One or more validation errors occurred.",
+   "note": "needs an id filter the API description marks optional"
+  },
+  {
+   "route": "/api/v1/work/led-progress/time/unscheduled",
+   "url": "https://dapi.onexso.com:7339/api/v1/work/led-progress/time/unscheduled",
+   "status": 200,
+   "p50": 44.4,
+   "p95": 48.8,
+   "max": 51.1,
+   "client_p50": 58.15759999950387,
+   "sql": 13,
+   "sql_ms": 21.3,
+   "samples": 20
+  },
+  {
+   "route": "/api/v1/work/led-progress/weekly-completion",
+   "url": "https://dapi.onexso.com:7339/api/v1/work/led-progress/weekly-completion",
+   "status": 200,
+   "p50": 47.4,
+   "p95": 55.2,
+   "max": 56.1,
+   "client_p50": 57.70999999913329,
+   "sql": 9,
+   "sql_ms": 31.7,
+   "samples": 20
+  },
+  {
+   "route": "/api/v1/work/me",
+   "url": "https://dapi.onexso.com:7339/api/v1/work/me",
+   "status": 200,
+   "p50": 4.3,
+   "p95": 6.0,
+   "max": 6.7,
+   "client_p50": 8.49709999965853,
+   "sql": 4,
+   "sql_ms": 1.3,
+   "samples": 20
+  },
+  {
+   "route": "/api/v1/work/my-deadlines",
+   "url": "https://dapi.onexso.com:7339/api/v1/work/my-deadlines?from=2026-10-27&to=2026-11-26",
+   "status": 200,
+   "p50": 5.4,
+   "p95": 6.8,
+   "max": 7.3,
+   "client_p50": 9.732200000144076,
+   "sql": 6,
+   "sql_ms": 2.4,
+   "samples": 20
+  },
+  {
+   "route": "/api/v1/work/my-task-progress",
+   "url": "https://dapi.onexso.com:7339/api/v1/work/my-task-progress",
+   "status": 200,
+   "p50": 4.4,
+   "p95": 5.8,
+   "max": 5.8,
+   "client_p50": 8.70390000000043,
+   "sql": 5,
+   "sql_ms": 1.5,
+   "samples": 20
+  },
+  {
+   "route": "/api/v1/work/my-tasks",
+   "url": "https://dapi.onexso.com:7339/api/v1/work/my-tasks",
+   "status": 200,
+   "p50": 4.4,
+   "p95": 6.8,
+   "max": 6.9,
+   "client_p50": 17.968199999813805,
+   "sql": 5,
+   "sql_ms": 1.5,
+   "samples": 20
+  },
+  {
+   "route": "/api/v1/work/my-weekly-progress",
+   "url": "https://dapi.onexso.com:7339/api/v1/work/my-weekly-progress?weekStart=2026-11-23",
+   "status": 200,
+   "p50": 13.9,
+   "p95": 15.7,
+   "max": 17.7,
+   "client_p50": 18.03219999965222,
+   "sql": 17,
+   "sql_ms": 8.1,
+   "samples": 20
+  },
+  {
+   "route": "/api/v1/work/notification-navigation",
+   "url": "https://dapi.onexso.com:7339/api/v1/work/notification-navigation?relatedEntityId=6639df26-6c2d-6836-50ea-20c838dbc748",
+   "status": 400,
+   "error": "One or more validation errors occurred.",
+   "note": "needs an id filter the API description marks optional"
+  },
+  {
+   "route": "/api/v1/work/objectives/invitations/mine",
+   "url": "https://dapi.onexso.com:7339/api/v1/work/objectives/invitations/mine",
+   "status": 200,
+   "p50": 4.4,
+   "p95": 6.3,
+   "max": 7.1,
+   "client_p50": 9.20239999959449,
+   "sql": 5,
+   "sql_ms": 1.4,
+   "samples": 20
+  },
+  {
+   "route": "/api/v1/work/objectives/mine/history",
+   "url": "https://dapi.onexso.com:7339/api/v1/work/objectives/mine/history",
+   "status": 200,
+   "p50": 4.5,
+   "p95": 5.2,
+   "max": 5.8,
+   "client_p50": 18.054299999676005,
+   "sql": 5,
+   "sql_ms": 1.5,
+   "samples": 20
+  },
+  {
+   "route": "/api/v1/work/objectives/{id}",
+   "url": "https://dapi.onexso.com:7339/api/v1/work/objectives/c6f16e39-6add-c7c3-c43b-ff92b915426f",
+   "status": 403,
+   "error": "You do not have access to this milestone."
+  },
+  {
+   "route": "/api/v1/work/objectives/{id}/members",
+   "url": "https://dapi.onexso.com:7339/api/v1/work/objectives/c6f16e39-6add-c7c3-c43b-ff92b915426f/members",
+   "status": 403,
+   "error": "You do not have access to this milestone's members."
+  },
+  {
+   "route": "/api/v1/work/objectives/{id}/tree",
+   "url": "https://dapi.onexso.com:7339/api/v1/work/objectives/c6f16e39-6add-c7c3-c43b-ff92b915426f/tree",
+   "status": 403,
+   "error": "You do not have access to this milestone."
+  },
+  {
+   "route": "/api/v1/work/objectives/{objectiveId}/sprints",
+   "url": "https://dapi.onexso.com:7339/api/v1/work/objectives/c6f16e39-6add-c7c3-c43b-ff92b915426f/sprints",
+   "status": 403,
+   "error": "You do not have access to this milestone."
+  },
+  {
+   "route": "/api/v1/work/objectives/{objectiveId}/tasks",
+   "url": "https://dapi.onexso.com:7339/api/v1/work/objectives/c6f16e39-6add-c7c3-c43b-ff92b915426f/tasks",
+   "status": 403,
+   "error": "You do not have access to this milestone."
+  },
+  {
+   "route": "/api/v1/work/project-categories",
+   "url": "https://dapi.onexso.com:7339/api/v1/work/project-categories",
+   "status": 200,
+   "p50": 3.8,
+   "p95": 6.2,
+   "max": 13.7,
+   "client_p50": 16.843999999764492,
+   "sql": 4,
+   "sql_ms": 1.1,
+   "samples": 20
+  },
+  {
+   "route": "/api/v1/work/projects",
+   "url": "https://dapi.onexso.com:7339/api/v1/work/projects",
+   "status": 403,
+   "error": "Work project visibility is relationship-based; you can only list your own projects."
+  },
+  {
+   "route": "/api/v1/work/projects/mine",
+   "url": "https://dapi.onexso.com:7339/api/v1/work/projects/mine",
+   "status": 200,
+   "p50": 17.7,
+   "p95": 22.1,
+   "max": 23.5,
+   "client_p50": 30.525500000294414,
+   "sql": 37,
+   "sql_ms": 10.5,
+   "samples": 20
+  },
+  {
+   "route": "/api/v1/work/projects/{id}",
+   "url": "https://dapi.onexso.com:7339/api/v1/work/projects/797e8ece-1afb-ea13-6279-e9357471749e",
+   "status": 200,
+   "p50": 13.3,
+   "p95": 15.0,
+   "max": 15.5,
+   "client_p50": 25.420300000405405,
+   "sql": 29,
+   "sql_ms": 6.5,
+   "samples": 20
+  },
+  {
+   "route": "/api/v1/work/projects/{id}/approval-history",
+   "url": "https://dapi.onexso.com:7339/api/v1/work/projects/797e8ece-1afb-ea13-6279-e9357471749e/approval-history",
+   "status": 200,
+   "p50": 5.2,
+   "p95": 6.8,
+   "max": 7.2,
+   "client_p50": 10.372600000664534,
+   "sql": 8,
+   "sql_ms": 2.0,
+   "samples": 20
+  },
+  {
+   "route": "/api/v1/work/projects/{id}/banner",
+   "url": "https://dapi.onexso.com:7339/api/v1/work/projects/797e8ece-1afb-ea13-6279-e9357471749e/banner",
+   "status": 404,
+   "error": "Project banner not found."
+  },
+  {
+   "route": "/api/v1/work/projects/{id}/logo",
+   "url": "https://dapi.onexso.com:7339/api/v1/work/projects/797e8ece-1afb-ea13-6279-e9357471749e/logo",
+   "status": 404,
+   "error": "Project logo not found."
+  },
+  {
+   "route": "/api/v1/work/projects/{id}/work-graph",
+   "url": "https://dapi.onexso.com:7339/api/v1/work/projects/797e8ece-1afb-ea13-6279-e9357471749e/work-graph",
+   "status": 200,
+   "p50": 45.3,
+   "p95": 49.8,
+   "max": 52.8,
+   "client_p50": 58.092600000236416,
+   "sql": 27,
+   "sql_ms": 12.4,
+   "samples": 20
+  },
+  {
+   "route": "/api/v1/work/projects/{projectId}/approvals",
+   "url": "https://dapi.onexso.com:7339/api/v1/work/projects/797e8ece-1afb-ea13-6279-e9357471749e/approvals",
+   "status": 200,
+   "p50": 18.2,
+   "p95": 19.8,
+   "max": 20.0,
+   "client_p50": 30.96330000062153,
+   "sql": 14,
+   "sql_ms": 3.5,
+   "samples": 20
+  },
+  {
+   "route": "/api/v1/work/projects/{projectId}/calendar",
+   "url": "https://dapi.onexso.com:7339/api/v1/work/projects/797e8ece-1afb-ea13-6279-e9357471749e/calendar",
+   "status": 200,
+   "p50": 37.6,
+   "p95": 42.2,
+   "max": 45.3,
+   "client_p50": 51.57800000051793,
+   "sql": 11,
+   "sql_ms": 7.1,
+   "samples": 20
+  },
+  {
+   "route": "/api/v1/work/projects/{projectId}/monitor/alerts",
+   "url": "https://dapi.onexso.com:7339/api/v1/work/projects/797e8ece-1afb-ea13-6279-e9357471749e/monitor/alerts",
+   "status": 200,
+   "p50": 17.6,
+   "p95": 19.6,
+   "max": 19.7,
+   "client_p50": 21.834900000612834,
+   "sql": 8,
+   "sql_ms": 2.9,
+   "samples": 20
+  },
+  {
+   "route": "/api/v1/work/projects/{projectId}/my-tasks",
+   "url": "https://dapi.onexso.com:7339/api/v1/work/projects/797e8ece-1afb-ea13-6279-e9357471749e/my-tasks",
+   "status": 200,
+   "p50": 26.6,
+   "p95": 29.7,
+   "max": 33.4,
+   "client_p50": 34.00030000011611,
+   "sql": 9,
+   "sql_ms": 7.1,
+   "samples": 20
+  },
+  {
+   "route": "/api/v1/work/projects/{projectId}/objectives",
+   "url": "https://dapi.onexso.com:7339/api/v1/work/projects/797e8ece-1afb-ea13-6279-e9357471749e/objectives",
+   "status": 200,
+   "p50": 7.5,
+   "p95": 9.5,
+   "max": 10.2,
+   "client_p50": 20.571799999743234,
+   "sql": 16,
+   "sql_ms": 3.4,
+   "samples": 20
+  },
+  {
+   "route": "/api/v1/work/projects/{projectId}/objectives/mine",
+   "url": "https://dapi.onexso.com:7339/api/v1/work/projects/797e8ece-1afb-ea13-6279-e9357471749e/objectives/mine",
+   "status": 200,
+   "p50": 6.8,
+   "p95": 8.2,
+   "max": 8.4,
+   "client_p50": 12.185200000203622,
+   "sql": 13,
+   "sql_ms": 2.8,
+   "samples": 20
+  },
+  {
+   "route": "/api/v1/work/projects/{projectId}/sprints",
+   "url": "https://dapi.onexso.com:7339/api/v1/work/projects/797e8ece-1afb-ea13-6279-e9357471749e/sprints",
+   "status": 200,
+   "p50": 7.2,
+   "p95": 9.0,
+   "max": 9.0,
+   "client_p50": 11.422999999922467,
+   "sql": 12,
+   "sql_ms": 3.5,
+   "samples": 20
+  },
+  {
+   "route": "/api/v1/work/projects/{projectId}/task-categories",
+   "url": "https://dapi.onexso.com:7339/api/v1/work/projects/797e8ece-1afb-ea13-6279-e9357471749e/task-categories",
+   "status": 200,
+   "p50": 4.2,
+   "p95": 7.2,
+   "max": 7.6,
+   "client_p50": 11.771000000408094,
+   "sql": 5,
+   "sql_ms": 1.4,
+   "samples": 20
+  },
+  {
+   "route": "/api/v1/work/projects/{projectId}/task-status-change-requests",
+   "url": "https://dapi.onexso.com:7339/api/v1/work/projects/797e8ece-1afb-ea13-6279-e9357471749e/task-status-change-requests",
+   "status": 200,
+   "p50": 16.3,
+   "p95": 19.7,
+   "max": 26.0,
+   "client_p50": 21.001500000238593,
+   "sql": 8,
+   "sql_ms": 2.5,
+   "samples": 20
+  },
+  {
+   "route": "/api/v1/work/projects/{projectId}/task-statuses",
+   "url": "https://dapi.onexso.com:7339/api/v1/work/projects/797e8ece-1afb-ea13-6279-e9357471749e/task-statuses",
+   "status": 200,
+   "p50": 4.3,
+   "p95": 5.9,
+   "max": 5.9,
+   "client_p50": 9.020600000440027,
+   "sql": 5,
+   "sql_ms": 1.4,
+   "samples": 20
+  },
+  {
+   "route": "/api/v1/work/projects/{projectId}/tasks",
+   "url": "https://dapi.onexso.com:7339/api/v1/work/projects/797e8ece-1afb-ea13-6279-e9357471749e/tasks",
+   "status": 200,
+   "p50": 54.2,
+   "p95": 63.6,
+   "max": 66.5,
+   "client_p50": 66.3870999997016,
+   "sql": 35,
+   "sql_ms": 20.0,
+   "samples": 20
+  },
+  {
+   "route": "/api/v1/work/projects/{projectId}/work-notifications",
+   "url": "https://dapi.onexso.com:7339/api/v1/work/projects/797e8ece-1afb-ea13-6279-e9357471749e/work-notifications",
+   "status": 200,
+   "p50": 15.6,
+   "p95": 17.2,
+   "max": 17.6,
+   "client_p50": 21.50930000061635,
+   "sql": 6,
+   "sql_ms": 1.9,
+   "samples": 20
+  },
+  {
+   "route": "/api/v1/work/sprints/{id}/activity",
+   "url": "https://dapi.onexso.com:7339/api/v1/work/sprints/2eb3bd10-09ae-c28c-724b-98049d307724/activity",
+   "status": 200,
+   "p50": 7.1,
+   "p95": 9.1,
+   "max": 9.3,
+   "client_p50": 11.525500000061584,
+   "sql": 11,
+   "sql_ms": 3.2,
+   "samples": 20
+  },
+  {
+   "route": "/api/v1/work/sprints/{id}/tasks",
+   "url": "https://dapi.onexso.com:7339/api/v1/work/sprints/2eb3bd10-09ae-c28c-724b-98049d307724/tasks",
+   "status": 200,
+   "p50": 21.0,
+   "p95": 23.1,
+   "max": 23.6,
+   "client_p50": 34.09130000000005,
+   "sql": 13,
+   "sql_ms": 5.3,
+   "samples": 20
+  },
+  {
+   "route": "/api/v1/work/task-drafts",
+   "url": "https://dapi.onexso.com:7339/api/v1/work/task-drafts",
+   "status": 200,
+   "p50": 3.7,
+   "p95": 4.7,
+   "max": 5.5,
+   "client_p50": 7.685000000492437,
+   "sql": 4,
+   "sql_ms": 1.0,
+   "samples": 20
+  },
+  {
+   "route": "/api/v1/work/tasks/{id}",
+   "url": "https://dapi.onexso.com:7339/api/v1/work/tasks/195f290e-0199-5b52-9a65-ebd31b3f1902",
+   "status": 404,
+   "error": "Task not found."
+  },
+  {
+   "route": "/api/v1/work/tasks/{id}/history",
+   "url": "https://dapi.onexso.com:7339/api/v1/work/tasks/195f290e-0199-5b52-9a65-ebd31b3f1902/history",
+   "status": 404,
+   "error": "Task not found."
+  },
+  {
+   "route": "/api/v1/work/tasks/{taskId}/comments",
+   "url": "https://dapi.onexso.com:7339/api/v1/work/tasks/195f290e-0199-5b52-9a65-ebd31b3f1902/comments",
+   "status": 404,
+   "error": "Task not found."
+  },
+  {
+   "route": "/api/v1/attendance/legal-entities/{legalEntityId}/clock-in-policies",
+   "url": "https://dapi.onexso.com:7339/api/v1/attendance/legal-entities/57fecfe8-1c1e-4a82-be4b-2c8451436420/clock-in-policies",
+   "status": 200,
+   "p50": 3.9,
+   "p95": 4.9,
+   "max": 5.3,
+   "client_p50": 18.236699999761186,
+   "sql": 4,
+   "sql_ms": 1.1,
+   "samples": 20
+  },
+  {
+   "route": "/api/v1/attendance/legal-entities/{legalEntityId}/clock-in-policies/{id}",
+   "url": "https://dapi.onexso.com:7339/api/v1/attendance/legal-entities/57fecfe8-1c1e-4a82-be4b-2c8451436420/clock-in-policies/153cca1a-9caa-445b-820d-daa3198fd06a",
+   "status": 200,
+   "p50": 4.0,
+   "p95": 6.0,
+   "max": 6.1,
+   "client_p50": 9.70340000003489,
+   "sql": 4,
+   "sql_ms": 1.1,
+   "samples": 20
+  },
+  {
+   "route": "/api/v1/attendance/legal-entities/{legalEntityId}/work-modes",
+   "url": "https://dapi.onexso.com:7339/api/v1/attendance/legal-entities/57fecfe8-1c1e-4a82-be4b-2c8451436420/work-modes",
+   "status": 200,
+   "p50": 3.5,
+   "p95": 4.8,
+   "max": 4.8,
+   "client_p50": 7.788199999595236,
+   "sql": 3,
+   "sql_ms": 0.9,
+   "samples": 20
+  },
+  {
+   "route": "/api/v1/conversations/{id}/messages",
+   "url": "https://dapi.onexso.com:7339/api/v1/conversations/4fb52d80-ffa3-81b3-bad8-76cc25409a35/messages",
+   "status": 200,
+   "p50": 19.1,
+   "p95": 24.5,
+   "max": 24.8,
+   "client_p50": 28.68670000043494,
+   "sql": 14,
+   "sql_ms": 3.9,
+   "samples": 20
+  }
+ ],
+ "skipped": [
+  {
+   "route": "/api/v1/calendar/connections/{provider}/callback",
+   "reason": "not timed (redirect, stream or file flow)"
+  },
+  {
+   "route": "/api/v1/inbox/{source}/{kind}/{id}/export",
+   "reason": "not timed (redirect, stream or file flow)"
+  },
+  {
+   "route": "/api/v1/integrations/github/connect/callback",
+   "reason": "not timed (redirect, stream or file flow)"
+  },
+  {
+   "route": "/api/v1/leave/balance-audit/export",
+   "reason": "not timed (redirect, stream or file flow)"
+  },
+  {
+   "route": "/api/v1/monitoring/daily-report/export",
+   "reason": "not timed (redirect, stream or file flow)"
+  },
+  {
+   "route": "/api/v1/support/tickets/{id}/attachments/{attachmentId}/download-url",
+   "reason": "not timed (redirect, stream or file flow)"
+  },
+  {
+   "route": "/api/v1/attendance/clock-in-policies/{id}",
+   "reason": "no value for id (no list rows and no matching id field)"
+  },
+  {
+   "route": "/api/v1/auth/invitations/{token}",
+   "reason": "no value for token"
+  },
+  {
+   "route": "/api/v1/calendar/{id}/eligible-nominees",
+   "reason": "no value for id (no list rows and no matching id field)"
+  },
+  {
+   "route": "/api/v1/calendar/{id}/meeting",
+   "reason": "no value for id (no list rows and no matching id field)"
+  },
+  {
+   "route": "/api/v1/calendar/{id}/meeting/attendance",
+   "reason": "no value for id (no list rows and no matching id field)"
+  },
+  {
+   "route": "/api/v1/conversations/{id}/attachments/{attachmentId}",
+   "reason": "no value for attachmentId"
+  },
+  {
+   "route": "/api/v1/dashboard-widgets/{instanceId}/data",
+   "reason": "no value for instanceId"
+  },
+  {
+   "route": "/api/v1/dashboards/{id}/bootstrap",
+   "reason": "no value for id (no list rows and no matching id field)"
+  },
+  {
+   "route": "/api/v1/dashboards/{id}/widgets/available",
+   "reason": "no value for id (no list rows and no matching id field)"
+  },
+  {
+   "route": "/api/v1/files/{fileId}",
+   "reason": "no value for fileId"
+  },
+  {
+   "route": "/api/v1/inbox/chats/for-item/{source}/{kind}/{id}",
+   "reason": "no value for id (no list rows and no matching id field)"
+  },
+  {
+   "route": "/api/v1/inbox/{source}/{kind}/{id}",
+   "reason": "no value for id (no list rows and no matching id field)"
+  },
+  {
+   "route": "/api/v1/leave/policies/{leavePolicyId}",
+   "reason": "no value for leavePolicyId"
+  },
+  {
+   "route": "/api/v1/legal/documents/{documentType}/{version}",
+   "reason": "no value for documentType"
+  },
+  {
+   "route": "/api/v1/meetings/series/{seriesId}/occurrences/{originalStart}",
+   "reason": "no value for originalStart"
+  },
+  {
+   "route": "/api/v1/meetings/series/{seriesId}/occurrences/{originalStart}/attendance",
+   "reason": "no value for originalStart"
+  },
+  {
+   "route": "/api/v1/monitoring/exceptions/{exceptionId}/evidence",
+   "reason": "no value for exceptionId"
+  },
+  {
+   "route": "/api/v1/monitoring/screenshots/{id}/url",
+   "reason": "no value for id (no list rows and no matching id field)"
+  },
+  {
+   "route": "/api/v1/onboarding/bulk-batches/{id}",
+   "reason": "no value for id (no list rows and no matching id field)"
+  },
+  {
+   "route": "/api/v1/onboarding/drafts/{id}",
+   "reason": "no value for id (no list rows and no matching id field)"
+  },
+  {
+   "route": "/api/v1/people/checklist-templates/{id}",
+   "reason": "no value for id (no list rows and no matching id field)"
+  },
+  {
+   "route": "/api/v1/people/checklist-templates/{id}/files/{fileId}",
+   "reason": "no value for id (no list rows and no matching id field)"
+  },
+  {
+   "route": "/api/v1/support/tickets/{id}",
+   "reason": "no value for id (no list rows and no matching id field)"
+  },
+  {
+   "route": "/api/v1/work/approvals/{id}",
+   "reason": "no value for id (no list rows and no matching id field)"
+  },
+  {
+   "route": "/api/v1/work/calendar-events/{id}",
+   "reason": "no value for id (no list rows and no matching id field)"
+  },
+  {
+   "route": "/api/v1/work/calendar-events/{id}/activity",
+   "reason": "no value for id (no list rows and no matching id field)"
+  },
+  {
+   "route": "/api/v1/work/calendar-events/{id}/tasks",
+   "reason": "no value for id (no list rows and no matching id field)"
+  },
+  {
+   "route": "/api/v1/work/objectives/{id}/assets/{assetId}/file",
+   "reason": "no value for assetId"
+  },
+  {
+   "route": "/api/v1/work/task-drafts/{id}",
+   "reason": "no value for id (no list rows and no matching id field)"
+  },
+  {
+   "route": "/api/v1/work/tasks/files/{fileId}",
+   "reason": "no value for fileId"
+  },
+  {
+   "route": "/api/v1/work/tasks/{parentTaskId}/subtasks",
+   "reason": "no value for parentTaskId"
+  }
+ ]
+}

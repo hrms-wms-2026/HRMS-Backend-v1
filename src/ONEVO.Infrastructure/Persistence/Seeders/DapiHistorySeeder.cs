@@ -125,7 +125,9 @@ public sealed partial class DapiHistorySeeder : IHostedService
             .Where(e => e.TenantId == DapiTenantId
                 && e.LegalEntityId == DapiLegalEntityId
                 && !e.IsDeleted
-                && e.TerminationDate == null)
+                && e.TerminationDate == null
+                // The performance baseline people get their own year of attendance and no monitoring history.
+                && !e.EmployeeNumber.StartsWith(DapiPerformanceBaselineSeeder.EmployeeNumberPrefix))
             .OrderBy(e => e.EmployeeNumber)
             .ToListAsync(ct);
         if (employees.Count == 0)
