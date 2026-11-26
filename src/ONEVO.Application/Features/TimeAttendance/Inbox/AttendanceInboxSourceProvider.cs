@@ -95,6 +95,60 @@ public sealed class AttendanceInboxSourceProvider : IInboxSourceProvider, IInbox
 
     // ---- list -----------------------------------------------------------------------------------
 
+    public async Task<InboxSourceCounts> CountAsync(Guid tenantId, Guid callerEmployeeId, CancellationToken ct)
+    {
+        var legalEntities = await CallerLegalEntitiesAsync(tenantId, ct);
+        var byKind = await CountRequestsAsync(tenantId, legalEntities, ct);
+        var openAlerts = await _alerts.CountAsync(tenantId, callerEmployeeId, legalEntities, ct);
+        if (openAlerts > 0)
+            byKind[AttendanceInboxKinds.Alert] = openAlerts;
+        return new InboxSourceCounts(byKind.Where(x => x.Key != AttendanceInboxKinds.Alert).Sum(x => x.Value), openAlerts, byKind);
+    }
+
+    private async Task<Dictionary<string, int>> CountRequestsAsync(
+        Guid tenantId, IReadOnlyList<Guid> legalEntities, CancellationToken ct)
+    {
+        var counts = new Dictionary<string, int>();
+        if (!_currentUser.HasPermission(AttendanceInboxKinds.ApprovePermission))
+            return counts;
+
+        var unscopedDevices = await _devices.ListPendingWithoutLegalEntityAsync(tenantId, ct);
+        var unscopedOwners = unscopedDevices.Count == 0
+            ? new Dictionary<Guid, Employee>()
+            : await _employees.ListByIdsAsync(tenantId, unscopedDevices.Select(x => x.EmployeeId).Distinct().ToList(), ct);
+
+        foreach (var legalEntityId in legalEntities)
+        {
+            async Task AddAsync(string kind, IEnumerable<Guid> candidates, Func<IReadOnlyCollection<Guid>, Task<int>> countAsync)
+            {
+                var scoped = await ScopeAsync(legalEntityId, kind, candidates, ct);
+                var count = await countAsync(scoped);
+                if (count > 0)
+                    counts[kind] = counts.GetValueOrDefault(kind) + count;
+            }
+
+            await AddAsync(AttendanceInboxKinds.Correction,
+                await _corrections.ListPendingEmployeeIdsAsync(tenantId, legalEntityId, ct),
+                ids => _corrections.CountPendingAsync(tenantId, legalEntityId, ids, ct));
+            await AddAsync(AttendanceInboxKinds.WorkModeChange,
+                await _workAreas.ListPendingEmployeeIdsAsync(tenantId, legalEntityId, null, null, ct),
+                ids => _workAreas.CountPendingAsync(tenantId, legalEntityId, ids, ct));
+            await AddAsync(AttendanceInboxKinds.LocationChange,
+                await _locations.ListPendingEmployeeIdsAsync(tenantId, legalEntityId, ct),
+                ids => _locations.CountPendingAsync(tenantId, legalEntityId, ids, ct));
+            var unscopedHere = unscopedDevices
+                .Where(x => unscopedOwners.GetValueOrDefault(x.EmployeeId)?.LegalEntityId == legalEntityId).ToList();
+            var deviceCandidates = (await _devices.ListPendingEmployeeIdsAsync(tenantId, legalEntityId, ct))
+                .Concat(unscopedHere.Select(x => x.EmployeeId));
+            var deviceScope = await ScopeAsync(legalEntityId, AttendanceInboxKinds.DeviceChange, deviceCandidates, ct);
+            var deviceCount = await _devices.CountPendingAsync(tenantId, legalEntityId, deviceScope, ct)
+                + unscopedHere.Count(x => deviceScope.Contains(x.EmployeeId));
+            if (deviceCount > 0)
+                counts[AttendanceInboxKinds.DeviceChange] = counts.GetValueOrDefault(AttendanceInboxKinds.DeviceChange) + deviceCount;
+        }
+        return counts;
+    }
+
     public async Task<IReadOnlyList<InboxItem>> ListAsync(Guid tenantId, InboxQuery query, Guid callerEmployeeId, CancellationToken ct)
     {
         var wantRequests = query.Category is not { Count: > 0 } || query.Category.Contains(InboxCategories.Request);

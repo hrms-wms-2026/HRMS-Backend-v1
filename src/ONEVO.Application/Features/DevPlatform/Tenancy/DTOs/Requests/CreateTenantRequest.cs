@@ -7,7 +7,10 @@ public sealed record SubscriptionInfoRequest(
     [property: JsonPropertyName("billing_cycle")] string BillingCycle,
     [property: JsonPropertyName("commercial_model")] string CommercialModel,
     [property: JsonPropertyName("trial_period_days")] int? TrialPeriodDays = null,
-    [property: JsonPropertyName("unpaid_grace_period_days")] int? UnpaidGracePeriodDays = null);
+    [property: JsonPropertyName("unpaid_grace_period_days")] int? UnpaidGracePeriodDays = null,
+    [property: JsonPropertyName("included_seats")] int? IncludedSeats = null,
+    [property: JsonPropertyName("overage_allowed")] bool? OverageAllowed = null,
+    [property: JsonPropertyName("is_test")] bool IsTest = false);
 
 public sealed record CreateTenantRequest(
     [property: JsonPropertyName("company_name")] string Name,

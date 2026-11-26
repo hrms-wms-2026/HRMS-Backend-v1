@@ -118,7 +118,8 @@ public static class ReferenceForeignKeys
         Fk<WorkApprovalRequest, Employee>(b, x => x.RevertedByEmployeeId);
         Fk<WorkNotificationLog, Project>(b, x => x.ProjectId);
         Fk<WorkNotificationLog, Employee>(b, x => x.RecipientEmployeeId);
-        Fk<WorkNotificationLog, Employee>(b, x => x.ActorEmployeeId);
+        // No key on ActorEmployeeId: system monitor alerts store Guid.Empty as the actor (see
+        // WorkNotificationKinds.Alert), so a key to employees would reject every alert.
         Fk<WorkNotificationLog, WorkApprovalRequest>(b, x => x.ApprovalRequestId);
         Fk<MonitorAlert, Project>(b, x => x.ProjectId);
         Fk<MonitorAlert, Employee>(b, x => x.SubjectEmployeeId);

@@ -66,9 +66,11 @@ internal static class MessagingRegistration
         // IPlatformServiceKeyResolver - never from appsettings or a hardcoded default.
         services.AddHttpClient(SendGridEmailAdapter.HttpClientName);
         services.AddHttpClient(ResendEmailAdapter.HttpClientName);
+        services.AddHttpClient(BrevoEmailAdapter.HttpClientName);
         services.AddScoped<IEmailTemplateRenderer, EmailTemplateRenderer>();
         services.AddScoped<IEmailProviderAdapter, SendGridEmailAdapter>();
         services.AddScoped<IEmailProviderAdapter, ResendEmailAdapter>();
+        services.AddScoped<IEmailProviderAdapter, BrevoEmailAdapter>();
         services.AddScoped<ITransactionalEmailSender, PlatformKeyTransactionalEmailSender>();
         services.AddScoped<IEmailService, TransactionalEmailService>();
 

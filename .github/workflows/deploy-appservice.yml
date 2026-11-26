@@ -201,6 +201,9 @@ jobs:
         run: |
           dotnet tool install --global dotnet-ef --version 10.0.9
           export PATH="$PATH:$HOME/.dotnet/tools"
+          # A fresh checkout has no obj/project.assets.json; dotnet ef reads project metadata before it
+          # builds, so without a restore it fails with NETSDK1004.
+          dotnet restore backend/src/ONEVO.Api/ONEVO.Api.csproj
           dotnet ef migrations bundle \
             -p backend/src/ONEVO.Infrastructure \
             -s backend/src/ONEVO.Api \

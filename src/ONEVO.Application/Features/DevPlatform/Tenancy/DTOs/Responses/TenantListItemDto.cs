@@ -5,7 +5,8 @@ public sealed record TenantListItemDto(
     string Name,
     string Slug,
     string Status,
-    DateTimeOffset CreatedAt);
+    DateTimeOffset CreatedAt,
+    bool IsTest = false);
 
 public sealed record TenantListResponseDto(
     IReadOnlyList<TenantListItemDto> Items,

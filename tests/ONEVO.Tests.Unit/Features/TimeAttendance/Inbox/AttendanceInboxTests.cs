@@ -160,6 +160,34 @@ public class AttendanceInboxTests
     }
 
     [Fact]
+    public async Task Count_uses_scoped_count_queries_without_loading_request_or_alert_items()
+    {
+        var f = new Fixture();
+        f.Scope.Add(f.Worker.Id);
+        f.Corrections.Setup(x => x.ListPendingEmployeeIdsAsync(f.TenantId, f.LegalEntityId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync([f.Worker.Id]);
+        f.Corrections.Setup(x => x.CountPendingAsync(f.TenantId, f.LegalEntityId,
+                It.IsAny<IReadOnlyCollection<Guid>>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(2);
+        f.Alerts.Setup(x => x.CountOpenAsync(f.TenantId, f.LegalEntityId,
+                It.IsAny<IReadOnlyCollection<Guid>>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(3);
+
+        var counts = await f.Provider().CountAsync(f.TenantId, f.Approver.Id, default);
+
+        counts.Should().BeEquivalentTo(new InboxSourceCounts(2, 3, new Dictionary<string, int>
+        {
+            [AttendanceInboxKinds.Correction] = 2,
+            [AttendanceInboxKinds.Alert] = 3,
+        }));
+        f.Corrections.Verify(x => x.ListApprovalInboxAsync(It.IsAny<Guid>(), It.IsAny<Guid>(),
+            It.IsAny<IReadOnlyCollection<Guid>>(), It.IsAny<DateOnly?>(), It.IsAny<DateOnly?>(), It.IsAny<string?>(),
+            It.IsAny<CancellationToken>()), Times.Never);
+        f.Alerts.Verify(x => x.ListOpenAsync(It.IsAny<Guid>(), It.IsAny<Guid>(), It.IsAny<IReadOnlyCollection<Guid>>(),
+            It.IsAny<int>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
     public async Task Without_attendance_approve_nothing_is_received_and_decisions_are_refused()
     {
         var f = new Fixture();

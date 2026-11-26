@@ -58,6 +58,9 @@ public interface IDepartmentRepository
     Task<bool> ExistsAsync(
         Guid tenantId, Guid legalEntityId, Guid departmentId, CancellationToken ct = default);
 
+    /// <summary>True when the tenant has at least one active department in any legal entity.</summary>
+    Task<bool> AnyActiveAsync(Guid tenantId, CancellationToken ct = default);
+
     Task<bool> IsDescendantAsync(
         Guid tenantId,
         Guid legalEntityId,

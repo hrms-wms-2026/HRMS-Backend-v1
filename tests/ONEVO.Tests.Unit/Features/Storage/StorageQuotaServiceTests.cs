@@ -399,6 +399,12 @@ public class StorageQuotaServiceTests
         public Task<TenantSubscription?> GetByTenantIdAsync(Guid tenantId, CancellationToken ct = default) =>
             Task.FromResult(Subscriptions.FirstOrDefault(s => s.TenantId == tenantId));
 
+        public Task<IReadOnlySet<Guid>> GetTestTenantIdsAsync(IReadOnlyCollection<Guid> tenantIds, CancellationToken ct = default) =>
+            Task.FromResult<IReadOnlySet<Guid>>(Subscriptions
+                .Where(s => tenantIds.Contains(s.TenantId) && CommercialModels.IsTest(s))
+                .Select(s => s.TenantId)
+                .ToHashSet());
+
         public Task<TenantSubscription?> GetLatestActiveByTenantIdAsync(Guid tenantId, CancellationToken ct = default)
         {
             var match = Subscriptions

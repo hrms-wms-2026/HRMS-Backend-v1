@@ -564,6 +564,16 @@ public class OnboardingDraftWriteService : IOnboardingDraftWriteService
         // the single SaveChangesAsync at the end, so this reorder changes nothing transactionally.
         var normalizedEmail = draft.WorkEmail.Trim().ToLowerInvariant();
         var user = await _userRepository.GetByTenantAndEmailAsync(draft.TenantId, normalizedEmail, ct);
+
+        // "Add yourself as an employee": the draft is for the acting user's own login, so the seat is
+        // activated now and no invitation is sent. Keyed on the email AND the found login being the actor,
+        // so it can never attach an employee to someone else's login or skip anyone else's invitation.
+        var currentUserEmail = (_currentUser.Email ?? string.Empty).Trim().ToLowerInvariant();
+        var isOwnEmail = currentUserEmail.Length > 0 && currentUserEmail == normalizedEmail;
+        if (isOwnEmail && user is not null && user.Id != actingUserId)
+            return Result<FinalizeOnboardingDraftResponse>.Conflict("This email belongs to a different sign-in in this company.");
+        var isSelf = isOwnEmail && user is not null;
+
         if (user is null)
         {
             user = OnboardingFinalizeFactory.NewPendingUser(draft);
@@ -604,8 +614,11 @@ public class OnboardingDraftWriteService : IOnboardingDraftWriteService
             draft, employeeId, user.Id, employmentTypeId, draft.StartDate.Value, actingUserId);
         await _employeeRepository.AddAsync(employee, ct);
 
+        // Adding yourself: the Office project needs the person finalizing to be an active employee,
+        // and you only become one when this finalize commits, so your checklist's Work tasks are
+        // created right after the commit instead (TryProvisionSelfChecklistWorkTasksAsync).
         OfficeProjectContext? officeProject = null;
-        if (_workTaskProvisioner is not null && checklistTasks.Count > 0)
+        if (_workTaskProvisioner is not null && checklistTasks.Count > 0 && !isSelf)
         {
             var targetDate = checklistTasks.Max(task => task.DueDate);
             var officeResult = await _workTaskProvisioner.EnsureOfficeProjectAsync(
@@ -647,6 +660,11 @@ public class OnboardingDraftWriteService : IOnboardingDraftWriteService
                         draft.TenantId, employeeId, position.Id, draft.StartDate.Value, actingUserId, draft.ReportsToEmployeeId, txnCt);
                     if (reservedAssignmentId is null)
                         throw new PositionAtCapacityException();
+
+                    // Nobody else accepts an invitation for your own profile, so the planned seat
+                    // is activated here instead of in AcceptEmployeeInvitation.
+                    if (isSelf)
+                        await _positionAssignmentRepository.ActivatePlannedAsync(draft.TenantId, reservedAssignmentId.Value, txnCt);
                 }
 
                 if (officeProject is not null)
@@ -687,27 +705,34 @@ public class OnboardingDraftWriteService : IOnboardingDraftWriteService
                 // The only role ever assigned here is the position access template's own RoleId -
                 // never a hardcoded Owner/Admin default. Also assigned when a roles:manage holder
                 // is self-authorizing a bypass past a template that does require approval.
-                if (accessTemplate is { IsActive: true } && (!accessTemplate.RequiresApproval || selfAuthorizedBypass))
+                // Adding yourself: your existing login may already hold that role (e.g. a position
+                // whose access role is Owner). user_roles is keyed on user + role, so adding it again
+                // would fail the whole finalize; keep the row you have.
+                if (accessTemplate is { IsActive: true } && (!accessTemplate.RequiresApproval || selfAuthorizedBypass)
+                    && !(isSelf && await _userRoleRepository.ExistsAsync(user.Id, accessTemplate.RoleId, txnCt)))
                 {
                     var userRole = OnboardingFinalizeFactory.NewPositionUserRole(
                         draft, user.Id, accessTemplate.RoleId, accessTemplate.Id, actingUserId, _clock.UtcNow);
                     await _userRoleRepository.AddAsync(userRole, txnCt);
                 }
 
-                var rawToken = _tokenGenerator.GenerateUrlSafeOpaqueToken();
-                var tokenHash = InvitationTokenHasher.Hash(rawToken);
-                var expiresAt = _clock.UtcNow.AddHours(OnboardingFinalizeFactory.InvitationValidityHours);
+                if (!isSelf)
+                {
+                    var rawToken = _tokenGenerator.GenerateUrlSafeOpaqueToken();
+                    var tokenHash = InvitationTokenHasher.Hash(rawToken);
+                    var expiresAt = _clock.UtcNow.AddHours(OnboardingFinalizeFactory.InvitationValidityHours);
 
-                var invitation = OnboardingFinalizeFactory.NewInvitation(
-                    draft, user.Id, employeeId, reservedAssignmentId, tokenHash, expiresAt, actingUserId, _clock.UtcNow);
-                await _invitationTokenRepository.AddAsync(invitation, txnCt);
+                    var invitation = OnboardingFinalizeFactory.NewInvitation(
+                        draft, user.Id, employeeId, reservedAssignmentId, tokenHash, expiresAt, actingUserId, _clock.UtcNow);
+                    await _invitationTokenRepository.AddAsync(invitation, txnCt);
 
-                var tenant = await _tenantRepository.GetByIdAsync(draft.TenantId, txnCt);
-                await _outboxWriter.EnqueueAsync(
-                    OutboxMessageTypes.EmployeeOnboardingInviteEmail,
-                    OnboardingFinalizeFactory.NewInviteEmailPayload(draft, employeeId, invitation.Id, rawToken, expiresAt, tenant?.Slug),
-                    draft.TenantId,
-                    txnCt);
+                    var tenant = await _tenantRepository.GetByIdAsync(draft.TenantId, txnCt);
+                    await _outboxWriter.EnqueueAsync(
+                        OutboxMessageTypes.EmployeeOnboardingInviteEmail,
+                        OnboardingFinalizeFactory.NewInviteEmailPayload(draft, employeeId, invitation.Id, rawToken, expiresAt, tenant?.Slug),
+                        draft.TenantId,
+                        txnCt);
+                }
 
                 OnboardingFinalizeFactory.MarkFinalized(draft, _clock.UtcNow);
 
@@ -742,14 +767,18 @@ public class OnboardingDraftWriteService : IOnboardingDraftWriteService
         if (_officeReconciler is not null)
             await _officeReconciler.TryReconcileAsync(draft.TenantId, ct);
 
+        var workTasksCommitted = !isSelf
+            || (_workTaskProvisioner is not null && checklistTasks.Count > 0
+                && await TryProvisionSelfChecklistWorkTasksAsync(draft, employee, checklistTasks, actingUserId, ct));
+
         // Template attachments are copied only now that the Work tasks are committed.
-        if (_workTaskProvisioner is not null && checklistTasks.Count > 0)
+        if (_workTaskProvisioner is not null && checklistTasks.Count > 0 && workTasksCommitted)
             await _workTaskProvisioner.CopyTemplateAttachmentsAsync(draft.TenantId, checklistTasks, actingUserId, ct);
 
         return Result<FinalizeOnboardingDraftResponse>.Success(new FinalizeOnboardingDraftResponse(
             draft.Id, employeeId, draft.Status, draft.DraftReason,
-            InvitationQueued: true, PositionApprovalPending: false, ChecklistTasksCreated: tasksCreated > 0,
-            MessageKey: "onboarding.finalize.invitation_sent"));
+            InvitationQueued: !isSelf, PositionApprovalPending: false, ChecklistTasksCreated: tasksCreated > 0,
+            MessageKey: isSelf ? "onboarding.finalize.self_employee_created" : "onboarding.finalize.invitation_sent"));
     }
 
     private async Task<bool> IsActiveEmployeeInLegalEntityAsync(
@@ -759,6 +788,45 @@ public class OnboardingDraftWriteService : IOnboardingDraftWriteService
         if (employee is null || employee.LegalEntityId != legalEntityId)
             return false;
         return await _positionAssignmentRepository.GetActivePrimaryAsync(tenantId, employeeId, ct) is not null;
+    }
+
+    /// <summary>Adding yourself with an onboarding checklist: now that your employee record is committed,
+    /// puts your checklist tasks into the Office project as Work tasks, in their own transaction.
+    /// Best effort, like the photo: the employee and checklist are already committed, so a failure
+    /// leaves the checklist tasks without Work tasks rather than undoing the onboarding.</summary>
+    private async Task<bool> TryProvisionSelfChecklistWorkTasksAsync(
+        OnboardingDraftEntity draft, ONEVO.Domain.Features.CoreHr.Entities.Employee employee,
+        IReadOnlyList<EmployeeChecklistTask> checklistTasks, Guid actingUserId, CancellationToken ct)
+    {
+        try
+        {
+            var targetDate = checklistTasks.Max(task => task.DueDate);
+            var office = await _workTaskProvisioner!.EnsureOfficeProjectAsync(
+                draft.TenantId, draft.LegalEntityId, actingUserId, targetDate, ct);
+            if (!office.IsSuccess)
+                return false;
+
+            await _unitOfWork.ExecuteInTransactionAsync(async txnCt =>
+            {
+                var provisioned = await _workTaskProvisioner.ProvisionAsync(
+                    office.Value!, employee, checklistTasks, actingUserId, txnCt);
+                if (!provisioned.IsSuccess)
+                    throw new ChecklistWorkTaskProvisioningException(
+                        provisioned.Error!, provisioned.StatusCode ?? 400);
+                await _draftRepository.SaveChangesAsync(txnCt);
+                return true;
+            }, ct);
+            return true;
+        }
+        catch (Exception) when (!ct.IsCancellationRequested)
+        {
+            // Nothing from the failed attempt may be saved later, and no checklist task points at
+            // a Work task that was rolled back.
+            _unitOfWork.ClearTracking();
+            foreach (var checklistTask in checklistTasks)
+                checklistTask.WorkTaskId = null;
+            return false;
+        }
     }
 
     private async Task TryLinkDraftAvatarAsync(Guid tenantId, Guid employeeId, Guid fileId, CancellationToken ct)

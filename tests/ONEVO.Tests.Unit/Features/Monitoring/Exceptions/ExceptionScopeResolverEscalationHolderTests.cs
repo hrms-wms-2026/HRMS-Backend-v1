@@ -74,5 +74,42 @@ public sealed class ExceptionScopeResolverEscalationHolderTests
             .ResolveAsync(forAction: true, [Guid.NewGuid()], default);
 
         scope.Should().BeNull();
+        (await new ExceptionScopeResolver(_currentUser.Object, _employees.Object, _authority.Object, _journal)
+            .ResolveRoutingAsync(forAction: true, default)).Should().BeNull();
+    }
+
+    [Fact]
+    public async Task The_routing_scope_matches_the_full_scope_without_coverage_and_is_resolved_once_per_request()
+    {
+        var held = new ItemRef("calendar", "meeting_exception", Guid.NewGuid());
+        var monitoring = new ItemRef("monitoring", "exception_case", Guid.NewGuid());
+        Escalated(held, 0, _skipLevel.Id);
+        Escalated(monitoring, 0, _skipLevel.Id);
+        var resolver = new ExceptionScopeResolver(_currentUser.Object, _employees.Object, _authority.Object, _journal);
+
+        var full = await new ExceptionScopeResolver(_currentUser.Object, _employees.Object, _authority.Object, _journal)
+            .ResolveAsync(forAction: true, [Guid.NewGuid()], default);
+        var routing = await resolver.ResolveRoutingAsync(forAction: true, default);
+        var again = await resolver.ResolveRoutingAsync(forAction: true, default);
+
+        (routing!.IsHr, routing.ActorEmployeeId).Should().Be((full!.IsHr, full.ActorEmployeeId));
+        routing.HeldCaseIds.Should().BeEquivalentTo(full.HeldCaseIds);
+        routing.EmployeeIds.Should().BeEmpty();
+        again.Should().BeSameAs(routing);
+        _employees.Verify(e => e.GetDefaultForUserAsync(TenantId, _skipLevel.UserId, It.IsAny<CancellationToken>()), Times.Exactly(2),
+            "once for the full scope, once for the remembered routing scope");
+        _authority.Verify(a => a.ResolveVisibilityAsync(It.IsAny<EmployeeAuthorityVisibilityRequest>(), It.IsAny<CancellationToken>()), Times.Once,
+            "only the full scope resolves coverage");
+    }
+
+    [Fact]
+    public async Task HR_gets_an_HR_routing_scope()
+    {
+        _currentUser.Setup(u => u.HasPermission(ExceptionPermissions.HrReview)).Returns(true);
+
+        var routing = await new ExceptionScopeResolver(_currentUser.Object, _employees.Object, _authority.Object, _journal)
+            .ResolveRoutingAsync(forAction: true, default);
+
+        (routing!.IsHr, routing.ActorEmployeeId).Should().Be((true, _skipLevel.Id));
     }
 }

@@ -15,17 +15,20 @@ public sealed class GetTenantSubscriptionQueryHandler
     private readonly ITenantSubscriptionRepository _subscriptionRepo;
     private readonly ISubscriptionPlanRepository _planRepo;
     private readonly IDateTimeProvider _clock;
+    private readonly ISeatEntitlementService _seats;
 
     public GetTenantSubscriptionQueryHandler(
         ITenantRepository tenantRepo,
         ITenantSubscriptionRepository subscriptionRepo,
         ISubscriptionPlanRepository planRepo,
-        IDateTimeProvider clock)
+        IDateTimeProvider clock,
+        ISeatEntitlementService seats)
     {
         _tenantRepo = tenantRepo;
         _subscriptionRepo = subscriptionRepo;
         _planRepo = planRepo;
         _clock = clock;
+        _seats = seats;
     }
 
     public async Task<Result<TenantSubscriptionDetailDto>> Handle(
@@ -42,8 +45,10 @@ public sealed class GetTenantSubscriptionQueryHandler
                 $"Subscription for tenant '{request.TenantId}' not found.");
 
         var plan = await _planRepo.GetByIdAsync(subscription.PlanId, ct);
+        // Same count that gates onboarding finalization, so the admin card never disagrees with it.
+        var seatDecision = await _seats.EvaluateAsync(tenant.Id, ct);
 
         return Result<TenantSubscriptionDetailDto>.Success(
-            TenantSubscriptionMapper.ToDetailDto(tenant, subscription, plan, _clock.UtcNow));
+            TenantSubscriptionMapper.ToDetailDto(tenant, subscription, plan, _clock.UtcNow, seatDecision.ActiveEmployeeCount));
     }
 }
