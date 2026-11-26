@@ -23634,6 +23634,15 @@
               "null",
               "string"
             ]
+          },
+          "correlation_ids": {
+            "type": [
+              "null",
+              "array"
+            ],
+            "items": {
+              "type": "string"
+            }
           }
         }
       },

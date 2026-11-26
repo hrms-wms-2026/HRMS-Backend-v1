@@ -28,7 +28,7 @@ public static class SupportTicketRules
     public const string CorrelationIdFormatError =
         "each correlation id must be 1 to 100 characters of letters, digits and '-'.";
 
-    private static readonly Regex CorrelationIdPattern = new("^[A-Za-z0-9-]+$", RegexOptions.CultureInvariant);
+    private static readonly Regex CorrelationIdPattern = new(@"^[A-Za-z0-9-]+\z", RegexOptions.CultureInvariant);
 
     public static readonly TimeSpan DownloadUrlLifetime = TimeSpan.FromMinutes(5);
 
