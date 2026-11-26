@@ -21,7 +21,7 @@ public sealed class RateLimitAdminServiceTests
 {
     private const string Reason = "Customer import week, approved by ops.";
     private readonly IRateLimitSettingRepository _repository = Substitute.For<IRateLimitSettingRepository>();
-    private readonly IRateLimitSettingsInvalidator _invalidator = Substitute.For<IRateLimitSettingsInvalidator>();
+    private readonly RateLimitReloadSignal _reload = new();
     private readonly ICurrentPlatformUserContext _platformUser = Substitute.For<ICurrentPlatformUserContext>();
     private readonly IDateTimeProvider _clock = Substitute.For<IDateTimeProvider>();
     private readonly Guid _actor = Guid.NewGuid();
@@ -42,7 +42,7 @@ public sealed class RateLimitAdminServiceTests
         _repository.When(r => r.AddChange(Arg.Any<RateLimitSettingChange>()))
             .Do(c => _changes.Add(c.Arg<RateLimitSettingChange>()));
         _service = new RateLimitAdminService(
-            _repository, _invalidator, options, _platformUser, _clock, NullLogger<RateLimitAdminService>.Instance);
+            _repository, _reload, options, _platformUser, _clock);
     }
 
     private static RateLimitChangeRequest Set(RateLimitTarget target, RateLimitName name, int perMinute, int? burst, string? rowVersion = null) =>
@@ -91,11 +91,8 @@ public sealed class RateLimitAdminServiceTests
         change.NewBurst.Should().Be(150);
         change.Reason.Should().Be(Reason);
         change.CorrelationId.Should().Be("corr-1");
-        Received.InOrder(() =>
-        {
-            _repository.SaveChangesAsync(Arg.Any<CancellationToken>());
-            _invalidator.InvalidateAsync(Arg.Any<CancellationToken>());
-        });
+        await _repository.Received(1).SaveChangesAsync(Arg.Any<CancellationToken>());
+        _reload.Requested.Should().BeTrue();
     }
 
     [Fact]
@@ -130,11 +127,11 @@ public sealed class RateLimitAdminServiceTests
         _repository.Received(1).Remove(row);
         var change = _changes.Should().ContainSingle().Subject;
         (change.OldPerMinute, change.NewPerMinute, change.NewBurst).Should().Be((600, (int?)null, (int?)null));
-        await _invalidator.Received(1).InvalidateAsync(Arg.Any<CancellationToken>());
+        _reload.Requested.Should().BeTrue();
     }
 
     [Fact]
-    public async Task Same_value_is_a_no_op_without_history_or_invalidation()
+    public async Task Same_value_is_a_no_op_without_history_or_reload()
     {
         Existing(Row(RateLimitTarget.Global, RateLimitName.SignedIn, 900, 150));
 
@@ -143,7 +140,7 @@ public sealed class RateLimitAdminServiceTests
         result.IsSuccess.Should().BeTrue();
         _changes.Should().BeEmpty();
         await _repository.DidNotReceive().SaveChangesAsync(Arg.Any<CancellationToken>());
-        await _invalidator.DidNotReceive().InvalidateAsync(Arg.Any<CancellationToken>());
+        _reload.Requested.Should().BeFalse();
     }
 
     [Fact]
@@ -156,15 +153,6 @@ public sealed class RateLimitAdminServiceTests
         await _repository.DidNotReceive().SaveChangesAsync(Arg.Any<CancellationToken>());
     }
 
-    [Fact]
-    public async Task Failed_invalidation_still_returns_success()
-    {
-        _invalidator.InvalidateAsync(Arg.Any<CancellationToken>()).ThrowsAsync(new InvalidOperationException("db down"));
-
-        var result = await _service.ApplyAsync(Set(RateLimitTarget.Global, RateLimitName.SignedIn, 900, 150), default);
-
-        result.IsSuccess.Should().BeTrue();
-    }
 
     // ------------------------------------------------------------- concurrency
 
@@ -177,7 +165,7 @@ public sealed class RateLimitAdminServiceTests
         var result = await _service.ApplyAsync(Set(RateLimitTarget.Global, RateLimitName.SignedIn, 1200, 150, "1"), default);
 
         result.StatusCode.Should().Be(409);
-        await _invalidator.DidNotReceive().InvalidateAsync(Arg.Any<CancellationToken>());
+        _reload.Requested.Should().BeFalse();
     }
 
     [Fact]

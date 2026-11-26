@@ -31,6 +31,9 @@ public static class DependencyInjection
             cfg.AddBehavior(typeof(IPipelineBehavior<,>), typeof(UnhandledExceptionBehavior<,>));
             cfg.AddBehavior(typeof(IPipelineBehavior<,>), typeof(AdminTenantContextBehavior<,>));
             cfg.AddBehavior(typeof(IPipelineBehavior<,>), typeof(ValidationBehavior<,>));
+            // Outside AuditingBehavior, so the rate limit reload runs after the audit transaction commits.
+            cfg.AddBehavior(typeof(IPipelineBehavior<,>),
+                typeof(ONEVO.Application.Features.DevPlatform.SystemConfig.RateLimits.Services.RateLimitReloadBehavior<,>));
             // After validation (a rejected request is not a privileged attempt) and around the handler,
             // so the audit row commits in the handler's transaction. See AuditingBehavior.
             cfg.AddBehavior(typeof(IPipelineBehavior<,>), typeof(AuditingBehavior<,>));
@@ -47,6 +50,7 @@ public static class DependencyInjection
         services.AddScoped<ONEVO.Application.Features.Dashboard.Layout.Services.DashboardSeeder>();
         // Improvements task 47: admin API for rate limits.
         services.AddScoped<ONEVO.Application.Features.DevPlatform.SystemConfig.RateLimits.Services.RateLimitAdminService>();
+        services.AddScoped<ONEVO.Application.Features.DevPlatform.SystemConfig.RateLimits.Services.RateLimitReloadSignal>();
         // Widget data providers themselves are registered by the API layer (they mirror its controller actions).
         services.AddScoped<
             ONEVO.Application.Features.Dashboard.Layout.Data.IWidgetDataOrchestrator,
