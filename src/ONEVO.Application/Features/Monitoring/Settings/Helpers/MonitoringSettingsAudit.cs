@@ -5,19 +5,21 @@ using ONEVO.Domain.Features.Monitoring.Settings.Entities;
 namespace ONEVO.Application.Features.Monitoring.Settings.Helpers;
 
 /// <summary>
-/// Audit-log entries for monitoring settings changes (company defaults and scoped overrides), so
-/// "who switched activity monitoring off, and when" is answerable from audit_logs. Old/new values
-/// are JSON snapshots of the toggle fields only.
+/// Audit-log entries for monitoring settings changes, so "who switched activity monitoring off,
+/// and when" is answerable from audit_logs. Old/new values are the toggle fields only. Company
+/// defaults are audited by AuditingBehavior (UpdateMonitoringFeatureTogglesCommand is an
+/// IAuditedCommand, before/after from MonitoringFeatureTogglesAuditStateReader); scoped overrides
+/// are still written here.
 /// </summary>
 public static class MonitoringSettingsAudit
 {
-    public const string CompanySettingsUpdated = "monitoring.company_settings_updated";
     public const string OverrideSaved = "monitoring.override_saved";
     public const string OverrideRemoved = "monitoring.override_removed";
 
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
 
-    public static string Snapshot(MonitoringFeatureToggles t) => JsonSerializer.Serialize(new
+    /// <summary>The company toggle fields only, for the before/after values of the audit row.</summary>
+    public static object Projection(MonitoringFeatureToggles t) => new
     {
         t.LegalEntityId,
         t.ActivityMonitoring,
@@ -33,7 +35,9 @@ public static class MonitoringSettingsAudit
         t.Biometric,
         t.IdleThresholdMinutes,
         t.AllowedRadiusMeters
-    }, JsonOptions);
+    };
+
+    public static string Snapshot(MonitoringFeatureToggles t) => JsonSerializer.Serialize(Projection(t), JsonOptions);
 
     public static string Snapshot(MonitoringPolicyOverride o) => JsonSerializer.Serialize(new
     {

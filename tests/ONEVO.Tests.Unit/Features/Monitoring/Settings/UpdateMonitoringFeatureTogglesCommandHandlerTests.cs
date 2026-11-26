@@ -1,11 +1,10 @@
 using FluentAssertions;
 using Moq;
 using ONEVO.Application.Common.ServiceInterfaces;
-using ONEVO.Application.Features.Auth.Login.RepositoryInterfaces;
+using ONEVO.Application.Common.Auditing;
 using ONEVO.Application.Features.Monitoring.Settings.Commands.UpdateMonitoringFeatureToggles;
 using ONEVO.Application.Features.Monitoring.Settings.RepositoryInterfaces;
 using ONEVO.Application.Features.Monitoring.Settings.ServiceInterfaces;
-using ONEVO.Domain.Features.Auth.Entities;
 using ONEVO.Domain.Features.Monitoring.Settings.Entities;
 using Xunit;
 
@@ -18,7 +17,6 @@ public class UpdateMonitoringFeatureTogglesCommandHandlerTests
     private readonly Mock<IDateTimeProvider> _dateTimeProvider = new();
     private readonly Mock<ICacheService> _cache = new();
     private readonly Mock<ITrayPolicyRefreshNotifier> _policyRefresh = new();
-    private readonly Mock<IAuditLogRepository> _auditLogs = new();
     private static readonly Guid ActorId = Guid.Parse("33333333-3333-3333-3333-333333333333");
 
     private static readonly Guid TenantId = Guid.Parse("11111111-1111-1111-1111-111111111111");
@@ -36,7 +34,7 @@ public class UpdateMonitoringFeatureTogglesCommandHandlerTests
         _currentUser.Setup(c => c.HasPermission("monitoring:configure")).Returns(hasPermission);
         _dateTimeProvider.SetupGet(d => d.UtcNow).Returns(FixedNow);
         return new UpdateMonitoringFeatureTogglesCommandHandler(
-            _toggles.Object, _currentUser.Object, _dateTimeProvider.Object, _cache.Object, _auditLogs.Object, _policyRefresh.Object);
+            _toggles.Object, _currentUser.Object, _dateTimeProvider.Object, _cache.Object, _policyRefresh.Object);
     }
 
     private static UpdateMonitoringFeatureTogglesCommand ValidCommand(bool activityMonitoring = true) => new(
@@ -160,62 +158,64 @@ public class UpdateMonitoringFeatureTogglesCommandHandlerTests
         _policyRefresh.Verify(n => n.NotifyTenantAsync(TenantId, It.IsAny<CancellationToken>()), Times.Once);
     }
 
+    // The audit row itself is written by AuditingBehavior (the command is an IAuditedCommand);
+    // the state reader supplies its before/after values.
     [Fact]
-    public async Task Handle_ExistingRow_WritesAuditLogWithOldAndNewValues()
+    public async Task AuditStateReader_ExistingRow_ReturnsTheToggleFieldsOnly()
     {
         var existing = new MonitoringFeatureToggles
         {
             Id = Guid.NewGuid(),
             TenantId = TenantId,
             LegalEntityId = LegalEntityId,
-            ActivityMonitoring = true
+            ActivityMonitoring = true,
+            IdleThresholdMinutes = 7
         };
         _toggles.Setup(r => r.GetByLegalEntityIdAsync(TenantId, LegalEntityId, false, It.IsAny<CancellationToken>()))
             .ReturnsAsync(existing);
-        AuditLog? audit = null;
-        _auditLogs.Setup(a => a.AddAsync(It.IsAny<AuditLog>(), It.IsAny<CancellationToken>()))
-            .Callback<AuditLog, CancellationToken>((a, _) => audit = a)
-            .Returns(Task.CompletedTask);
-        var sut = BuildSut();
+        BuildSut();
+        var reader = new MonitoringFeatureTogglesAuditStateReader(_toggles.Object, _currentUser.Object);
 
-        await sut.Handle(ValidCommand(activityMonitoring: false), CancellationToken.None);
+        var state = await reader.ReadAsync(ValidCommand(), CancellationToken.None);
 
-        audit.Should().NotBeNull();
-        audit!.TenantId.Should().Be(TenantId);
-        audit.UserId.Should().Be(ActorId);
-        audit.Action.Should().Be("monitoring.company_settings_updated");
-        audit.ResourceId.Should().Be(existing.Id);
-        audit.CreatedAt.Should().Be(FixedNow);
-        audit.OldValuesJson.Should().Contain("\"activityMonitoring\":true");
-        audit.NewValuesJson.Should().Contain("\"activityMonitoring\":false");
+        var json = AuditJson.Serialize(state);
+        json.Should().Contain("\"activityMonitoring\":true");
+        json.Should().Contain("\"idleThresholdMinutes\":7");
+        json.Should().Contain($"\"legalEntityId\":\"{LegalEntityId}\"");
+        json.Should().NotContain("tenantId");
     }
 
     [Fact]
-    public async Task Handle_NoExistingRow_WritesAuditLogWithoutOldValues()
+    public async Task AuditStateReader_NoRowYet_ReturnsNull()
     {
         _toggles.Setup(r => r.GetByLegalEntityIdAsync(TenantId, LegalEntityId, false, It.IsAny<CancellationToken>()))
             .ReturnsAsync((MonitoringFeatureToggles?)null);
-        AuditLog? audit = null;
-        _auditLogs.Setup(a => a.AddAsync(It.IsAny<AuditLog>(), It.IsAny<CancellationToken>()))
-            .Callback<AuditLog, CancellationToken>((a, _) => audit = a)
-            .Returns(Task.CompletedTask);
-        var sut = BuildSut();
+        BuildSut();
+        var reader = new MonitoringFeatureTogglesAuditStateReader(_toggles.Object, _currentUser.Object);
 
-        await sut.Handle(ValidCommand(), CancellationToken.None);
-
-        audit.Should().NotBeNull();
-        audit!.OldValuesJson.Should().BeNull();
-        audit.NewValuesJson.Should().Contain("\"activityMonitoring\":true");
+        (await reader.ReadAsync(ValidCommand(), CancellationToken.None)).Should().BeNull();
     }
 
     [Fact]
-    public async Task Handle_MissingConfigurePermission_WritesNoAuditLog()
+    public async Task AuditStateReader_NoActiveCompany_ReturnsNullWithoutReading()
     {
-        var sut = BuildSut(hasPermission: false);
+        BuildSut();
+        _currentUser.SetupGet(c => c.LegalEntityId).Returns((Guid?)null);
+        var reader = new MonitoringFeatureTogglesAuditStateReader(_toggles.Object, _currentUser.Object);
 
-        await sut.Handle(ValidCommand(), CancellationToken.None);
+        (await reader.ReadAsync(ValidCommand(), CancellationToken.None)).Should().BeNull();
+        _toggles.Verify(r => r.GetByLegalEntityIdAsync(
+            It.IsAny<Guid>(), It.IsAny<Guid>(), It.IsAny<bool>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
 
-        _auditLogs.Verify(a => a.AddAsync(It.IsAny<AuditLog>(), It.IsAny<CancellationToken>()), Times.Never);
+    [Fact]
+    public void DescribeAudit_NamesTheActionAndTenantTarget()
+    {
+        var entry = ValidCommand().DescribeAudit(null);
+
+        entry.Action.Should().Be("monitoring.toggles_updated");
+        entry.TargetType.Should().Be("tenant");
+        entry.Details.Should().BeNull();
     }
 
     [Fact]
@@ -223,7 +223,7 @@ public class UpdateMonitoringFeatureTogglesCommandHandlerTests
     {
         _currentUser.SetupGet(c => c.IsAuthenticated).Returns(false);
         var sut = new UpdateMonitoringFeatureTogglesCommandHandler(
-            _toggles.Object, _currentUser.Object, _dateTimeProvider.Object, _cache.Object, _auditLogs.Object);
+            _toggles.Object, _currentUser.Object, _dateTimeProvider.Object, _cache.Object);
 
         var result = await sut.Handle(ValidCommand(), CancellationToken.None);
 

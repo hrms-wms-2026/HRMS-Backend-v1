@@ -1,4 +1,5 @@
 using MediatR;
+using ONEVO.Application.Common.Auditing;
 using ONEVO.Application.Common.Models;
 using ONEVO.Application.Features.Monitoring.Settings.DTOs.Responses;
 
@@ -20,4 +21,11 @@ public record UpdateMonitoringFeatureTogglesCommand(
     bool IdentityVerification,
     bool Biometric,
     int IdleThresholdMinutes,
-    int? AllowedRadiusMeters) : IRequest<Result<MonitoringFeatureTogglesResponse>>;
+    int? AllowedRadiusMeters)
+    : IRequest<Result<MonitoringFeatureTogglesResponse>>, IAuditedCommand<Result<MonitoringFeatureTogglesResponse>>
+{
+    // The toggles belong to the active company of the tenant. Before/after values (which toggles
+    // changed) come from MonitoringFeatureTogglesAuditStateReader.
+    public AuditEntry DescribeAudit(Result<MonitoringFeatureTogglesResponse>? response)
+        => AuditEntry.For("monitoring.toggles_updated", "tenant", targetId: null);
+}
