@@ -25,6 +25,7 @@ public partial class InboxRouterTests
 
     private readonly FakeProvider _work = new("work", "Work");
     private readonly FakeProvider _leave = new("leave", "Leave");
+    private readonly List<IInboxHeaderCountSource> _headerCounts = [];
     private readonly Mock<IConversationUnreadCounts> _unread = new();
     private readonly Mock<IInboxRealtimePublisher> _realtime = new();
     private readonly List<InboxKindDescriptor> _kinds = new();
@@ -44,7 +45,8 @@ public partial class InboxRouterTests
     }
 
     private InboxRouter Router() => new(new IInboxSourceProvider[] { _work, _leave }, _unread.Object, _realtime.Object,
-        NullLogger<InboxRouter>.Instance, new InboxKindRegistry(_kinds), _journal, _reverters, _steps.Object, _uow.Object, _clock.Object);
+        NullLogger<InboxRouter>.Instance, new InboxKindRegistry(_kinds), _journal, _reverters, _steps.Object, _uow.Object, _clock.Object,
+        _headerCounts);
 
     private static InboxItem Item(
         string source, string title, int minutesAfterT0, bool pending = false, string category = InboxCategories.Request,
@@ -173,14 +175,8 @@ public partial class InboxRouterTests
     [Fact]
     public async Task Counts_pending_received_open_alerts_and_unread_messages()
     {
-        var unreadItem = Item("work", "received pending", 1, pending: true);
-        _work.Items.AddRange([
-            unreadItem,
-            Item("work", "sent pending", 2, pending: true, direction: InboxDirections.Sent),
-            Item("work", "received done", 3),
-            Item("work", "open alert", 4, pending: true, category: InboxCategories.Alert, direction: InboxDirections.Info),
-            Item("work", "achieved alert", 5, pending: false, category: InboxCategories.Alert, direction: InboxDirections.Info),
-        ]);
+        _work.Counts = new InboxSourceCounts(1, 1,
+            new Dictionary<string, int> { ["approval"] = 1, ["monitor_alert"] = 1 });
         // The badge's unread count is every chat the inbox lists (1-on-1s, groups, case groups), not only item chats.
         _unread.Setup(u => u.TotalInChatsAsync(TenantId, Me, It.IsAny<CancellationToken>())).ReturnsAsync(2);
 
@@ -190,19 +186,39 @@ public partial class InboxRouterTests
         // Tab badges: what needs the caller (received pending requests + open alerts), per source and per kind.
         counts.BySource.Should().BeEquivalentTo(new Dictionary<string, int> { ["work"] = 2 });
         counts.ByKind.Should().BeEquivalentTo(new Dictionary<string, int> { ["work:approval"] = 1, ["work:monitor_alert"] = 1 });
+        _work.ListCalls.Should().Be(0);
+    }
+
+    [Fact]
+    public async Task A_source_counted_from_inbox_items_is_not_listed_and_its_counts_are_merged()
+    {
+        _work.Counts = new InboxSourceCounts(1, 0, new Dictionary<string, int> { ["approval"] = 1 });
+        _leave.Counts = new InboxSourceCounts(9, 0, new Dictionary<string, int> { ["request"] = 9 });
+        var leaveCounts = new Mock<IInboxHeaderCountSource>();
+        leaveCounts.SetupGet(c => c.Source).Returns("leave");
+        leaveCounts.Setup(c => c.CountAsync(TenantId, Me, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new InboxSourceCounts(3, 0, new Dictionary<string, int> { ["request"] = 3 }));
+        _headerCounts.Add(leaveCounts.Object);
+
+        var counts = await Router().GetCountsAsync(TenantId, Me, default);
+
+        (_work.ListCalls, _leave.ListCalls).Should().Be((0, 0), "no source builds its rows for the badge counts");
+        counts.PendingReceived.Should().Be(4, "leave comes from inbox_items (3), not from the leave provider's own count (9)");
+        counts.BySource.Should().BeEquivalentTo(new Dictionary<string, int> { ["work"] = 1, ["leave"] = 3 });
+        counts.ByKind.Should().BeEquivalentTo(new Dictionary<string, int> { ["work:approval"] = 1, ["leave:request"] = 3 });
     }
 
     [Fact]
     public async Task Count_maps_split_by_source_and_kind()
     {
-        _work.Items.Add(Item("work", "w", 1, pending: true));
-        _leave.Items.AddRange([Item("leave", "l1", 2, pending: true), Item("leave", "l2", 3, pending: true),
-            Item("leave", "mine", 4, pending: true, direction: InboxDirections.Sent)]);
+        _work.Counts = new InboxSourceCounts(1, 0, new Dictionary<string, int> { ["approval"] = 1 });
+        _leave.Counts = new InboxSourceCounts(2, 0, new Dictionary<string, int> { ["approval"] = 2 });
 
         var counts = await Router().GetCountsAsync(TenantId, Me, default);
 
         counts.BySource.Should().BeEquivalentTo(new Dictionary<string, int> { ["work"] = 1, ["leave"] = 2 });
         counts.ByKind!["leave:approval"].Should().Be(2);
+        (_work.ListCalls, _leave.ListCalls).Should().Be((0, 0));
     }
 
     [Fact]
@@ -262,6 +278,8 @@ public partial class InboxRouterTests
         public Dictionary<Guid, Result<InboxActionResult>> ActionResults { get; } = new();
         public List<(string Kind, Guid Id, string Action, JsonElement? Body)> Actions { get; } = new();
         public int ListCalls { get; private set; }
+        public InboxSourceCounts Counts { get; set; } = new(0, 0, new Dictionary<string, int>());
+        public int CountCalls { get; private set; }
 
         public string Source => source;
         public string Label => label;
@@ -270,6 +288,12 @@ public partial class InboxRouterTests
         {
             ListCalls++;
             return Task.FromResult<IReadOnlyList<InboxItem>>(Items);
+        }
+
+        public Task<InboxSourceCounts> CountAsync(Guid tenantId, Guid callerEmployeeId, CancellationToken ct)
+        {
+            CountCalls++;
+            return Task.FromResult(Counts);
         }
 
         public Task<InboxItemDetail?> GetDetailAsync(Guid tenantId, string kind, Guid id, Guid callerEmployeeId, CancellationToken ct)

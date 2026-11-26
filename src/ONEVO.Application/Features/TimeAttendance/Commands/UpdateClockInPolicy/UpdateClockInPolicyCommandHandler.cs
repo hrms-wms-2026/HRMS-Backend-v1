@@ -18,19 +18,22 @@ public class UpdateClockInPolicyCommandHandler
     private readonly IClockInPolicyScopeMembershipValidator _scopeMembership;
     private readonly ICurrentUser _currentUser;
     private readonly IDateTimeProvider _dateTimeProvider;
+    private readonly IRowVersionStore? _versions;
 
     public UpdateClockInPolicyCommandHandler(
         IClockInPolicyRepository policies,
         ILegalEntityRepository legalEntities,
         IClockInPolicyScopeMembershipValidator scopeMembership,
         ICurrentUser currentUser,
-        IDateTimeProvider dateTimeProvider)
+        IDateTimeProvider dateTimeProvider,
+        IRowVersionStore? versions = null)
     {
         _policies = policies;
         _legalEntities = legalEntities;
         _scopeMembership = scopeMembership;
         _currentUser = currentUser;
         _dateTimeProvider = dateTimeProvider;
+        _versions = versions;
     }
 
     public async Task<Result<ClockInPolicyResponse>> Handle(
@@ -124,9 +127,10 @@ public class UpdateClockInPolicyCommandHandler
         }
 
         _policies.Update(policy);
+        _versions?.SetExpectedVersion(policy, request.Version); // task 42: 409 when someone saved in between
         await _policies.SaveChangesAsync(ct);
 
-        return Result<ClockInPolicyResponse>.Success(ClockInPolicyMapper.ToResponse(policy));
+        return Result<ClockInPolicyResponse>.Success(ClockInPolicyMapper.ToResponse(policy) with { Version = _versions?.GetVersion(policy) });
     }
 
     /// <summary>Order-insensitive comparable form of a scope id list.</summary>

@@ -136,7 +136,10 @@ public class TenantProvisioningE2ETests : IAsyncLifetime
         detail.EnumerateObject().Select(p => p.Name).Should().BeEquivalentTo(
             "tenant_name", "invited_email", "first_name", "last_name", "role_name", "expires_at", "status",
             "password_setup_enabled", "google_sign_in_enabled", "allow_google_email_mismatch",
-            "allowed_email_domains", "requires_password");
+            "allowed_email_domains", "requires_password",
+            // A fixed label ("general" / "employee_onboarding") that picks the accept endpoint; not an id.
+            "purpose");
+        detail.GetProperty("purpose").GetString().Should().Be("general");
 
         // ── 4. Invitee accepts with a password; a session is established ───────
         var (acceptBody, acceptCookies) = await PostJsonAsync(

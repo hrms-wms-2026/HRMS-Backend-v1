@@ -122,6 +122,11 @@ public interface IConversationRepository
     /// <summary>The chats the employee muted.</summary>
     Task<IReadOnlySet<Guid>> ListMutedConversationIdsAsync(Guid tenantId, Guid employeeId, CancellationToken ct = default);
 
+    /// <summary>Total unread messages (the <see cref="CountUnreadByConversationAsync"/> rules) across the employee's active,
+    /// unmuted chats that are people chats or case groups - a case conversation counts once it has a system event whose
+    /// JSON starts with <paramref name="groupEventPrefix"/>. One aggregate: no conversation or message is loaded.</summary>
+    Task<int> CountUnreadInListedChatsAsync(Guid tenantId, Guid employeeId, string groupEventPrefix, CancellationToken ct = default);
+
     /// <summary>Mutes (or unmutes) a chat for the employee and saves; repeating either is a no-op.</summary>
     Task SetMutedAsync(Guid tenantId, Guid employeeId, Guid conversationId, bool muted, CancellationToken ct = default);
 

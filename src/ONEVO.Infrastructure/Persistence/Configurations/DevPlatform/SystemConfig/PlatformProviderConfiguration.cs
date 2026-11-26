@@ -60,7 +60,8 @@ public sealed class PlatformProviderConfiguration : IEntityTypeConfiguration<Pla
             Seed("10000000-0000-0000-0000-000000000009", "aws_rekognition", "AWS Rekognition", PlatformProviderFamilies.AiVerification),
             Seed("10000000-0000-0000-0000-000000000010", "stripe", "Stripe", PlatformProviderFamilies.PaymentGateway),
             Seed("10000000-0000-0000-0000-000000000011", "payhere", "PayHere", PlatformProviderFamilies.PaymentGateway),
-            Seed("10000000-0000-0000-0000-000000000012", "paddle", "Paddle", PlatformProviderFamilies.PaymentGateway));
+            Seed("10000000-0000-0000-0000-000000000012", "paddle", "Paddle", PlatformProviderFamilies.PaymentGateway),
+            Seed("10000000-0000-0000-0000-000000000013", "brevo", "Brevo", PlatformProviderFamilies.TransactionalEmail));
     }
 
     private static PlatformProvider Seed(

@@ -66,7 +66,7 @@ public class RolesController : ControllerBase
         CancellationToken ct)
     {
         var result = await _mediator.Send(
-            new UpdateRoleCommand(id, request.Name, request.Description), ct);
+            new UpdateRoleCommand(id, request.Name, request.Description, request.Version), ct);
 
         return result.IsSuccess
             ? Ok(result.Value)

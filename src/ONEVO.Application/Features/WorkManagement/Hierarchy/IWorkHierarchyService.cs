@@ -13,4 +13,9 @@ public interface IWorkHierarchyService
     /// an active employee and is not excludingEmployeeId. Null if nobody qualifies.</summary>
     Task<Guid?> FindActiveHolderAsync(
         Guid tenantId, ProjectModuleTree tree, Guid positionModuleId, Guid excludingEmployeeId, CancellationToken ct = default);
+
+    /// <summary>FindActiveHolderAsync for many positions at once, excluding nobody: position Module → its holder,
+    /// null if nobody qualifies. Reads every owner on the chains in one query.</summary>
+    Task<IReadOnlyDictionary<Guid, Guid?>> FindActiveHoldersAsync(
+        Guid tenantId, ProjectModuleTree tree, IReadOnlyCollection<Guid> positionModuleIds, CancellationToken ct = default);
 }

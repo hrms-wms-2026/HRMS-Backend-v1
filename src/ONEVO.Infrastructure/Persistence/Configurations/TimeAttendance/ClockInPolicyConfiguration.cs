@@ -1,7 +1,8 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata.Builders;
 using ONEVO.Domain.Features.OrgStructure.Entities;
-using ONEVO.Domain.Features.TimeAttendance.Entities;
+using ONEVO.Domain.Features.TimeAttendance.Entities;
+using ONEVO.Infrastructure.Persistence.SqlServer;
 
 namespace ONEVO.Infrastructure.Persistence.Configurations.TimeAttendance;
 
@@ -9,6 +10,7 @@ public class ClockInPolicyConfiguration : IEntityTypeConfiguration<ClockInPolicy
 {
     public void Configure(EntityTypeBuilder<ClockInPolicy> builder)
     {
+        builder.HasRowVersionToken(); // task 42: lost-update protection (409 on a stale save)
         builder.ToTable("clock_in_policies");
         builder.HasKey(p => p.Id);
 

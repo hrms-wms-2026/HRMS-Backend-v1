@@ -99,7 +99,9 @@ public static class ReferenceForeignKeys
         foreach (var entityType in b.Model.GetEntityTypes().ToList())
         {
             if (entityType == tenantType || entityType.IsOwned() || entityType.BaseType is not null
-                || entityType.GetTableName() is null)
+                || entityType.GetTableName() is null
+                // Append-only rate limit history (task 45): kept after the tenant it names is deleted (allow-list).
+                || entityType.ClrType == typeof(ONEVO.Domain.Features.SharedPlatform.RateLimiting.Entities.RateLimitSettingChange))
             {
                 continue;
             }
@@ -271,7 +273,8 @@ public static class ReferenceForeignKeys
         Fk<WorkApprovalRequest, Employee>(b, x => x.RevertedByEmployeeId);
         Fk<WorkNotificationLog, Project>(b, x => x.ProjectId);
         Fk<WorkNotificationLog, Employee>(b, x => x.RecipientEmployeeId);
-        Fk<WorkNotificationLog, Employee>(b, x => x.ActorEmployeeId);
+        // No key on ActorEmployeeId: system monitor alerts store Guid.Empty as the actor (see
+        // WorkNotificationKinds.Alert), so a key to employees would reject every alert.
         Fk<WorkNotificationLog, WorkApprovalRequest>(b, x => x.ApprovalRequestId);
         Fk<MonitorAlert, Project>(b, x => x.ProjectId);
         Fk<MonitorAlert, Employee>(b, x => x.SubjectEmployeeId);

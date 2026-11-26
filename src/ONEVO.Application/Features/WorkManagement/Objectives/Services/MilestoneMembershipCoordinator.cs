@@ -43,6 +43,14 @@ public class MilestoneMembershipCoordinator : IMilestoneMembershipCoordinator
         return employee is not null && employee.EmploymentStatusId == EmploymentStatusIds.Active ? employee : null;
     }
 
+    public async Task<IReadOnlySet<Guid>> GetActiveAssigneeIdsAsync(Guid tenantId, IReadOnlyCollection<Guid> employeeIds, CancellationToken ct = default)
+    {
+        if (employeeIds.Count == 0)
+            return new HashSet<Guid>();
+        var employees = await _employees.ListByIdsAsync(tenantId, employeeIds, ct);
+        return employees.Values.Where(e => e.EmploymentStatusId == EmploymentStatusIds.Active).Select(e => e.Id).ToHashSet();
+    }
+
     public async Task UpsertMembershipAsync(Guid tenantId, Guid projectId, Guid objectiveId, Guid employeeId, CancellationToken ct = default)
     {
         var existing = await _members.GetTrackedForObjectiveAsync(tenantId, projectId, objectiveId, employeeId, ct);

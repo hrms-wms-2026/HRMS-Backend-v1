@@ -24,6 +24,8 @@ file_records.content_type | free | a MIME type, not a closed list
 file_records.detected_content_type | free | a MIME type, not a closed list
 global_app_catalog.logo_content_type | free | a MIME type, not a closed list
 inbox_decision_journal.kind | todo | no constants class yet: the values are string literals or client input; add one first (task 39f results)
+inbox_item_assignees.kind | todo | each inbox source owns its kinds (leave only so far); add the constraint once task 37b converts the other sources: task-39f
+inbox_items.kind | todo | each inbox source owns its kinds (leave only so far); add the constraint once task 37b converts the other sources: task-39f
 invitation_tokens.status | todo | no constants class yet: the values are string literals or client input; add one first (task 39f results)
 legal_acceptance_records.document_type | todo | no constants class yet: the values are string literals or client input; add one first (task 39f results)
 legal_document_versions.document_type | todo | no constants class yet: the values are string literals or client input; add one first (task 39f results)

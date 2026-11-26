@@ -200,6 +200,15 @@ public class EfPositionRepository : IPositionRepository
         return count;
     }
 
+    public async Task<bool> AnyActiveWithDepartmentAsync(Guid tenantId, CancellationToken ct = default)
+    {
+        var any = await _db.Positions
+            .AsNoTracking()
+            .AnyAsync(position => position.TenantId == tenantId && position.IsActive && position.DepartmentId != null, ct);
+
+        return any;
+    }
+
     public async Task<IReadOnlyDictionary<Guid, int>> CountActiveByDepartmentIdsAsync(
         Guid tenantId, Guid legalEntityId, IReadOnlyCollection<Guid> departmentIds, CancellationToken ct = default)
     {

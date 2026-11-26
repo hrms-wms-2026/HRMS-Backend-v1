@@ -1,6 +1,5 @@
 using ONEVO.Application.Features.Conversations.Contracts;
 using ONEVO.Application.Features.Conversations.RepositoryInterfaces;
-using ONEVO.Domain.Features.Conversations.Entities;
 
 namespace ONEVO.Application.Features.Conversations.Services;
 
@@ -27,19 +26,11 @@ public sealed class ConversationUnreadCounts : IConversationUnreadCounts
             ? new Dictionary<ItemRef, int>()
             : await _conversations.CountUnreadAsync(tenantId, employeeId, items, ct);
 
-    public async Task<int> TotalInChatsAsync(Guid tenantId, Guid employeeId, CancellationToken ct)
-    {
-        var members = await _conversations.ListMemberConversationsAsync(tenantId, employeeId, ct);
-        var caseIds = members.Where(m => !ConversationSources.IsPeopleChat(m.Conversation.SubjectSource)).Select(m => m.Conversation.Id).ToList();
-        var groups = await _conversations.LatestSystemEventsAsync(tenantId, caseIds, [PeopleChatEvents.CaseGroup], ct);
-        // A muted chat's messages do not count towards the inbox badge.
-        var muted = await _conversations.ListMutedConversationIdsAsync(tenantId, employeeId, ct);
-        var listed = members
-            .Where(m => ConversationSources.IsPeopleChat(m.Conversation.SubjectSource) || groups.ContainsKey(m.Conversation.Id))
-            .Where(m => !muted.Contains(m.Conversation.Id))
-            .Select(m => m.Conversation.Id)
-            .ToList();
-        var unread = await _conversations.CountUnreadByConversationAsync(tenantId, employeeId, listed, ct);
-        return unread.Values.Sum();
-    }
+    /// <summary>Event JSON is written with "type" first ({"type":"case_group",...}), so this prefix finds a case group.</summary>
+    public const string CaseGroupEventPrefix = "{\"type\":\"" + PeopleChatEvents.CaseGroup + "\"";
+
+    // One aggregate (Task 00a): listing every chat with its latest message and every case's system events only to
+    // add up a number was the slowest step of the inbox badge. Muted chats do not count towards it.
+    public Task<int> TotalInChatsAsync(Guid tenantId, Guid employeeId, CancellationToken ct)
+        => _conversations.CountUnreadInListedChatsAsync(tenantId, employeeId, CaseGroupEventPrefix, ct);
 }

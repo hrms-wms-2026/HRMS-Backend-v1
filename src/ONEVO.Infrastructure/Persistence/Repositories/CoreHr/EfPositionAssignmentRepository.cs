@@ -220,6 +220,8 @@ public class EfPositionAssignmentRepository : IPositionAssignmentRepository
         var newId = Guid.NewGuid();
         var now = DateTimeOffset.UtcNow;
 
+        // UPDLOCK, HOLDLOCK on the counted range: a second caller for the same position waits until
+        // this statement commits and then counts the new row, so max_occupancy can't be overbooked.
         var rowsAffected = await _db.Database.ExecuteSqlInterpolatedAsync($@"
             INSERT INTO position_assignments
                 (id, tenant_id, employee_id, position_id, assignment_kind, effective_from,
@@ -227,7 +229,7 @@ public class EfPositionAssignmentRepository : IPositionAssignmentRepository
             SELECT {newId}, {tenantId}, {employeeId}, {positionId}, {PositionAssignmentKind.PrimaryEmployment},
                    {effectiveFrom}, {PositionAssignmentStatus.Planned}, {(createdById == Guid.Empty ? (Guid?)null : createdById)}, {now}, 0, {reportsToEmployeeId}
             WHERE (
-                SELECT COUNT(*) FROM position_assignments
+                SELECT COUNT(*) FROM position_assignments WITH (UPDLOCK, HOLDLOCK)
                 WHERE tenant_id = {tenantId} AND position_id = {positionId}
                   AND assignment_kind = {PositionAssignmentKind.PrimaryEmployment}
                   AND assignment_status IN ({PositionAssignmentStatus.Active}, {PositionAssignmentStatus.Planned})
@@ -289,6 +291,7 @@ public class EfPositionAssignmentRepository : IPositionAssignmentRepository
             // Concurrent change-position can still race the end-then-create sequence and hit
             // ix_position_assignments_one_active_primary_per_employee; map that to an
             // application-layer conflict instead of an unhandled 500.
+            // UPDLOCK, HOLDLOCK on the counted range: see TryReservePositionAssignmentAsync.
             var rowsAffected = await _db.Database.ExecuteSqlInterpolatedAsync($@"
                 INSERT INTO position_assignments
                     (id, tenant_id, employee_id, position_id, assignment_kind, effective_from,
@@ -296,7 +299,7 @@ public class EfPositionAssignmentRepository : IPositionAssignmentRepository
                 SELECT {newId}, {tenantId}, {employeeId}, {positionId}, {PositionAssignmentKind.PrimaryEmployment},
                        {effectiveFrom}, {PositionAssignmentStatus.Active}, {(createdById == Guid.Empty ? (Guid?)null : createdById)}, {now}, 0, {reportsToEmployeeId}
                 WHERE (
-                    SELECT COUNT(*) FROM position_assignments
+                    SELECT COUNT(*) FROM position_assignments WITH (UPDLOCK, HOLDLOCK)
                     WHERE tenant_id = {tenantId} AND position_id = {positionId}
                       AND assignment_kind = {PositionAssignmentKind.PrimaryEmployment}
                       AND assignment_status IN ({PositionAssignmentStatus.Active}, {PositionAssignmentStatus.Planned})

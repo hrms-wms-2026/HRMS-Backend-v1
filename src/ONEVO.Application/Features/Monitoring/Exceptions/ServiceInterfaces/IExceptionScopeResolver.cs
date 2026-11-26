@@ -28,4 +28,10 @@ public interface IExceptionScopeResolver
     /// routed to (reporting line included) can always open and work it.</summary>
     Task<ExceptionScope?> ResolveAsync(
         bool forAction, IReadOnlyCollection<Guid> candidateEmployeeIds, CancellationToken ct);
+
+    /// <summary>The parts of <see cref="ResolveAsync"/> that case routing reads - null for the same callers, the same
+    /// <see cref="ExceptionScope.IsHr"/>, <see cref="ExceptionScope.ActorEmployeeId"/> and
+    /// <see cref="ExceptionScope.HeldCaseIds"/> - without resolving coverage (<see cref="ExceptionScope.EmployeeIds"/> is
+    /// empty). Remembered for the request, so the Monitoring and Calendar badge counts share one resolution.</summary>
+    Task<ExceptionScope?> ResolveRoutingAsync(bool forAction, CancellationToken ct);
 }

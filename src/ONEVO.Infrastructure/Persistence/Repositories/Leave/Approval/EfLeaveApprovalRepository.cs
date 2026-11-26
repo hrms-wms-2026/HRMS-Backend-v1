@@ -1,5 +1,7 @@
 using Microsoft.EntityFrameworkCore;
+using ONEVO.Application.Features.Leave.Approval.Helpers;
 using ONEVO.Application.Features.Leave.Approval.RepositoryInterfaces;
+using ONEVO.Application.Features.Leave.Approval.Services;
 using ONEVO.Application.Features.Leave.Entitlement.Mappers;
 using ONEVO.Application.Features.Leave.Policy.Services;
 using ONEVO.Domain.Features.Leave.BalanceAudit.Entities;
@@ -18,6 +20,69 @@ public class EfLeaveApprovalRepository : ILeaveApprovalRepository
     {
         _db = db;
         _policies = policies;
+    }
+
+    public async Task<int> CountActionableAsync(Guid tenantId, Guid approverEmployeeId, CancellationToken ct = default)
+    {
+        var versioned =
+            from current in _db.LeaveRequestApprovers.AsNoTracking()
+            join request in _db.LeaveRequests.AsNoTracking() on current.LeaveRequestId equals request.Id
+            join version in _db.LeavePolicyVersions.AsNoTracking() on request.LeavePolicyVersionId equals version.Id
+            where current.TenantId == tenantId
+                && request.TenantId == tenantId
+                && version.TenantId == tenantId
+                && current.ApproverEmployeeId == approverEmployeeId
+                && current.Status == LeaveRequestApproverStatuses.Pending
+                && request.Status == LeaveRequestStatuses.Pending
+                && (version.ApprovalMode != LeaveApprovalModes.InOrder
+                    || !_db.LeaveRequestApprovers.AsNoTracking().Any(other =>
+                        other.TenantId == tenantId
+                        && other.LeaveRequestId == request.Id
+                        && other.Status == LeaveRequestApproverStatuses.Pending
+                        && other.SequenceOrder < current.SequenceOrder))
+            select request.Id;
+
+        var count = await versioned.Distinct().CountAsync(ct);
+
+        // Old requests created before policy-version pinning still need the resolver used by the decision path - the
+        // same answer as GetStateAsync + LeavePendingApprovals.IsActionable per request, read in three batches instead
+        // of about fifteen queries per request (Task 00a).
+        var legacy = await (
+            from current in _db.LeaveRequestApprovers.AsNoTracking()
+            join request in _db.LeaveRequests.AsNoTracking() on current.LeaveRequestId equals request.Id
+            join employee in _db.Employees.AsNoTracking() on request.EmployeeId equals employee.Id
+            join leaveType in _db.LeaveTypes.AsNoTracking() on request.LeaveTypeId equals leaveType.Id
+            where current.TenantId == tenantId
+                && request.TenantId == tenantId
+                && employee.TenantId == tenantId
+                && leaveType.TenantId == tenantId
+                && request.LeavePolicyVersionId == null
+                && current.ApproverEmployeeId == approverEmployeeId
+                && current.Status == LeaveRequestApproverStatuses.Pending
+                && request.Status == LeaveRequestStatuses.Pending
+            select new { request.Id, request.EmployeeId, request.LeaveTypeId, request.StartAt }).Distinct().ToListAsync(ct);
+        if (legacy.Count == 0)
+            return count;
+
+        var legacyIds = legacy.Select(r => r.Id).ToList();
+        var rowsByRequest = (await _db.LeaveRequestApprovers.AsNoTracking()
+                .Where(a => a.TenantId == tenantId && legacyIds.Contains(a.LeaveRequestId))
+                .Select(a => new { a.LeaveRequestId, a.ApproverEmployeeId, a.SequenceOrder, a.Status })
+                .ToListAsync(ct))
+            .ToLookup(a => a.LeaveRequestId, a => new ApprovalModeRow(a.ApproverEmployeeId, a.SequenceOrder, a.Status));
+        LeavePolicyLookup Lookup(Guid employeeId, Guid leaveTypeId, DateTimeOffset startAt)
+            => new(employeeId, leaveTypeId, DateOnly.FromDateTime(startAt.UtcDateTime));
+        var policies = await _policies.ResolveManyAsync(
+            tenantId, legacy.Select(r => Lookup(r.EmployeeId, r.LeaveTypeId, r.StartAt)).ToList(), ct);
+
+        foreach (var request in legacy)
+        {
+            var approvalMode = policies.GetValueOrDefault(Lookup(request.EmployeeId, request.LeaveTypeId, request.StartAt))?.Version.ApprovalMode;
+            if (approvalMode is not null
+                && LeaveApprovalModeEvaluator.IsActionable(approvalMode, rowsByRequest[request.Id].ToList(), approverEmployeeId))
+                count++;
+        }
+        return count;
     }
 
     public async Task<LeaveApprovalState?> GetStateAsync(Guid tenantId, Guid requestId, CancellationToken ct = default)

@@ -115,7 +115,9 @@ public sealed class ResponseDtoSensitiveFieldArchitectureTests
         JsonFieldNames(typeof(InvitationDetailDto)).Should().BeEquivalentTo(
             "tenant_name", "invited_email", "first_name", "last_name", "role_name", "expires_at", "status",
             "password_setup_enabled", "google_sign_in_enabled", "allow_google_email_mismatch",
-            "allowed_email_domains", "requires_password");
+            "allowed_email_domains", "requires_password",
+            // A fixed label ("general" / "employee_onboarding") that picks the accept endpoint; not an id.
+            "purpose");
     }
 
     [Theory]

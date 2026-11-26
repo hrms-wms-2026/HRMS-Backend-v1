@@ -36,6 +36,8 @@ public static class CascadeDeleteRules
         // Tasks are removed through EF (soft-deleted); EF cascades their tracked assignments and planner blocks.
         "fk_task_assignments_work_tasks_task_id",
         "fk_planned_task_blocks_work_tasks_task_id",
+        // Inbox (task 37a, development): InboxEntryConsistencyJob hard-deletes orphan entries; their assignee rows go with them.
+        "fk_inbox_item_assignees_inbox_entries_inbox_entry_id",
         // Not reviewed here: CredentialOwnershipCompletionArchitectureTests allows later migrations on payment_gateway tables
         // only the 39c audit key. The configs are never removed, so the cascade never fires.
         "fk_payment_gateway_country_routes_payment_gateway_configs_gateway_config_id",

@@ -67,6 +67,7 @@ public sealed class ForeignKeyRulesTests
         ["fk_user_roles_roles_role_id"] = "ArchiveRole removes the role through EF; EF cascades its tracked parts",
         ["fk_task_assignments_work_tasks_task_id"] = "tasks are removed through EF; EF cascades their tracked assignments",
         ["fk_planned_task_blocks_work_tasks_task_id"] = "tasks are removed through EF; EF cascades their tracked planner blocks",
+        ["fk_inbox_item_assignees_inbox_entries_inbox_entry_id"] = "assignee rows of an entry: InboxEntryConsistencyJob hard-deletes orphan entries",
         ["fk_payment_gateway_country_routes_payment_gateway_configs_gateway_config_id"] = "left as it is: CredentialOwnershipCompletionArchitectureTests limits later payment_gateway migrations to the 39c audit key",
         ["fk_payment_gateway_credentials_payment_gateway_configs_payment_gateway_config_id"] = "left as it is: CredentialOwnershipCompletionArchitectureTests limits later payment_gateway migrations to the 39c audit key",
     };

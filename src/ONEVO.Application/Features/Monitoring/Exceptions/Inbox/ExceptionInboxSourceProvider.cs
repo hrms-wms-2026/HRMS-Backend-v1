@@ -51,13 +51,50 @@ public sealed class ExceptionInboxSourceProvider : IInboxSourceProvider, IInboxP
     public string Source => ExceptionInboxKinds.Source;
     public string Label => "Monitoring";
 
+    public async Task<InboxSourceCounts> CountAsync(Guid tenantId, Guid callerEmployeeId, CancellationToken ct)
+    {
+        var candidateEmployeeIds = await _exceptions.ListActiveInboxEmployeeIdsAsync(tenantId, calendar: false, ct);
+        var scope = candidateEmployeeIds.Count == 0
+            ? null
+            : await _scope.ResolveRoutingAsync(forAction: true, ct);
+        var route = scope is null
+            ? ExceptionInboxCountRoute.Empty
+            : await _routing.CountRouteAsync(tenantId, candidateEmployeeIds, scope, hrFallback: true, ct);
+        var addedCaseIds = (await _conversations.ListAddedSubjectsAsync(tenantId, callerEmployeeId, Source, ct))
+            .Select(subject => subject.Id)
+            .Distinct()
+            .ToList();
+        var count = await _exceptions.CountActiveInboxAsync(tenantId, new ExceptionInboxCountCriteria(
+            callerEmployeeId,
+            route.RoutedEmployeeIds,
+            route.HrFallbackEmployeeIds,
+            route.HeldCaseIds,
+            addedCaseIds,
+            route.IncludeLegacyHrEscalations,
+            route.JournaledEscalatedCaseIds,
+            Calendar: false), ct);
+        return new InboxSourceCounts(0, count, count == 0
+            ? new Dictionary<string, int>()
+            : new Dictionary<string, int> { [ExceptionInboxKinds.Case] = count });
+    }
+
     public async Task<IReadOnlyList<InboxItem>> ListAsync(Guid tenantId, InboxQuery query, Guid callerEmployeeId, CancellationToken ct)
     {
         if (query.Category is { Count: > 0 } categories && !categories.Contains(InboxCategories.Alert))
             return [];
 
-        var active = (await _exceptions.GetListAsync(tenantId, new ExceptionListFilter(null, null, null, null, ActiveOnly: true), 1, ListLimit, ct))
-            .Where(e => !ExceptionInboxKinds.IsCalendarType(e.Type)).ToList();
+        var items = await VisibleActiveCasesAsync(tenantId, callerEmployeeId, ct);
+
+        var people = await PeopleAsync(tenantId, items.Select(i => i.Case.EmployeeId), ct);
+        return items.Select(i => Item(i.Case, people, i.Direction, i.Actionable ? Actions(i.Case) : [])).ToList();
+    }
+
+    private async Task<List<(MonitoringException Case, string Direction, bool Actionable)>> VisibleActiveCasesAsync(
+        Guid tenantId, Guid callerEmployeeId, CancellationToken ct)
+    {
+        var active = (await _exceptions.GetListAsync(tenantId,
+                new ExceptionListFilter(null, null, null, null, ActiveOnly: true, Calendar: false), 1, ListLimit, ct))
+            .Where(e => e.Status != ExceptionStatus.Resolved && !ExceptionInboxKinds.IsCalendarType(e.Type)).ToList();
         var scope = active.Count == 0 ? null : await _scope.ResolveAsync(forAction: true, active.Select(e => e.EmployeeId).Distinct().ToList(), ct);
         var routed = scope is null ? [] : await _routing.RoutedCasesAsync(tenantId, active, scope, hrFallback: true, ct);
 
@@ -71,12 +108,12 @@ public sealed class ExceptionInboxSourceProvider : IInboxSourceProvider, IInboxP
         }
         foreach (var subject in await _conversations.ListAddedSubjectsAsync(tenantId, callerEmployeeId, Source, ct))
         {
-            if (items.All(i => i.Case.Id != subject.Id) && await _exceptions.GetByIdAsync(tenantId, subject.Id, ct) is { } added)
+            if (items.All(i => i.Case.Id != subject.Id)
+                && await _exceptions.GetByIdAsync(tenantId, subject.Id, ct) is { Status: not ExceptionStatus.Resolved } added
+                && !ExceptionInboxKinds.IsCalendarType(added.Type))
                 items.Add((added, InboxDirections.Info, false));
         }
-
-        var people = await PeopleAsync(tenantId, items.Select(i => i.Case.EmployeeId), ct);
-        return items.Select(i => Item(i.Case, people, i.Direction, i.Actionable ? Actions(i.Case) : [])).ToList();
+        return items;
     }
 
     /// <summary>The subject's monitoring cases of any status, as info. CanOpen follows GetDetailAsync: the subject,

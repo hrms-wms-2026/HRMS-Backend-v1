@@ -32,10 +32,11 @@ public sealed class LeaveDecisionReverter : InboxDecisionReverterBase
     private readonly ICurrentUser _currentUser;
     private readonly IDateTimeProvider _clock;
     private readonly INotificationDispatcher _notifications;
+    private readonly LeaveInboxEntrySync _inboxEntries;
 
     public LeaveDecisionReverter(
         IInboxDecisionJournal journal, IUnitOfWork unitOfWork, IDateTimeProvider clock, ILeaveApprovalRepository approvals,
-        LeaveRequestRangeEditor editor, ICurrentUser currentUser, INotificationDispatcher notifications)
+        LeaveRequestRangeEditor editor, ICurrentUser currentUser, INotificationDispatcher notifications, LeaveInboxEntrySync inboxEntries)
         : base(journal, unitOfWork, clock)
     {
         _approvals = approvals;
@@ -43,6 +44,7 @@ public sealed class LeaveDecisionReverter : InboxDecisionReverterBase
         _currentUser = currentUser;
         _clock = clock;
         _notifications = notifications;
+        _inboxEntries = inboxEntries;
     }
 
     public override string Source => LeaveInboxKinds.Source;
@@ -100,6 +102,7 @@ public sealed class LeaveDecisionReverter : InboxDecisionReverterBase
         var now = _clock.UtcNow;
 
         // Approver rows back as they were; a row the decision added (forward) is removed.
+        var removed = new HashSet<Guid>();
         foreach (var row in state.Approvers.ToList())
         {
             if (before.Approvers.FirstOrDefault(b => b.Id == row.Id) is { } was)
@@ -111,6 +114,7 @@ public sealed class LeaveDecisionReverter : InboxDecisionReverterBase
             else if (AddedRows(before, after).Contains(row.Id))
             {
                 _approvals.RemoveApprover(row);
+                removed.Add(row.Id);
             }
         }
 
@@ -165,6 +169,7 @@ public sealed class LeaveDecisionReverter : InboxDecisionReverterBase
                 },
                 InboxNotificationNavigation.RelatedEntityType(LeaveInboxKinds.Source, LeaveInboxKinds.Request), request.Id, ct);
 
+        await _inboxEntries.StageAsync(state with { Approvers = state.Approvers.Where(a => !removed.Contains(a.Id)).ToList() }, ct);
         await _approvals.SaveChangesAsync(ct);
         return Result<InboxActionResult>.Success(new InboxActionResult(LeaveInboxSourceProvider.People(state)));
     }

@@ -17308,6 +17308,18 @@
         }
       }
     },
+    "/api/v1/onboarding/drafts/self-setup": {
+      "get": {
+        "tags": [
+          "OnboardingDrafts"
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
     "/api/v1/onboarding/drafts/clock-in-defaults": {
       "get": {
         "tags": [
@@ -26929,6 +26941,12 @@
               "string"
             ],
             "format": "uuid"
+          },
+          "version": {
+            "type": [
+              "null",
+              "string"
+            ]
           }
         }
       },
@@ -27005,6 +27023,12 @@
             "type": "string"
           },
           "description": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "version": {
             "type": [
               "null",
               "string"
@@ -27231,6 +27255,12 @@
               "string"
             ],
             "format": "double"
+          },
+          "version": {
+            "type": [
+              "null",
+              "string"
+            ]
           }
         }
       },
@@ -27440,6 +27470,12 @@
               "string"
             ],
             "format": "uuid"
+          },
+          "version": {
+            "type": [
+              "null",
+              "string"
+            ]
           }
         }
       },
@@ -27454,6 +27490,12 @@
             "type": "string"
           },
           "description": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "version": {
             "type": [
               "null",
               "string"
@@ -27508,6 +27550,12 @@
           "isActive": {
             "type": "boolean",
             "default": true
+          },
+          "version": {
+            "type": [
+              "null",
+              "string"
+            ]
           }
         }
       },

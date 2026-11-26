@@ -18,6 +18,11 @@ employees.nationality_id | external | no nationalities table exists; the API sto
 entity_assets.owner_id | polymorphic | the type column next to it names the table, so no foreign key is possible
 feature_access_grants.grantee_id | polymorphic | the type column next to it names the table, so no foreign key is possible
 inbox_decision_journal.item_id | polymorphic | an inbox item of any source (leave request, correction, approval and so on); the source and kind columns name it, so no single parent (task 39e)
+inbox_item_assignees.employee_id | reference | employees.id; tables created by task 37a (development) before the task 39 ratchet; key still to add, follow-up after the 2026-11-26 merge (a data check and the inbox fixtures first)
+inbox_items.decided_by_employee_id | reference | employees.id; tables created by task 37a (development) before the task 39 ratchet; key still to add, follow-up after the 2026-11-26 merge (a data check and the inbox fixtures first)
+inbox_items.requested_by_employee_id | reference | employees.id; tables created by task 37a (development) before the task 39 ratchet; key still to add, follow-up after the 2026-11-26 merge (a data check and the inbox fixtures first)
+inbox_items.subject_employee_id | reference | employees.id; tables created by task 37a (development) before the task 39 ratchet; key still to add, follow-up after the 2026-11-26 merge (a data check and the inbox fixtures first)
+inbox_items.subject_id | polymorphic | the source and kind columns next to it name the table, so no foreign key is possible
 invitation_tokens.created_by_id | audit | mixed: a platform_users id for the tenant owner's invitation (TenantOwnerInvitationService), a users id otherwise, so no single parent
 leave_policy_assignments.target_id | polymorphic | the type column next to it names the table, so no foreign key is possible
 module_catalog_price_history.changed_by_id | unused | no code writes this table's actor (task 39e); give it a key to platform_users when a writer exists
@@ -25,16 +30,20 @@ monitoring_evidence_assets.legal_hold_id | external | no legal_holds table exist
 monitoring_evidence_assets.retention_policy_id | external | no retention policy table exists (retention is MonitoringRetentionOptions)
 monitoring_policy_overrides.scope_id | polymorphic | the type column next to it names the table, so no foreign key is possible
 notification_deliveries.event_id | external | the notification event's id (the idempotency key of the delivery), not a row
+notification_deliveries.related_entity_id | polymorphic | the type column next to it names the table, so no foreign key is possible
 notification_templates.active_version_id | reference | a template and its first version are added in one save (NotificationTemplateSeeder, CreateNotificationTemplate); with versions.template_id a key makes a cycle EF cannot order (task 39e)
+notifications.related_entity_id | polymorphic | the type column next to it names the table, so no foreign key is possible
 payment_gateway_credentials.deactivated_by_id | reference | CredentialOwnershipCompletionArchitectureTests allows later migrations on payment_gateway tables only the 39c audit key; a key here needs that test's owner to agree (task 39e)
 payment_gateway_credentials.rotated_by_id | reference | CredentialOwnershipCompletionArchitectureTests allows later migrations on payment_gateway tables only the 39c audit key; a key here needs that test's owner to agree (task 39e)
-notification_deliveries.related_entity_id | polymorphic | the type column next to it names the table, so no foreign key is possible
-notifications.related_entity_id | polymorphic | the type column next to it names the table, so no foreign key is possible
 personal_calendar_events.source_id | polymorphic | the type column next to it names the table, so no foreign key is possible
+rate_limit_setting_changes.platform_user_id | audit | append-only rate limit history (task 45): kept after the plan, tenant or admin it names is deleted
+rate_limit_setting_changes.subscription_plan_id | audit | append-only rate limit history (task 45): kept after the plan, tenant or admin it names is deleted
+rate_limit_setting_changes.tenant_id | audit | append-only rate limit history (task 45): kept after the plan, tenant or admin it names is deleted
 reporting_manager_changes.batch_id | external | a group id made by ReportingLineMoveService (Guid.NewGuid) for the changes of one move; no batch table
 task_statuses.approver_id | unused | dead field (see TaskStatus.RequiresApproval): stored from the client unchecked and read by no logic; neither an employee nor a user id is guaranteed
 tenant_provisioning_states.last_updated_by_id | unused | no code writes it (task 39e); give it a key when a writer exists
 tenant_setup_selections.completed_by_id | unused | no code writes it (task 39e); give it a key when a writer exists
 wm_approval_requests.target_id | polymorphic | the type column next to it names the table, so no foreign key is possible
 wm_monitor_alerts.target_id | polymorphic | the type column next to it names the table, so no foreign key is possible
+wm_notification_log.actor_employee_id | audit | WorkNotificationEngine writes Guid.Empty as the actor of system monitor alerts
 wm_notification_log.target_id | polymorphic | the type column next to it names the table, so no foreign key is possible

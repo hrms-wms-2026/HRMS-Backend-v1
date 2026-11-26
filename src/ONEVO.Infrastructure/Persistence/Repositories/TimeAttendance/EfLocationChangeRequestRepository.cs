@@ -59,6 +59,12 @@ public sealed class EfLocationChangeRequestRepository(ApplicationDbContext db) :
             .OrderBy(x => x)
             .ToListAsync(ct);
 
+    public Task<int> CountPendingAsync(
+        Guid tenantId, Guid legalEntityId, IReadOnlyCollection<Guid> employeeIds, CancellationToken ct = default)
+        => employeeIds.Count == 0 ? Task.FromResult(0) : db.LocationChangeRequests.AsNoTracking().CountAsync(x =>
+            x.TenantId == tenantId && x.LegalEntityId == legalEntityId
+            && employeeIds.Contains(x.EmployeeId) && x.Status == LocationChangeRequest.StatusPending, ct);
+
     public async Task<(IReadOnlyList<LocationChangeRequest> Items, int TotalCount)> ListApprovalInboxAsync(
         Guid tenantId, Guid legalEntityId, IReadOnlyCollection<Guid> employeeIds,
         int skip, int take, CancellationToken ct = default)

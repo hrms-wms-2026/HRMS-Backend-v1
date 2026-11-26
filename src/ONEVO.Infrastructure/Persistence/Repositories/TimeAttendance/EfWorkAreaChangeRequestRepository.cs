@@ -66,6 +66,12 @@ public sealed class EfWorkAreaChangeRequestRepository(ApplicationDbContext db)
             .ToListAsync(ct);
     }
 
+    public Task<int> CountPendingAsync(
+        Guid tenantId, Guid legalEntityId, IReadOnlyCollection<Guid> employeeIds, CancellationToken ct = default)
+        => employeeIds.Count == 0 ? Task.FromResult(0) : db.WorkAreaChangeRequests.AsNoTracking().CountAsync(x =>
+            x.TenantId == tenantId && x.LegalEntityId == legalEntityId && x.EmployeeId != Guid.Empty
+            && employeeIds.Contains(x.EmployeeId) && x.Status == WorkAreaChangeRequest.StatusPending, ct);
+
     public async Task<(IReadOnlyList<WorkAreaChangeRequest> Items, int TotalCount)> ListApprovalInboxAsync(
         Guid tenantId, Guid legalEntityId, IReadOnlyCollection<Guid> employeeIds,
         DateOnly? from, DateOnly? to, int skip, int take, CancellationToken ct = default)
