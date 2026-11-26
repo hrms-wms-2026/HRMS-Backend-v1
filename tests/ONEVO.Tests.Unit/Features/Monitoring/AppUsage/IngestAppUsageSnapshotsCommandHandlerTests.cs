@@ -67,15 +67,16 @@ public class IngestAppUsageSnapshotsCommandHandlerTests
 
     private IngestAppUsageSnapshotsCommandHandler CreateSut() => new(
         _snapshots.Object,
-        _toggles.Object,
-        _device.Object,
-        _tenants.Object,
-        _switcher.Object,
-        _employeeIdentity.Object,
-        _clock,
+        new TraySnapshotIngest(
+            _device.Object,
+            _tenants.Object,
+            _switcher.Object,
+            _toggles.Object,
+            _employeeIdentity.Object,
+            _clock,
+            NullLogger<TraySnapshotIngest>.Instance),
         _uow,
-        _globalApplications.Object,
-        NullLogger<IngestAppUsageSnapshotsCommandHandler>.Instance);
+        _globalApplications.Object);
 
     private static AppUsageSnapshotItem Item(DateTimeOffset capturedAt) => new()
     {

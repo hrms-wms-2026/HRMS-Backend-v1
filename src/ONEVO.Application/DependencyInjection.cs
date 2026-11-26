@@ -37,6 +37,9 @@ public static class DependencyInjection
 
         services.AddValidatorsFromAssembly(assembly);
 
+        // Task 35: the checks every tray snapshot upload shares.
+        services.AddScoped<ONEVO.Application.Features.Monitoring.ActivityMonitoring.Helpers.TraySnapshotIngest>();
+
         services.AddScoped<
             ONEVO.Application.Features.Dashboard.Layout.Access.IDashboardWidgetAccess,
             ONEVO.Application.Features.Dashboard.Layout.Access.DashboardWidgetAccess>();

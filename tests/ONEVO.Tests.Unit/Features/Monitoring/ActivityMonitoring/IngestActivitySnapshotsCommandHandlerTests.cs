@@ -70,12 +70,14 @@ public class IngestActivitySnapshotsCommandHandlerTests
     private IngestActivitySnapshotsCommandHandler CreateSut() => new(
         _snapshots.Object,
         _rawBuffer.Object,
-        _toggles.Object,
-        _device.Object,
-        _tenants.Object,
-        _switcher.Object,
-        _employeeIdentity.Object,
-        _clock,
+        new TraySnapshotIngest(
+            _device.Object,
+            _tenants.Object,
+            _switcher.Object,
+            _toggles.Object,
+            _employeeIdentity.Object,
+            _clock,
+            NullLogger<TraySnapshotIngest>.Instance),
         _uow,
         NullLogger<IngestActivitySnapshotsCommandHandler>.Instance);
 
