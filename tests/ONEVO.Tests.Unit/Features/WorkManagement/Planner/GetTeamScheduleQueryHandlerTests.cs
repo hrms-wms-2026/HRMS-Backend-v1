@@ -247,6 +247,7 @@ public class GetTeamScheduleQueryHandlerTests
         var result = await f.RunAsync();
 
         Assert.Equal(404, result.StatusCode);
+        Assert.Equal(PlannerErrorCodes.NoEmployeeProfile, result.ErrorCode);
     }
 
     // ---- Coverage audit (2026-10-29 plan, Task 12) ----

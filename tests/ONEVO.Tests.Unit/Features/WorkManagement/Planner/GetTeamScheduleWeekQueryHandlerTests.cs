@@ -116,7 +116,10 @@ public class GetTeamScheduleWeekQueryHandlerTests
         var f = new Fixture();
         f.Identity.Setup(x => x.ResolveCallerEmployeeIdAsync(TenantId, UserId, It.IsAny<CancellationToken>())).ReturnsAsync((Guid?)null);
 
-        Assert.Equal(404, (await f.RunAsync()).StatusCode);
+        var result = await f.RunAsync();
+
+        Assert.Equal(404, result.StatusCode);
+        Assert.Equal(PlannerErrorCodes.NoEmployeeProfile, result.ErrorCode);
     }
 
     [Fact]
