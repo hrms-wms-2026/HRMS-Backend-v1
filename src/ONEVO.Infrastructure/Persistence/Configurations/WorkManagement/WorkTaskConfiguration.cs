@@ -2,7 +2,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata.Builders;
 using ONEVO.Domain.Features.WorkManagement.Sprints.Entities;
 using ONEVO.Domain.Features.WorkManagement.Tasks.Entities;
-using TaskStatusEntity = ONEVO.Domain.Features.WorkManagement.Tasks.Entities.TaskStatus;
+using TaskStatusEntity = ONEVO.Domain.Features.WorkManagement.Tasks.Entities.TaskStatus;
 using ONEVO.Infrastructure.Persistence.SqlServer;
 
 namespace ONEVO.Infrastructure.Persistence.Configurations.WorkManagement;
@@ -32,7 +32,14 @@ public class WorkTaskConfiguration : IEntityTypeConfiguration<WorkTask>
             .HasDatabaseName("ix_tasks_one_short_id_per_tenant");
         builder.HasIndex(t => new { t.TenantId, t.ProjectId, t.CategoryId })
             .HasDatabaseName("ix_tasks_tenant_id_project_id_category_id");
-        builder.HasIndex(t => new { t.TenantId, t.ParentTaskId })
+        // Top-level tasks of a set of objectives (parent_task_id IS NULL AND objective_id IN ...) is the main read of
+        // the led-progress, work-graph and team views. The included columns are what those reads aggregate, so the
+        // index answers them without touching the table (task 18, docs/reports/performance/2026-11-task-18-index-review.md).
+        builder.HasIndex(t => new { t.TenantId, t.ParentTaskId, t.ObjectiveId })
+            .IncludeProperties(t => new
+            {
+                t.StatusId, t.TaskKind, t.IsDeleted, t.EstimatedHours, t.ProgressPercent, t.DueDate, t.CompletedAt,
+            })
             .HasDatabaseName("ix_tasks_tenant_id_parent_task_id");
         builder.HasIndex(t => new { t.TenantId, t.ProjectId, t.VisibilityScope })
             .HasDatabaseName("ix_tasks_tenant_id_project_id_visibility_scope");
