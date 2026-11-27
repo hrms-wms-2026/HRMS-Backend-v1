@@ -38,6 +38,9 @@ public static class DependencyInjection
             .AddSharedStateAndSessions(configuration)
             .AddSeeders(configuration);
 
+        // Task 46: rate limits with the database overrides, registered before AddApiRateLimiting runs.
+        Services.SharedPlatform.RateLimiting.RateLimitSettingsRegistration.AddDatabaseRateLimitSettings(services);
+
         // Boot-time configuration audit (warns about missing keys; never fatal). Last hosted service.
         services.AddHostedService<ConfigurationStartupValidator>();
 

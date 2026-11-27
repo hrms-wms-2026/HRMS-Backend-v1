@@ -74,6 +74,10 @@ internal static class DeveloperPlatformRegistration
         // System Config - Platform Service Keys (Phase 1 canonical table)
         services.AddScoped<IPlatformServiceKeyRepository, EfPlatformServiceKeyRepository>();
         services.AddScoped<ITrayAppReleaseRepository, EfTrayAppReleaseRepository>();
+        // Task 47: rate limit overrides for the admin API.
+        services.AddScoped<
+            ONEVO.Application.Features.DevPlatform.SystemConfig.RateLimits.RepositoryInterfaces.IRateLimitSettingRepository,
+            EfRateLimitSettingRepository>();
         services.AddScoped<IPlatformServiceKeyVerificationService, PlatformServiceKeyVerificationService>();
         services.AddScoped<
             ONEVO.Infrastructure.Services.Monitoring.Biometrics.IAwsRekognitionConnectionProbe,

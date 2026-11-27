@@ -13,6 +13,10 @@ public class TaskAssignmentConfiguration : IEntityTypeConfiguration<TaskAssignme
 
         builder.HasIndex(a => a.TaskId).IsUnique()
             .HasDatabaseName("ix_task_assignments_one_per_task");
+        // "Tasks assigned to these people" reads only task_id; including it saves a lookup per row (task 18).
+        builder.HasIndex(a => a.EmployeeId)
+            .IncludeProperties(a => a.TaskId)
+            .HasDatabaseName("ix_task_assignments_employee_id");
 
         builder.HasOne<WorkTask>().WithMany().HasForeignKey(a => a.TaskId).OnDelete(DeleteBehavior.Cascade);
     }

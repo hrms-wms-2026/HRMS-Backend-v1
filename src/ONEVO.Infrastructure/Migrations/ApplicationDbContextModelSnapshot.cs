@@ -16543,6 +16543,8 @@ namespace ONEVO.Infrastructure.Migrations
                     b.HasIndex("EmployeeId")
                         .HasDatabaseName("ix_task_assignments_employee_id");
 
+                    SqlServerIndexBuilderExtensions.IncludeProperties(b.HasIndex("EmployeeId"), new[] { "TaskId" });
+
                     b.HasIndex("TaskId")
                         .IsUnique()
                         .HasDatabaseName("ix_task_assignments_one_per_task");
@@ -17481,15 +17483,17 @@ namespace ONEVO.Infrastructure.Migrations
                     b.HasIndex("StatusId")
                         .HasDatabaseName("ix_tasks_status_id");
 
-                    b.HasIndex("TenantId", "ParentTaskId")
-                        .HasDatabaseName("ix_tasks_tenant_id_parent_task_id");
-
                     b.HasIndex("TenantId", "ShortId")
                         .IsUnique()
                         .HasDatabaseName("ix_tasks_one_short_id_per_tenant");
 
                     b.HasIndex("TenantId", "ObjectiveId", "StatusId")
                         .HasDatabaseName("ix_tasks_tenant_id_objective_id_status_id");
+
+                    b.HasIndex("TenantId", "ParentTaskId", "ObjectiveId")
+                        .HasDatabaseName("ix_tasks_tenant_id_parent_task_id");
+
+                    SqlServerIndexBuilderExtensions.IncludeProperties(b.HasIndex("TenantId", "ParentTaskId", "ObjectiveId"), new[] { "StatusId", "TaskKind", "IsDeleted", "EstimatedHours", "ProgressPercent", "DueDate", "CompletedAt" });
 
                     b.HasIndex("TenantId", "ProjectId", "CategoryId")
                         .HasDatabaseName("ix_tasks_tenant_id_project_id_category_id");
