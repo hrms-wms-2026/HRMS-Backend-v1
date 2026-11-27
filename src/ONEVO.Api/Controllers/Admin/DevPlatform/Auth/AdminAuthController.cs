@@ -160,8 +160,9 @@ public sealed class AdminAuthController : ControllerBase
     {
         var result = await _mediator.Send(
             new AcceptPlatformManagerInviteCommand(request.Token, request.Password), ct);
+        // The email goes only to the holder of the single-use token, who already received it.
         return result.IsSuccess
-            ? NoContent()
+            ? Ok(new AcceptPlatformManagerInviteResponse(result.Value!))
             : Problem(result.Error, statusCode: result.StatusCode ?? 400);
     }
 

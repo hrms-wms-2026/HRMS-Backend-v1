@@ -81,6 +81,83 @@ public class InvitePlatformManagerCommandHandlerTests
         result.StatusCode.Should().Be(409);
     }
 
+    [Theory]
+    [InlineData(PlatformUser.StatusActive, PlatformUser.InviteAccepted)]
+    [InlineData(PlatformUser.StatusPending, PlatformUser.InvitePending)]
+    [InlineData(PlatformUser.StatusInactive, PlatformUser.InviteAccepted)]
+    public async Task Handle_ExistingUserNotRevoked_ReturnsConflict(string status, string inviteStatus)
+    {
+        var roleId = Guid.NewGuid();
+        _users.Setup(u => u.GetByEmailAsync("existing@example.com", It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new PlatformUser
+            {
+                Id = Guid.NewGuid(), Email = "existing@example.com", Status = status, InviteStatus = inviteStatus
+            });
+        _roles.Setup(r => r.GetRoleByIdAsync(roleId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new PlatformRole { Id = roleId, Name = "Manager" });
+
+        var handler = CreateHandler();
+        var result = await handler.Handle(
+            new InvitePlatformManagerCommand("existing@example.com", "New Manager", [roleId]),
+            CancellationToken.None);
+
+        result.StatusCode.Should().Be(409);
+        _users.Verify(u => u.UpdateUser(It.IsAny<PlatformUser>()), Times.Never);
+        _invites.Verify(i => i.AddAsync(It.IsAny<PlatformUserInvite>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task Handle_RevokedInviteEmail_ReinvitesExistingUser()
+    {
+        var roleId = Guid.NewGuid();
+        var existing = new PlatformUser
+        {
+            Id = Guid.NewGuid(),
+            Email = "revoked@example.com",
+            FullName = "Old Name",
+            Status = PlatformUser.StatusInactive,
+            InviteStatus = PlatformUser.InviteRevoked
+        };
+        _users.Setup(u => u.GetByEmailAsync("revoked@example.com", It.IsAny<CancellationToken>()))
+            .ReturnsAsync(existing);
+        _roles.Setup(r => r.GetRoleByIdAsync(roleId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new PlatformRole { Id = roleId, Name = "Manager" });
+        _tokens.Setup(t => t.GenerateOpaqueToken()).Returns("raw-token-value");
+        _tokens.Setup(t => t.HashToken("raw-token-value")).Returns("hashed-token-value");
+
+        var handler = CreateHandler();
+        var result = await handler.Handle(
+            new InvitePlatformManagerCommand(" Revoked@Example.com ", "New Name", [roleId]),
+            CancellationToken.None);
+
+        result.IsSuccess.Should().BeTrue();
+        existing.Status.Should().Be(PlatformUser.StatusPending);
+        existing.InviteStatus.Should().Be(PlatformUser.InvitePending);
+        existing.FullName.Should().Be("New Name");
+
+        _users.Verify(u => u.AddAsync(It.IsAny<PlatformUser>(), It.IsAny<CancellationToken>()), Times.Never);
+        _users.Verify(u => u.UpdateUser(existing), Times.Once);
+        _users.Verify(u => u.ReplaceRolesAsync(
+            existing.Id, It.Is<IEnumerable<Guid>>(ids => ids.SequenceEqual(new[] { roleId })),
+            It.IsAny<CancellationToken>()), Times.Once);
+
+        _invites.Verify(i => i.AddAsync(
+            It.Is<PlatformUserInvite>(inv =>
+                inv.PlatformUserId == existing.Id &&
+                inv.InviteTokenHash == "hashed-token-value" &&
+                inv.RevokedAt == null),
+            It.IsAny<CancellationToken>()), Times.Once);
+
+        _outbox.Verify(o => o.EnqueueAsync(
+            OutboxMessageTypes.PlatformManagerInviteEmail,
+            It.Is<PlatformManagerInviteEmailPayload>(p =>
+                p.Email == "revoked@example.com" && p.RawToken == "raw-token-value"),
+            null,
+            It.IsAny<CancellationToken>()), Times.Once);
+
+        _uow.Verify(u => u.SaveChangesAsync(It.IsAny<CancellationToken>()), Times.Once);
+    }
+
     [Fact]
     public async Task Handle_ValidRequest_CreatesUserRolesInviteAndOutboxMessage()
     {

@@ -7,4 +7,7 @@ public record PlatformUserResponse(
     string Role,
     string Status,
     DateTimeOffset CreatedAt,
-    DateTimeOffset? LastLoginAt);
+    DateTimeOffset? LastLoginAt,
+    // "pending" | "accepted" | "revoked" | "expired". Lets the console tell a revoked
+    // invite (can be re-invited) apart from a deactivated account (both are inactive).
+    string InviteStatus);

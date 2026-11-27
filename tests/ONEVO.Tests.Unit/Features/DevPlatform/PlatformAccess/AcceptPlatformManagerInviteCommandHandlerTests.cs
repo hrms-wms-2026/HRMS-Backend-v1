@@ -79,7 +79,13 @@ public class AcceptPlatformManagerInviteCommandHandlerTests
             PlatformUserId = userId,
             ExpiresAt = _now.AddHours(1)
         };
-        var user = new PlatformUser { Id = userId, Status = PlatformUser.StatusPending, InviteStatus = PlatformUser.InvitePending };
+        var user = new PlatformUser
+        {
+            Id = userId,
+            Email = "invited@example.com",
+            Status = PlatformUser.StatusPending,
+            InviteStatus = PlatformUser.InvitePending
+        };
 
         _invites.Setup(i => i.GetByTokenHashAsync("hashed-token", It.IsAny<CancellationToken>())).ReturnsAsync(invite);
         _users.Setup(u => u.GetByIdAsync(userId, It.IsAny<CancellationToken>())).ReturnsAsync(user);
@@ -89,6 +95,8 @@ public class AcceptPlatformManagerInviteCommandHandlerTests
             new AcceptPlatformManagerInviteCommand("raw-token", "NewPassword1!"), CancellationToken.None);
 
         result.IsSuccess.Should().BeTrue();
+        // Returned so the console can open sign-in with the invited account, not a remembered one.
+        result.Value.Should().Be("invited@example.com");
         user.Status.Should().Be(PlatformUser.StatusActive);
         user.InviteStatus.Should().Be(PlatformUser.InviteAccepted);
         invite.AcceptedAt.Should().Be(_now);
