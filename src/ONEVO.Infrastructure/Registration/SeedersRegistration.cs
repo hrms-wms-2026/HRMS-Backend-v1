@@ -34,6 +34,8 @@ internal static class SeedersRegistration
         services.AddHostedService<DapiLeaveSampleSeeder>();
         services.AddHostedService<DapiAttendanceDemoSeeder>();
         services.AddHostedService<DapiHistorySeeder>();
+        // Off unless Seeding:PerformanceBaseline:Enabled (task 06 Part B, throwaway databases only).
+        services.AddHostedService<DapiPerformanceBaselineSeeder>();
         services.AddHostedService<PlatformOAuthProviderMetadataSeeder>();
         services.AddHostedService<WorkManagementSampleDataSeeder>();
         services.AddHostedService<ReferenceSeedingLock.Release>();
