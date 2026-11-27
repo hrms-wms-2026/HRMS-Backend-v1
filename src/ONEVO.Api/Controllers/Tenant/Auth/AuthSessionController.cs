@@ -9,9 +9,11 @@ using ONEVO.Application.Common.ServiceInterfaces;
 using ONEVO.Application.Common.Tenancy;
 using ONEVO.Application.Features.Auth.Login.Queries.GetCurrentSession;
 using ONEVO.Application.Features.Auth.Login.ServiceInterfaces;
+using ONEVO.Api.Filters;
 
 namespace ONEVO.Api.Controllers.Tenant.Auth;
 
+[NoResponseCompression]
 [ApiController]
 [Route("api/v1/auth")]
 public class AuthSessionController : ControllerBase

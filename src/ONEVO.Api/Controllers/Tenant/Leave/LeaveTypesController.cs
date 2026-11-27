@@ -27,6 +27,7 @@ public class LeaveTypesController : ControllerBase
     /// <summary>List leave types for this tenant. Self-service employees (leave:read-own) need this
     /// for the New Request wizard; they only ever get active types. leave:manage holders need it to
     /// see whether Time Off is set up and to manage the types they create.</summary>
+    [ReferenceDataCache]
     [HttpGet]
     [RequireAnyPermission(PermissionCatalog.Leave.Read, PermissionCatalog.Leave.ReadOwn, PermissionCatalog.Leave.Manage)]
     public async Task<IActionResult> List([FromQuery] bool includeInactive = false, CancellationToken ct = default)
@@ -36,6 +37,7 @@ public class LeaveTypesController : ControllerBase
     }
 
     /// <summary>Get a single leave type.</summary>
+    [ReferenceDataCache]
     [HttpGet("{leaveTypeId:guid}")]
     [RequirePermission(PermissionCatalog.Leave.Read)]
     public async Task<IActionResult> Get(Guid leaveTypeId, CancellationToken ct = default)

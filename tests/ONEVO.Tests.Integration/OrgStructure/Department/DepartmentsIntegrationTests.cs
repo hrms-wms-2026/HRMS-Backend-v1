@@ -565,8 +565,7 @@ public sealed class DepartmentsIntegrationTests : IClassFixture<DepartmentsInteg
     {
         var created = await _fixture.CreateDepartmentAsync(_fixture.TenantAOwner, _fixture.TenantALegalEntityId, "Lifecycle Dept");
         created.GetProperty("name").GetString().Should().Be("Lifecycle Dept");
-        created.TryGetProperty("headPositionId", out var headOnCreate).Should().BeTrue();
-        headOnCreate.ValueKind.Should().Be(JsonValueKind.Null);
+        created.GetPropertyOrNull("headPositionId").ValueKind.Should().Be(JsonValueKind.Null);
 
         var id = created.GetProperty("id").GetGuid();
 
@@ -755,7 +754,7 @@ public sealed class DepartmentsIntegrationTests : IClassFixture<DepartmentsInteg
             cookie: _fixture.TenantAOwner.SessionCookie, csrfToken: _fixture.TenantAOwner.CsrfHeader);
         clear.StatusCode.Should().Be(HttpStatusCode.OK);
         var json = await ReadJsonAsync(clear);
-        json.GetProperty("headPositionId").ValueKind.Should().Be(JsonValueKind.Null);
+        json.GetPropertyOrNull("headPositionId").ValueKind.Should().Be(JsonValueKind.Null);
     }
 
     [Fact]

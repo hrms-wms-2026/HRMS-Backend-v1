@@ -8,9 +8,11 @@ using ONEVO.Application.Features.Auth.Invite.Commands.AcceptInvitationGoogle;
 using ONEVO.Application.Features.Auth.Invite.Commands.AcceptInvitationPassword;
 using ONEVO.Application.Features.Auth.Invite.Queries.GetInvitationByToken;
 using ONEVO.Application.Features.Auth.Legal.Commands.SubmitLegalAcceptance;
+using ONEVO.Api.Filters;
 
 namespace ONEVO.Api.Controllers.Tenant.Auth;
 
+[NoResponseCompression]
 [ApiController]
 [Route("api/v1/auth")]
 public class AuthInvitationController : ControllerBase

@@ -19,9 +19,11 @@ using ONEVO.Application.Features.DevPlatform.PlatformAccess.Commands.AcceptPlatf
 using ONEVO.Application.Features.Auth.Login.DTOs.Responses;
 using ONEVO.Application.Features.Auth.Login.Queries.GetAdminSessionContext;
 using ONEVO.Application.Features.Auth.Login.Queries.GetAdminGoogleSsoConfig;
+using ONEVO.Api.Filters;
 
 namespace ONEVO.Api.Controllers.Admin.DevPlatform.Auth;
 
+[NoResponseCompression]
 [ApiController]
 [Route("admin/v1/auth")]
 public sealed class AdminAuthController : ControllerBase

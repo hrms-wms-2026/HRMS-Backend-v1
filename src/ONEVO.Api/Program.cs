@@ -4,7 +4,6 @@ using ONEVO.Api.Extensions;
 using ONEVO.Api.Middleware;
 using ONEVO.Api.RateLimiting;
 using ONEVO.Application;
-using ONEVO.Application.Common.Json;
 using ONEVO.Infrastructure;
 using ONEVO.Infrastructure.Configuration;
 using Serilog;
@@ -107,7 +106,8 @@ builder.Services.AddMemoryCache();
 builder.Services.AddControllers(options =>
         // Task 23: every file response is a download with nosniff and a sandbox CSP.
         options.Filters.Add<ONEVO.Api.Filters.UserFileResponseFilter>())
-    .AddJsonOptions(options => options.JsonSerializerOptions.Converters.Add(new TimeOnlyHhMmJsonConverter()));
+    .AddJsonOptions(options => options.ConfigureApiJson());
+builder.Services.AddApiResponseCompression();
 builder.Services.AddHttpContextAccessor();
 builder.Services.AddApiAuthentication(builder.Environment, builder.Configuration);
 builder.Services.AddApiAuthorization();
@@ -167,6 +167,9 @@ if (ONEVO.Application.Common.Tenancy.TenancyModeReader.Read(app.Configuration)
 // First, so scheme, host and client IP are the real client's for everything below
 // (HTTPS redirect, HSTS, logging, CORS, rate limiting, tenant resolution).
 app.UseForwardedHeaders();
+// Task 10: after forwarded headers, so a request that reached the proxy over HTTPS counts as HTTPS.
+app.UseResponseCompression();
+app.UseMiddleware<ApiCacheControlMiddleware>();
 app.UseMiddleware<ExceptionHandlerMiddleware>();
 app.UseMiddleware<CorrelationIdMiddleware>();
 app.UseMiddleware<SecurityHeadersMiddleware>();

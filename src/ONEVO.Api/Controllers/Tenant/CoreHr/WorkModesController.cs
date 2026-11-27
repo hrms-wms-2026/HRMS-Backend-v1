@@ -17,6 +17,7 @@ public sealed class WorkModesController : ControllerBase
     public WorkModesController(IMediator mediator) => _mediator = mediator;
 
     /// <summary>Active work modes for a legal entity, for the Add Employee wizard's work-mode picker.</summary>
+    [ReferenceDataCache]
     [HttpGet]
     [RequirePermission(PermissionCatalog.Employees.Write)]
     public async Task<IActionResult> List([FromQuery] Guid legalEntityId, CancellationToken ct)

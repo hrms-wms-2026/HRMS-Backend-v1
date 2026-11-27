@@ -9,9 +9,11 @@ using ONEVO.Application.Features.Auth.Login.Commands.BaseGoogleLogin;
 using ONEVO.Application.Features.Auth.Login.Commands.BaseLogin;
 using ONEVO.Application.Features.Auth.Login.Commands.SelectWorkspace;
 using ONEVO.Application.Features.Auth.Login.DTOs.Responses;
+using ONEVO.Api.Filters;
 
 namespace ONEVO.Api.Controllers.Tenant.Auth;
 
+[NoResponseCompression]
 [ApiController]
 [Route("api/v1/auth")]
 public class AuthLoginController : ControllerBase

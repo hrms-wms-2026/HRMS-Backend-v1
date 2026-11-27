@@ -607,7 +607,7 @@ public sealed class PositionsIntegrationTests : IClassFixture<PositionsIntegrati
         json.GetProperty("code").GetString().Should().Be("SHAPE");
         json.GetProperty("positionType").GetString().Should().Be("unique");
         json.GetProperty("maxOccupancy").GetInt32().Should().Be(1);
-        json.GetProperty("reportsToPositionId").ValueKind.Should().Be(JsonValueKind.Null);
+        json.GetPropertyOrNull("reportsToPositionId").ValueKind.Should().Be(JsonValueKind.Null);
         json.GetProperty("isActive").GetBoolean().Should().BeTrue();
 
         text.Should().NotContain("tenantId", "the position response must not expose the raw tenant id");
@@ -976,7 +976,7 @@ public sealed class PositionsIntegrationTests : IClassFixture<PositionsIntegrati
         response.StatusCode.Should().Be(HttpStatusCode.OK);
 
         var json = await ReadJsonAsync(response);
-        json.GetProperty("activeOccupants").ValueKind.Should().Be(JsonValueKind.Null);
+        json.GetPropertyOrNull("activeOccupants").ValueKind.Should().Be(JsonValueKind.Null);
         json.GetProperty("activeOccupantsCheckSupported").GetBoolean().Should().BeFalse();
         json.GetProperty("headOfDepartments").GetInt32().Should().Be(0);
         json.GetProperty("activeChildPositions").GetInt32().Should().Be(0);

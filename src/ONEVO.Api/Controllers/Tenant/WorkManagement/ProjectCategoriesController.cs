@@ -19,6 +19,7 @@ public class ProjectCategoriesController : ControllerBase
     public ProjectCategoriesController(IMediator mediator) => _mediator = mediator;
 
     /// <summary>Lists the tenant's Project Categories, active-only by default. Used to populate the category picker on Create/Edit Project and the Project list's category filter.</summary>
+    [ReferenceDataCache]
     [HttpGet]
     public async Task<IActionResult> List([FromQuery] bool includeInactive, CancellationToken ct)
     {
