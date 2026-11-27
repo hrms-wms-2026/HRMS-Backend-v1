@@ -94,6 +94,10 @@ public sealed record EmployeeWorkTaskRow(
     int ProgressPercent,
     DateTimeOffset LastChangedAt);
 
+/// <summary>One employee's task hours in one project: the estimates of every task assigned to them, the
+/// estimates of the ones still open (not in a completing status and under 100%), and how many are open.</summary>
+public sealed record MyProjectTaskHoursRow(Guid ProjectId, decimal AllocatedHours, decimal OpenHours, int OpenTaskCount);
+
 public interface IWorkTaskRepository
 {
     Task AddAsync(WorkTask task, CancellationToken ct = default);
@@ -138,6 +142,11 @@ public interface IWorkTaskRepository
     /// <summary>Every not-soft-deleted task assigned to this employee, regardless of due date -
     /// for the Task Progress dashboard widget's overall completion breakdown.</summary>
     Task<IReadOnlyList<TaskProgressRow>> GetMyTaskProgressRowsAsync(Guid tenantId, Guid employeeId, CancellationToken ct = default);
+
+    /// <summary>The employee's assigned task hours per project, for the given projects only (meeting tasks excluded,
+    /// like Weekly Work Progress). Projects where they have no tasks are absent. For the Active projects widget.</summary>
+    Task<IReadOnlyList<MyProjectTaskHoursRow>> GetMyTaskHoursByProjectAsync(Guid tenantId, Guid employeeId,
+        IReadOnlyCollection<Guid> projectIds, CancellationToken ct = default);
 
     /// <summary>Tasks assigned to this employee whose status category is not_started or active,
     /// active first then by ShortId, capped at take; TotalCount is the uncapped total.</summary>

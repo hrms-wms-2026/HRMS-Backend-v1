@@ -1,4 +1,5 @@
 using ONEVO.Application.Features.WorkManagement.Projects.DTOs.Responses;
+using ONEVO.Application.Features.WorkManagement.Tasks.RepositoryInterfaces;
 using ONEVO.Domain.Features.WorkManagement.Labels.Entities;
 using ONEVO.Domain.Features.WorkManagement.Objectives.Entities;
 using ONEVO.Domain.Features.WorkManagement.ProjectMembers.Entities;
@@ -45,10 +46,11 @@ public static class ProjectMapper
 
     public static ProjectListItemResponse ToListItem(
         Project project, bool isLead, Guid? logoFileId = null, IReadOnlyList<Label>? labels = null,
-        IReadOnlyList<ProjectMemberAvatarDto>? members = null, int memberCount = 0) => new(
+        IReadOnlyList<ProjectMemberAvatarDto>? members = null, int memberCount = 0, MyProjectTaskHoursRow? myHours = null) => new(
         project.Id, project.Name, project.Identifier, project.CategoryId, project.Description, project.LeadId,
         project.StartDate, project.TargetDate, project.Color, project.IsActive,
         project.AllocatedHours, project.CompletedHours, isLead,
         project.IsAchieved, project.AchievedAt, project.UpdatedAt, logoFileId,
-        (labels ?? []).Select(ToSummary).ToList(), members ?? [], memberCount, project.SystemPurpose, project.Icon);
+        (labels ?? []).Select(ToSummary).ToList(), members ?? [], memberCount, project.SystemPurpose, project.Icon,
+        myHours?.AllocatedHours ?? 0m, myHours?.OpenHours ?? 0m, myHours?.OpenTaskCount ?? 0);
 }
