@@ -37,7 +37,8 @@ public sealed class IntegrationTestEnvironmentScope : IDisposable, IAsyncDisposa
         "AwsRekognition__Region",
         "AwsRekognition__LivenessRoleArn",
         "Kestrel__Certificates__Default__Path",
-        "Kestrel__Certificates__Default__KeyPath"
+        "Kestrel__Certificates__Default__KeyPath",
+        "RateLimiting__Enabled"
     };
 
     private readonly Dictionary<string, string?> _previousValues = new(StringComparer.Ordinal);
@@ -85,6 +86,12 @@ public sealed class IntegrationTestEnvironmentScope : IDisposable, IAsyncDisposa
         // (see DevCertificateBootstrapper.EnsureCertificateExists's blank-path early return).
         Set("Kestrel__Certificates__Default__Path", string.Empty);
         Set("Kestrel__Certificates__Default__KeyPath", string.Empty);
+
+        // The API rate limiter (per user, per tenant, per IP) is covered by ApiRateLimitingTests. Here one
+        // signed-in test user sends requests far faster than a person, so its token bucket can run dry and
+        // a test fails with 429 depending on how fast the run is. The login limiter and the tray
+        // activation-code limit are separate and stay on.
+        Set("RateLimiting__Enabled", "false");
     }
 
     private static string BuildConnectionString(string adminConnectionString, string username, string password)

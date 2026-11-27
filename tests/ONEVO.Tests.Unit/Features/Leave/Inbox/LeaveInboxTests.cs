@@ -236,6 +236,39 @@ public class LeaveInboxTests
     }
 
     [Fact]
+    public async Task Count_uses_the_actionable_repository_count_without_loading_list_history_or_sent_rows()
+    {
+        var f = new ProviderFixture();
+        f.Approvals.Setup(x => x.CountActionableAsync(f.TenantId, f.First.Id, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(4);
+
+        var counts = await f.Provider().CountAsync(f.TenantId, f.First.Id, default);
+
+        counts.Should().BeEquivalentTo(new InboxSourceCounts(4, 0, new Dictionary<string, int>
+        {
+            [LeaveInboxKinds.Request] = 4,
+        }));
+        f.Approvals.Verify(x => x.ListPendingForApproverAsync(It.IsAny<Guid>(), It.IsAny<Guid>(),
+            It.IsAny<LeaveApprovalListFilter>(), It.IsAny<CancellationToken>()), Times.Never);
+        f.Requests.Verify(x => x.ListOwnAsync(It.IsAny<Guid>(), It.IsAny<Guid>(),
+            It.IsAny<LeaveRequestListFilter>(), It.IsAny<CancellationToken>()), Times.Never);
+        f.Conversations.Verify(x => x.ListAddedSubjectsAsync(It.IsAny<Guid>(), It.IsAny<Guid>(),
+            It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task Count_without_leave_approve_permission_is_zero_without_querying_approvals()
+    {
+        var f = new ProviderFixture();
+        f.CurrentUser.Setup(x => x.HasPermission(LeaveInboxSourceProvider.LeaveApprovePermission)).Returns(false);
+
+        var counts = await f.Provider().CountAsync(f.TenantId, f.First.Id, default);
+
+        counts.Should().BeEquivalentTo(new InboxSourceCounts(0, 0, new Dictionary<string, int>()));
+        f.Approvals.Verify(x => x.CountActionableAsync(It.IsAny<Guid>(), It.IsAny<Guid>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
     public async Task Pending_over_balance_request_is_a_warning_with_a_fact_and_no_zero_unpaid_row()
     {
         var f = new ProviderFixture();

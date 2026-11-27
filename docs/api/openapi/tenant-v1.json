@@ -17308,6 +17308,18 @@
         }
       }
     },
+    "/api/v1/onboarding/drafts/self-setup": {
+      "get": {
+        "tags": [
+          "OnboardingDrafts"
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
     "/api/v1/onboarding/drafts/clock-in-defaults": {
       "get": {
         "tags": [

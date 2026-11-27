@@ -23,6 +23,8 @@ public interface ILocationChangeRequestRepository
 
     Task<IReadOnlyList<Guid>> ListPendingEmployeeIdsAsync(
         Guid tenantId, Guid legalEntityId, CancellationToken ct = default);
+    Task<int> CountPendingAsync(
+        Guid tenantId, Guid legalEntityId, IReadOnlyCollection<Guid> employeeIds, CancellationToken ct = default);
 
     Task<(IReadOnlyList<LocationChangeRequest> Items, int TotalCount)> ListApprovalInboxAsync(
         Guid tenantId, Guid legalEntityId, IReadOnlyCollection<Guid> employeeIds,

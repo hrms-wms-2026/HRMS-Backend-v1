@@ -29,8 +29,9 @@ public sealed class ExceptionScopeResolver : IExceptionScopeResolver
         _journal = journal;
     }
 
-    public async Task<ExceptionScope?> ResolveAsync(
-        bool forAction, IReadOnlyCollection<Guid> candidateEmployeeIds, CancellationToken ct)
+    private readonly Dictionary<bool, ExceptionScope?> _routingScopes = new();
+
+    private (bool IsHr, bool IsManager, string CodePermission)? Access(bool forAction)
     {
         if (!_currentUser.IsAuthenticated || _currentUser.TenantId == Guid.Empty)
             return null;
@@ -39,8 +40,32 @@ public sealed class ExceptionScopeResolver : IExceptionScopeResolver
                    || _currentUser.HasPermission(ExceptionPermissions.HrManage);
         var isManager = _currentUser.HasPermission(ExceptionPermissions.ManagerReview);
         var codePermission = forAction ? ExceptionPermissions.Acknowledge : ExceptionPermissions.View;
-        var hasCodePermission = _currentUser.HasPermission(codePermission);
-        if (!isHr && !isManager && !hasCodePermission)
+        if (!isHr && !isManager && !_currentUser.HasPermission(codePermission))
+            return null;
+        return (isHr, isManager, codePermission);
+    }
+
+    public async Task<ExceptionScope?> ResolveRoutingAsync(bool forAction, CancellationToken ct)
+    {
+        if (_routingScopes.TryGetValue(forAction, out var cached))
+            return cached;
+
+        ExceptionScope? scope = null;
+        if (Access(forAction) is { } access)
+        {
+            var actor = await _employees.GetDefaultForUserAsync(_currentUser.TenantId, _currentUser.UserId, ct);
+            scope = access.IsHr
+                ? new ExceptionScope(true, actor?.Id, Array.Empty<Guid>())
+                : new ExceptionScope(false, actor?.Id, Array.Empty<Guid>(), actor is null ? [] : await HeldCasesAsync(actor.Id, ct));
+        }
+        _routingScopes[forAction] = scope;
+        return scope;
+    }
+
+    public async Task<ExceptionScope?> ResolveAsync(
+        bool forAction, IReadOnlyCollection<Guid> candidateEmployeeIds, CancellationToken ct)
+    {
+        if (Access(forAction) is not var (isHr, isManager, codePermission))
             return null;
 
         var actor = await _employees.GetDefaultForUserAsync(_currentUser.TenantId, _currentUser.UserId, ct);

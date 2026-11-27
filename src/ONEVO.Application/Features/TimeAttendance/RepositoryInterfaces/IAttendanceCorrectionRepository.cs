@@ -13,6 +13,9 @@ public interface IAttendanceCorrectionRepository
     Task<IReadOnlyList<AttendanceCorrection>> ListApprovalInboxAsync(
         Guid tenantId, Guid legalEntityId, IReadOnlyCollection<Guid> employeeIds,
         DateOnly? from, DateOnly? to, string? status, CancellationToken ct = default);
+    Task<IReadOnlyList<Guid>> ListPendingEmployeeIdsAsync(Guid tenantId, Guid legalEntityId, CancellationToken ct = default);
+    Task<int> CountPendingAsync(
+        Guid tenantId, Guid legalEntityId, IReadOnlyCollection<Guid> employeeIds, CancellationToken ct = default);
     Task<bool> HasPendingForRecordAsync(
         Guid tenantId, Guid employeeId, Guid? attendanceRecordId, string correctionType, CancellationToken ct = default);
     /// <summary>The employee's requests of any status created in [from, to) - the inbox case history.</summary>

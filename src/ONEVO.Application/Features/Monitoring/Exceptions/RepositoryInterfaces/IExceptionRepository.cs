@@ -19,6 +19,18 @@ public sealed record ExceptionListFilter(
     DateTimeOffset? DetectedFrom = null,
     DateTimeOffset? DetectedTo = null);
 
+/// <summary>Identifier-only visibility inputs for the inbox badge aggregate. Each collection is a visibility path;
+/// the repository applies their union in one query so a case visible through several paths is counted once.</summary>
+public sealed record ExceptionInboxCountCriteria(
+    Guid CallerEmployeeId,
+    IReadOnlyCollection<Guid> RoutedEmployeeIds,
+    IReadOnlyCollection<Guid> HrFallbackEmployeeIds,
+    IReadOnlyCollection<Guid> HeldCaseIds,
+    IReadOnlyCollection<Guid> AddedCaseIds,
+    bool IncludeLegacyHrEscalations,
+    IReadOnlyCollection<Guid> JournaledEscalatedCaseIds,
+    bool Calendar);
+
 public interface IExceptionRepository
 {
     Task AddAsync(MonitoringException exception, CancellationToken ct);
@@ -65,6 +77,12 @@ public interface IExceptionRepository
     /// <summary>Distinct employees who have any exception case in the tenant - the candidate set a
     /// manager's approver scope is resolved over before listing.</summary>
     Task<IReadOnlyList<Guid>> ListEmployeeIdsWithExceptionsAsync(Guid tenantId, CancellationToken ct);
+
+    /// <summary>Distinct employees with active monitoring or calendar cases. Used only to resolve authority; no case is loaded.</summary>
+    Task<IReadOnlyList<Guid>> ListActiveInboxEmployeeIdsAsync(Guid tenantId, bool calendar, CancellationToken ct);
+
+    /// <summary>Counts the distinct active cases visible through any inbox visibility path.</summary>
+    Task<int> CountActiveInboxAsync(Guid tenantId, ExceptionInboxCountCriteria criteria, CancellationToken ct);
 
     Task<IReadOnlyList<MonitoringException>> GetListAsync(
         Guid tenantId, ExceptionListFilter filter, int page, int pageSize, CancellationToken ct);

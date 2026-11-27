@@ -13,4 +13,7 @@ public interface ITenantSubscriptionRepository
     /// entitlement (see SubscriptionStatusRules.ActiveStatuses), or null.
     /// </summary>
     Task<TenantSubscription?> GetLatestActiveByTenantIdAsync(Guid tenantId, CancellationToken ct = default);
+
+    /// <summary>Of the given tenants, the ids whose subscription is a non-billed test subscription.</summary>
+    Task<IReadOnlySet<Guid>> GetTestTenantIdsAsync(IReadOnlyCollection<Guid> tenantIds, CancellationToken ct = default);
 }

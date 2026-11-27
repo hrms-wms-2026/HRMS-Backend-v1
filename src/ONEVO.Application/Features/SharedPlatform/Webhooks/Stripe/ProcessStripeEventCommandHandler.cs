@@ -5,6 +5,7 @@ using ONEVO.Application.Common.RepositoryInterfaces;
 using ONEVO.Application.Common.ServiceInterfaces;
 using ONEVO.Application.Features.DevPlatform.Billing.Helpers;
 using ONEVO.Application.Features.DevPlatform.Billing.RepositoryInterfaces;
+using ONEVO.Application.Features.DevPlatform.Subscription.Helpers;
 using ONEVO.Application.Features.DevPlatform.Subscription.RepositoryInterfaces;
 using ONEVO.Domain.Features.SharedPlatform.Entities;
 
@@ -53,7 +54,8 @@ public sealed class ProcessStripeEventCommandHandler : IRequestHandler<ProcessSt
             return Result.Success();
 
         var sub = await _subscriptions.GetByTenantIdAsync(request.TenantIdFromMetadata.Value, ct);
-        if (sub is null)
+        // Test tenants are never billed: a stray gateway event must not change their status.
+        if (sub is null || CommercialModels.IsTest(sub))
             return Result.Success();
 
         sub.GatewayProvider = "stripe";
@@ -77,7 +79,8 @@ public sealed class ProcessStripeEventCommandHandler : IRequestHandler<ProcessSt
             return Result.Success();
 
         var sub = await _subscriptions.GetByGatewaySubscriptionRefAsync(request.StripeSubscriptionId, ct);
-        if (sub is null)
+        // Test tenants are never billed: a stray gateway event must not change their status.
+        if (sub is null || CommercialModels.IsTest(sub))
             return Result.Success();
 
         sub.Status = "active";
@@ -100,7 +103,8 @@ public sealed class ProcessStripeEventCommandHandler : IRequestHandler<ProcessSt
             return Result.Success();
 
         var sub = await _subscriptions.GetByGatewaySubscriptionRefAsync(request.StripeSubscriptionId, ct);
-        if (sub is null)
+        // Test tenants are never billed: a stray gateway event must not change their status.
+        if (sub is null || CommercialModels.IsTest(sub))
             return Result.Success();
 
         sub.Status = "past_due";
@@ -219,7 +223,8 @@ public sealed class ProcessStripeEventCommandHandler : IRequestHandler<ProcessSt
             return Result.Success();
 
         var sub = await _subscriptions.GetByGatewaySubscriptionRefAsync(request.StripeSubscriptionId, ct);
-        if (sub is null)
+        // Test tenants are never billed: a stray gateway event must not change their status.
+        if (sub is null || CommercialModels.IsTest(sub))
             return Result.Success();
 
         if (request.SubscriptionStatus is not null)
@@ -242,7 +247,8 @@ public sealed class ProcessStripeEventCommandHandler : IRequestHandler<ProcessSt
             return Result.Success();
 
         var sub = await _subscriptions.GetByGatewaySubscriptionRefAsync(request.StripeSubscriptionId, ct);
-        if (sub is null)
+        // Test tenants are never billed: a stray gateway event must not change their status.
+        if (sub is null || CommercialModels.IsTest(sub))
             return Result.Success();
 
         sub.Status = "cancelled";

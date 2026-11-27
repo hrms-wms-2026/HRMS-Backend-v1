@@ -49,11 +49,6 @@ namespace ONEVO.Infrastructure.Migrations
                 column: "updated_by_employee_id");
 
             migrationBuilder.CreateIndex(
-                name: "ix_wm_notification_log_actor_employee_id",
-                table: "wm_notification_log",
-                column: "actor_employee_id");
-
-            migrationBuilder.CreateIndex(
                 name: "ix_wm_notification_log_approval_request_id",
                 table: "wm_notification_log",
                 column: "approval_request_id");
@@ -860,13 +855,6 @@ namespace ONEVO.Infrastructure.Migrations
                 principalColumn: "id");
 
             migrationBuilder.AddForeignKey(
-                name: "fk_wm_notification_log_employees_actor_employee_id",
-                table: "wm_notification_log",
-                column: "actor_employee_id",
-                principalTable: "employees",
-                principalColumn: "id");
-
-            migrationBuilder.AddForeignKey(
                 name: "fk_wm_notification_log_employees_recipient_employee_id",
                 table: "wm_notification_log",
                 column: "recipient_employee_id",
@@ -1146,10 +1134,6 @@ namespace ONEVO.Infrastructure.Migrations
                 table: "wm_monitor_alerts");
 
             migrationBuilder.DropForeignKey(
-                name: "fk_wm_notification_log_employees_actor_employee_id",
-                table: "wm_notification_log");
-
-            migrationBuilder.DropForeignKey(
                 name: "fk_wm_notification_log_employees_recipient_employee_id",
                 table: "wm_notification_log");
 
@@ -1176,10 +1160,6 @@ namespace ONEVO.Infrastructure.Migrations
             migrationBuilder.DropIndex(
                 name: "ix_wm_task_rate_settings_updated_by_employee_id",
                 table: "wm_task_rate_settings");
-
-            migrationBuilder.DropIndex(
-                name: "ix_wm_notification_log_actor_employee_id",
-                table: "wm_notification_log");
 
             migrationBuilder.DropIndex(
                 name: "ix_wm_notification_log_approval_request_id",
