@@ -67,4 +67,4 @@ Full table: `docs/reports/security/2026-11-19-task-27-cross-tenant-and-object-ac
 
 Done. Merged to `development` in PR #240 on 2026-11-20.
 
-Decision 2026-11-23 on the productivity report (`GET /api/v1/monitoring/reports/productivity`): **coverage only**. A manager sees only the employees they cover; HR and admin see the whole tenant. Built in follow-up 27b (see "Results" above). It is on the local branch `claude/merge-development-1126` (2026-11-27), not yet in `feature/testing` or `development`. Until that lands, `development` still aggregates across the tenant.
+Decision 2026-11-23 on the productivity report (`GET /api/v1/monitoring/reports/productivity`): **coverage only**. A manager sees only the employees they cover; HR and admin see the whole tenant. Built in follow-up 27b (see "Results" above). It is on the local branch `claude/merge-development-1126` (2026-11-27), now in local `feature/testing` too, not yet in `development`. Until that lands, `development` still aggregates across the tenant.

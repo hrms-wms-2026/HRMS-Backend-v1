@@ -148,7 +148,7 @@ Decisions 2026-11-23:
 - **Step 3, project members: approved.** `ProjectMemberAvatarDto.UserId` becomes `EmployeeId` in the backend and the frontend together (frontend item 5 above). Done in follow-up 44b (below).
 - **The extra `...ById` audit fields** (`AttendanceCorrectionResponse.RequestedById` and `ReviewedById`, `WorkAreaChangeRequestResponse.ReviewedById`): planned for the same follow-up, but still open after 44b (see the end of the follow-up section).
 
-Update 2026-11-27: follow-up 44b is on the local branch `claude/merge-development-1126`, not yet in `feature/testing` or `development`. The frontend part is on the frontend branch `claude/improve-task-44b-employee-ids`.
+Update 2026-11-27: follow-up 44b is on the local branch `claude/merge-development-1126`, now in local `feature/testing` too, not yet in `development`. The frontend part is on the frontend branch `claude/improve-task-44b-employee-ids`.
 
 ## Follow-up 44b (2026-11-23)
 

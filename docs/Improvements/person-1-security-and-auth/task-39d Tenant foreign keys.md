@@ -35,4 +35,4 @@ Done on branch `claude/improve-task-39d-tenant-fks` (from local `feature/testing
 
 ## Status (2026-11-27)
 
-Done. Merged into the local branch `claude/merge-development-1126` (7b9741846) together with 39b to 39g, 15b, 27b, 44b and the latest `origin/development`. Gate: unit 8695 passed, architecture 1028 passed, SqlServerMigration and RateLimit 333 passed. Not yet in `feature/testing` or `development`, not pushed. Migration `AddTenantForeignKeys39d` is created, not applied; the order of all migrations is in `docs/reports/database/2026-11-26-merge-development-migrations.md`.
+Done. Merged into the local branch `claude/merge-development-1126` (7b9741846) together with 39b to 39g, 15b, 27b, 44b and the latest `origin/development`. Gate: unit 8695 passed, architecture 1028 passed, SqlServerMigration and RateLimit 333 passed. Now in local `feature/testing` too, not yet in `development`, not pushed. Migration `AddTenantForeignKeys39d` is created, not applied; the order of all migrations is in `docs/reports/database/2026-11-26-merge-development-migrations.md`.

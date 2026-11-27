@@ -44,7 +44,7 @@ Open findings, reported and not fixed (details in `docs/api/public-endpoints.md`
 
 Decided 2026-11-23: findings 1, 3 and 4 are fixed next as person-1 follow-up work. Finding 2, the tray activation limit, moves to person-2 with the admin-managed rate limits (tasks 45 to 49).
 
-Update 2026-11-27: follow-up 15b is done for findings 3 and 4 (see below). Finding 1, the Stripe webhook rate limit, went to person-2 as well (tasks 45 to 49). It is on the local branch `claude/merge-development-1126`, not yet in `feature/testing` or `development`.
+Update 2026-11-27: follow-up 15b is done for findings 3 and 4 (see below). Finding 1, the Stripe webhook rate limit, went to person-2 as well (tasks 45 to 49). It is on the local branch `claude/merge-development-1126`, now in local `feature/testing` too, not yet in `development`.
 
 ## Follow-up results (2026-11-23)
 
