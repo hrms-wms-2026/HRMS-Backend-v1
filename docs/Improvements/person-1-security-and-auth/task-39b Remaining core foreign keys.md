@@ -52,3 +52,7 @@ Done on branch `claude/improve-task-39b-core-fks` (from origin/development b6fab
 - The demo seeders wrote the owner's user id into `task_assignments.assigned_by_id`. They now write the employee id, as the application does.
 - Test fixtures fixed: shared `TestUsers` helper, real closure source assignments, real assignment user ids, real draft owners and project.
 - Local `CrownusDb` orphan check (run by the user): 417 of 417 `task_assignments.assigned_by_id` rows are orphans (old seeder user ids), all other columns 0. `work_modes` is missing locally because the database is behind on migrations. The migration repairs `assigned_by_id` first (`TaskAssignmentAssignedByRepairTests`). Not applied to the local database yet; the report has a read-only preview query.
+
+## Status (2026-11-27)
+
+Done. Merged into the local branch `claude/merge-development-1126` (7b9741846) together with 39b to 39g, 15b, 27b, 44b and the latest `origin/development`. Gate: unit 8695 passed, architecture 1028 passed, SqlServerMigration and RateLimit 333 passed. Not yet in `feature/testing` or `development`, not pushed. Migration `AddCoreForeignKeys39b` is created, not applied; the order of all migrations is in `docs/reports/database/2026-11-26-merge-development-migrations.md`.

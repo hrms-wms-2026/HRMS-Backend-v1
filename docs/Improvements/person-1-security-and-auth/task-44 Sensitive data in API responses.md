@@ -145,8 +145,10 @@ Steps 1, 2 and 4 done. Merged to `development` in PR #240 on 2026-11-20.
 Decisions 2026-11-23:
 
 - **Row 4, employee personal data: accepted as it is.** A reporting manager may see a team member's date of birth, home address and emergency contacts. No code change.
-- **Step 3, project members: approved.** `ProjectMemberAvatarDto.UserId` becomes `EmployeeId` in the backend and the frontend together (frontend item 5 above). Next person-1 follow-up.
-- **The extra `...ById` audit fields** (`AttendanceCorrectionResponse.RequestedById` and `ReviewedById`, `WorkAreaChangeRequestResponse.ReviewedById`): fixed as part of the same follow-up.
+- **Step 3, project members: approved.** `ProjectMemberAvatarDto.UserId` becomes `EmployeeId` in the backend and the frontend together (frontend item 5 above). Done in follow-up 44b (below).
+- **The extra `...ById` audit fields** (`AttendanceCorrectionResponse.RequestedById` and `ReviewedById`, `WorkAreaChangeRequestResponse.ReviewedById`): planned for the same follow-up, but still open after 44b (see the end of the follow-up section).
+
+Update 2026-11-27: follow-up 44b is on the local branch `claude/merge-development-1126`, not yet in `feature/testing` or `development`. The frontend part is on the frontend branch `claude/improve-task-44b-employee-ids`.
 
 ## Follow-up 44b (2026-11-23)
 

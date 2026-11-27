@@ -37,3 +37,7 @@ Done on branch `claude/improve-task-39c-audit-fks` (from local `feature/testing`
 - Hand-written SQL: `Guid.Empty` → `NULL` repair that stops with error 50039 on any other bad value and never deletes (`AuditCreatorRepairTests`), and `wm_refresh_module_hour_summary`, which inserted `Guid.Empty`, now inserts `NULL`.
 - Bad data: the agent cannot read the database. The user recreated the local `CrownusDb` at 39b level; the report has a read-only orphan query for any other database.
 - Test fixtures: real creator and actor user ids instead of random ones (meetings, employee detail, position assignments).
+
+## Status (2026-11-27)
+
+Done. Merged into the local branch `claude/merge-development-1126` (7b9741846) together with 39b to 39g, 15b, 27b, 44b and the latest `origin/development`. Gate: unit 8695 passed, architecture 1028 passed, SqlServerMigration and RateLimit 333 passed. Not yet in `feature/testing` or `development`, not pushed. Migration `AddAuditColumnForeignKeys39c` is created, not applied; the order of all migrations is in `docs/reports/database/2026-11-26-merge-development-migrations.md`.
