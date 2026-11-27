@@ -193,7 +193,7 @@ public sealed class EditRecurringOccurrenceCommandHandler(
 
     private static CalendarEventItem ToItem(CalendarEvent e, bool isOccurrence, Guid? masterId, DateTimeOffset? originalStart) => new(
         e.Id, e.Title, e.Description, e.StartDate, e.EndDate, e.SourceType, e.Color, e.Recurrence, e.IsAllDay,
-        e.Timezone, e.EventStatus, e.IsPrivate, e.Location, e.MeetingLink, e.ExternalSource, e.CreatedById,
+        e.Timezone, e.EventStatus, e.IsPrivate, e.Location, e.MeetingLink, e.ExternalSource, (e.CreatedById ?? Guid.Empty),
         isOccurrence, masterId, originalStart);
 
     private static string WithUntil(string recurrenceRule, DateTimeOffset until)

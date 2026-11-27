@@ -9,7 +9,7 @@ public static class ObjectiveMapper
         Objective objective, IReadOnlyDictionary<Guid, string>? namesByEmployeeId = null, Guid? callerEmployeeId = null,
         IReadOnlyList<ObjectiveAssetResponse>? assets = null) => new(
         objective.Id, objective.ProjectId, objective.ParentObjectiveId, objective.IsDefault, objective.Title, objective.Description,
-        objective.OwnerId, objective.ReportingManagerId, objective.CreatedById, objective.StartDate, objective.EndDate,
+        objective.OwnerId, objective.ReportingManagerId, (objective.CreatedById ?? Guid.Empty), objective.StartDate, objective.EndDate,
         objective.Progress, objective.ActualHours, objective.AllocatedHours, objective.CompletedHours,
         objective.IsActive, objective.IsAchieved, objective.AchievedAt, objective.CreatedAt, objective.UpdatedAt,
         ResolveName(objective.OwnerId, namesByEmployeeId), ResolveName(objective.ReportingManagerId, namesByEmployeeId),
@@ -28,7 +28,7 @@ public static class ObjectiveMapper
         Objective objective, ILookup<Guid, Objective> childrenByParent,
         IReadOnlyDictionary<Guid, string>? namesByEmployeeId = null, Guid? callerEmployeeId = null) => new(
         objective.Id, objective.ProjectId, objective.ParentObjectiveId, objective.IsDefault, objective.Title, objective.Description,
-        objective.OwnerId, objective.ReportingManagerId, objective.CreatedById, objective.StartDate, objective.EndDate,
+        objective.OwnerId, objective.ReportingManagerId, (objective.CreatedById ?? Guid.Empty), objective.StartDate, objective.EndDate,
         objective.Progress, objective.ActualHours, objective.AllocatedHours, objective.CompletedHours,
         objective.IsActive, objective.CreatedAt, objective.UpdatedAt,
         ResolveName(objective.OwnerId, namesByEmployeeId), ResolveName(objective.ReportingManagerId, namesByEmployeeId),

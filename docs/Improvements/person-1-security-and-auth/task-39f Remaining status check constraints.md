@@ -32,3 +32,18 @@ Notes:
 ## Done when
 
 - Every `todo` line is gone: the column has a constraint, or is `free` with a reason.
+
+## Results (2026-11-25)
+
+Report: `docs/reports/database/2026-11-25-task-39efg-module-keys-checks-cascades.md`. Branch `claude/improve-task-39efg` (39e, 39f and 39g together).
+
+- Migration `20261125053747_AddStatusCheckConstraints39f`: 60 check constraints. Its read-only `CheckStatusValuesSql` runs first and stops with 50039, naming each column, if a row holds a value outside its list. It changes no data. Not applied by the agent.
+- Done: every review workflow table of task 37, the type columns `wm_approval_requests.target_type`, `wm_monitor_alerts.target_type` and `entity_assets.owner_type`, and 43 more columns backed by a constants class.
+- New constants classes: `PermissionChangeKinds` (now used by `PermissionCatalogSynchronizer`), `AccessGrantApprovalStatuses`, `AgentCommandTypes`, `AgentCommandStatuses`, `MonitoringEvidenceTypes`, `MonitoringEvidenceTriggers`.
+- Moved to `free`: `notifications.related_entity_type`, `notification_deliveries.related_entity_type` (open navigation keys) and `audit_logs.resource_type` (an entity name).
+- Not done: 35 `todo` lines remain. Their values are string literals or client input with no constants class (billing statuses, legal document types, address and bank types, checklist template types, `invitation_tokens.status`, `outbox_messages.type` and others). Each line now says so. They need a constants class and a writer review first.
+- Bad data: the read-only check `C:\Users\User\Desktop\orphans39efg.sql` (part 2) lists the values of all 98 columns. On the local database, every value in the 60 newly constrained columns is on its list (`NULL` passes a check). `tenant_subscriptions.maintenance_status` and the other todo columns have no check yet.
+
+## Status (2026-11-27)
+
+Done. Merged into the local branch `claude/merge-development-1126` (7b9741846) together with 39b to 39g, 15b, 27b, 44b and the latest `origin/development`. Gate: unit 8695 passed, architecture 1028 passed, SqlServerMigration and RateLimit 333 passed. Now in local `feature/testing` too, not yet in `development`, not pushed. Migration `AddStatusCheckConstraints39f` is created, not applied; the order of all migrations is in `docs/reports/database/2026-11-26-merge-development-migrations.md`.

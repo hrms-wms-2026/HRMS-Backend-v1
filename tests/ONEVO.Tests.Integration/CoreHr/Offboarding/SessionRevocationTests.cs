@@ -37,9 +37,9 @@ public sealed class SessionRevocationTests : IAsyncLifetime
     public async Task RevokeAllActiveByUserIdAsync_RevokesOnlyThatUsersActiveSessions()
     {
         await using var db = CreateContext();
-        var tenantId = Guid.NewGuid();
-        var userId = Guid.NewGuid();
-        var otherUserId = Guid.NewGuid();
+        var tenantId = await TestTenants.NewAsync(CreateContext);
+        var userId = TestUsers.New(db, tenantId);
+        var otherUserId = TestUsers.New(db, tenantId);
         db.Sessions.AddRange(
             new Session { Id = Guid.NewGuid(), TenantId = tenantId, UserId = userId, IsRevoked = false, ExpiresAt = DateTimeOffset.UtcNow.AddDays(1), KeyHash = Guid.NewGuid().ToString("N") },
             new Session { Id = Guid.NewGuid(), TenantId = tenantId, UserId = userId, IsRevoked = true, ExpiresAt = DateTimeOffset.UtcNow.AddDays(1), KeyHash = Guid.NewGuid().ToString("N") },

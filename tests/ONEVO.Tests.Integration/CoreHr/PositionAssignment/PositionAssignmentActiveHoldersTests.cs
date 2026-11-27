@@ -20,7 +20,7 @@ public sealed class PositionAssignmentActiveHoldersTests : IAsyncLifetime
     private readonly SystemDateTimeProvider _clock = new();
     private string _connectionString = string.Empty;
     private Guid _tenantId;
-    private readonly Guid _createdById = Guid.NewGuid();
+    private readonly Guid _createdById = Guid.Empty; // no signed-in user: stored as NULL (created_by_id has a key to users, task 39c)
 
     public async Task InitializeAsync()
     {
@@ -132,6 +132,7 @@ public sealed class PositionAssignmentActiveHoldersTests : IAsyncLifetime
             Email = $"{Guid.NewGuid():N}@active-holders.onevo.dev",
             HireDate = DateOnly.FromDateTime(DateTime.UtcNow),
         });
+        TestUsers.AddForNewEmployees(db);
         await db.SaveChangesAsync();
         return employeeId;
     }

@@ -32,3 +32,7 @@ A dashboard page that fires 15 requests repeats this work 15 times within one se
 ## Note
 
 This cache is per process. Task 21 moves it to a shared cache when the API runs on more than one instance.
+
+## Status (2026-11-19)
+
+Done. Merged to `development` in PR #235. Report: [task 03 session cache](<../../reports/performance/2026-11-17-task-03-session-cache.md>).

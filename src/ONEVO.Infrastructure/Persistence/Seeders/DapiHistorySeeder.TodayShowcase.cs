@@ -332,7 +332,7 @@ public sealed partial class DapiHistorySeeder
                 TaskId = id,
                 UserId = userId,
                 EmployeeId = employeeId,
-                AssignedById = userId,
+                AssignedById = employeeId, // an employee id, like the application writes (task 39b)
                 AssignedAt = At(today, 8, 0),
             });
         }

@@ -36,3 +36,7 @@ The counter also lives in process memory, the window is fixed (easy to burst at 
 ## Note
 
 Task 21 moves the counters to a shared store for multi-instance hosting.
+
+## Status (2026-11-19)
+
+Done. Merged to `development` in PR #237. Report: [task 07 rate limiter](<../../reports/security/2026-11-17-task-07-rate-limiter.md>). The admin-managed limits that build on it are tasks 45 to 49 (person-2 folder).

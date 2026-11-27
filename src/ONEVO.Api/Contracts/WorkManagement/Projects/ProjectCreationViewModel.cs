@@ -16,7 +16,7 @@ public sealed record ReleaseReminderViewModel(Guid Id, Guid VersionId, DateOnly 
 
 public sealed record LabelViewModel(Guid Id, string Name, string Color);
 
-public sealed record ProjectMembershipViewModel(Guid Id, Guid ObjectiveId, Guid UserId, string MembershipSource);
+public sealed record ProjectMembershipViewModel(Guid Id, Guid ObjectiveId, Guid EmployeeId, string MembershipSource);
 
 public sealed record ProjectLogoViewModel(Guid FileRecordId, string OriginalFileName);
 

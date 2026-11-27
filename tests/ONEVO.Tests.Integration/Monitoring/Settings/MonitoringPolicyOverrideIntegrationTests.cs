@@ -188,7 +188,7 @@ public sealed class MonitoringPolicyOverrideIntegrationTestsFixture : IAsyncLife
             ScopeType = scopeType,
             ScopeId = scopeId,
             ActivityMonitoring = activityMonitoring,
-            SetById = Guid.NewGuid(),
+            SetById = TestUsers.New(db, tenantId),
             CreatedAt = DateTimeOffset.UtcNow,
             UpdatedAt = DateTimeOffset.UtcNow
         });
@@ -273,6 +273,7 @@ public sealed class MonitoringPolicyOverrideIntegrationTestsFixture : IAsyncLife
             DepartmentId = departmentId
         };
         db.Employees.Add(employee);
+        TestUsers.AddForNewEmployees(db);
         await db.SaveChangesAsync();
 
         if (assignToPosition)
@@ -334,6 +335,7 @@ public sealed class MonitoringPolicyOverrideIntegrationTestsFixture : IAsyncLife
             DepartmentId = departmentId
         };
         db.Employees.Add(employee);
+        TestUsers.AddForNewEmployees(db);
         await db.SaveChangesAsync();
 
         return (employee, departmentId);

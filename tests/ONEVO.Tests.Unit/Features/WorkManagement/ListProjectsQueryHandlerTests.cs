@@ -204,7 +204,7 @@ public class ListProjectsQueryHandlerTests
 
         var item = result.Value!.Items.Single();
         var member = item.Members.Single();
-        Assert.Equal(memberEmployeeId, member.UserId);
+        Assert.Equal(memberEmployeeId, member.EmployeeId);
         Assert.Equal("Arun Kumar", member.DisplayName);
         Assert.Equal(7, item.MemberCount);
     }

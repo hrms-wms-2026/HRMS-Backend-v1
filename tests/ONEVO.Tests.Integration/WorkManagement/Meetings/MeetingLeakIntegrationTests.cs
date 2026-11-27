@@ -29,6 +29,7 @@ using ONEVO.Infrastructure.Services.SharedPlatform.Outbox;
 using ONEVO.Tests.Integration.MyTeam;
 using Xunit;
 using CommonEfEmployeeRepository = ONEVO.Infrastructure.Persistence.Repositories.EfEmployeeRepository;
+using ONEVO.Tests.Integration.Support;
 
 namespace ONEVO.Tests.Integration.WorkManagement.Meetings;
 
@@ -85,7 +86,7 @@ public sealed class MeetingLeakIntegrationTests
         meeting.DueDate = DateOnly.FromDateTime(DateTime.UtcNow).AddDays(-1);
         db.TaskAssignments.Add(new TaskAssignment
         {
-            Id = Guid.NewGuid(), TaskId = meeting.Id, EmployeeId = at.OrganizerEmployeeId, UserId = Guid.NewGuid(),
+            Id = Guid.NewGuid(), TaskId = meeting.Id, EmployeeId = at.OrganizerEmployeeId, UserId = MyTeamDb.UserIdOf(db, at.OrganizerEmployeeId),
             AssignedById = at.OrganizerEmployeeId, AssignedAt = DateTimeOffset.UtcNow,
         });
         await db.SaveChangesAsync();
@@ -309,10 +310,11 @@ public sealed class MeetingLeakIntegrationTests
         // Some usage inside the first occurrence, so the compliance view has a measured row.
         await using (var db = w.H.NewContext())
         {
+            var deviceId = await TestDevices.ForEmployeeAsync(db, w.H.TenantId, w.Attendee);
             for (var i = 0; i < 15; i++)
                 db.AppUsageSnapshots.Add(new AppUsageSnapshot
                 {
-                    Id = Guid.NewGuid(), TenantId = w.H.TenantId, EmployeeId = w.Attendee, AgentDeviceId = Guid.NewGuid(),
+                    Id = Guid.NewGuid(), TenantId = w.H.TenantId, EmployeeId = w.Attendee, AgentDeviceId = deviceId,
                     CapturedAt = First.AddMinutes(i), ProcessName = "teams.exe", CreatedAt = First,
                 });
             await db.SaveChangesAsync();

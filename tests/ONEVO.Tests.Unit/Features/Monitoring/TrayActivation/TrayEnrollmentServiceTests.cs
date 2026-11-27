@@ -176,19 +176,24 @@ public class TrayEnrollmentServiceTests
                 Id = existingDeviceId, UserId = UserId, TenantId = TenantId,
                 DeviceFingerprint = "fp-old", IsActive = true,
             });
+        var employeeId = Guid.NewGuid();
+        var employees = new Mock<IEmployeeRepository>();
+        employees.Setup(r => r.GetDefaultForUserAsync(TenantId, UserId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new ONEVO.Domain.Features.CoreHr.Entities.Employee { Id = employeeId, UserId = UserId, LegalEntityId = LegalEntityId });
         DeviceChangeRequest? raised = null;
         var deviceChangeRequests = new Mock<IDeviceChangeRequestRepository>();
         deviceChangeRequests
             .Setup(r => r.UpsertPendingAsync(It.IsAny<DeviceChangeRequest>(), It.IsAny<CancellationToken>()))
             .Callback<DeviceChangeRequest, CancellationToken>((r, _) => raised = r)
             .Returns(Task.CompletedTask);
-        var service = CreateService(repository, TokenService(), deviceChangeRequests: deviceChangeRequests);
+        var service = CreateService(repository, TokenService(), deviceChangeRequests: deviceChangeRequests, employees: employees);
 
         var act = () => service.IssueAsync(Request(), CancellationToken.None);
 
         await act.Should().ThrowAsync<DeviceChangePendingException>();
         raised.Should().NotBeNull();
-        raised!.Status.Should().Be(DeviceChangeRequest.StatusPending);
+        raised!.EmployeeId.Should().Be(employeeId, "device_change_requests.employee_id is the employee's id, not the user's");
+        raised.Status.Should().Be(DeviceChangeRequest.StatusPending);
         raised.CurrentDeviceRegistrationId.Should().Be(existingDeviceId);
         raised.NewDeviceFingerprint.Should().Be("fingerprint");
         raised.LegalEntityId.Should().Be(LegalEntityId);
@@ -293,6 +298,26 @@ public class TrayEnrollmentServiceTests
         await act.Should().ThrowAsync<DeviceChangePendingException>();
         raised.Should().NotBeNull();
         raised!.LegalEntityId.Should().Be(fallbackLegalEntityId);
+    }
+
+    [Fact]
+    public async Task IssueAsync_WhenDifferentFingerprintAndUserHasNoEmployee_RefusesWithoutRaisingARequest()
+    {
+        var repository = new Mock<ITrayActivationRepository>();
+        repository.Setup(r => r.FindActiveDeviceForUserAsync(UserId, TenantId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new TrayDeviceRegistration
+            {
+                Id = Guid.NewGuid(), UserId = UserId, TenantId = TenantId,
+                DeviceFingerprint = "fp-old", IsActive = true,
+            });
+        var deviceChangeRequests = new Mock<IDeviceChangeRequestRepository>();
+        var service = CreateService(repository, TokenService(), deviceChangeRequests: deviceChangeRequests);
+
+        var act = () => service.IssueAsync(Request(), CancellationToken.None);
+
+        await act.Should().ThrowAsync<DeviceChangePendingException>();
+        deviceChangeRequests.Verify(r => r.UpsertPendingAsync(
+            It.IsAny<DeviceChangeRequest>(), It.IsAny<CancellationToken>()), Times.Never);
     }
 
     private static TrayEnrollmentRequest Request() => new(

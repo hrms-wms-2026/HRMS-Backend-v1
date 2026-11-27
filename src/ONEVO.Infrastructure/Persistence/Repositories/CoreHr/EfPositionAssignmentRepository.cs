@@ -227,7 +227,7 @@ public class EfPositionAssignmentRepository : IPositionAssignmentRepository
                 (id, tenant_id, employee_id, position_id, assignment_kind, effective_from,
                  assignment_status, created_by_id, created_at, is_deleted, reports_to_employee_id)
             SELECT {newId}, {tenantId}, {employeeId}, {positionId}, {PositionAssignmentKind.PrimaryEmployment},
-                   {effectiveFrom}, {PositionAssignmentStatus.Planned}, {createdById}, {now}, 0, {reportsToEmployeeId}
+                   {effectiveFrom}, {PositionAssignmentStatus.Planned}, {(createdById == Guid.Empty ? (Guid?)null : createdById)}, {now}, 0, {reportsToEmployeeId}
             WHERE (
                 SELECT COUNT(*) FROM position_assignments WITH (UPDLOCK, HOLDLOCK)
                 WHERE tenant_id = {tenantId} AND position_id = {positionId}
@@ -297,7 +297,7 @@ public class EfPositionAssignmentRepository : IPositionAssignmentRepository
                     (id, tenant_id, employee_id, position_id, assignment_kind, effective_from,
                      assignment_status, created_by_id, created_at, is_deleted, reports_to_employee_id)
                 SELECT {newId}, {tenantId}, {employeeId}, {positionId}, {PositionAssignmentKind.PrimaryEmployment},
-                       {effectiveFrom}, {PositionAssignmentStatus.Active}, {createdById}, {now}, 0, {reportsToEmployeeId}
+                       {effectiveFrom}, {PositionAssignmentStatus.Active}, {(createdById == Guid.Empty ? (Guid?)null : createdById)}, {now}, 0, {reportsToEmployeeId}
                 WHERE (
                     SELECT COUNT(*) FROM position_assignments WITH (UPDLOCK, HOLDLOCK)
                     WHERE tenant_id = {tenantId} AND position_id = {positionId}

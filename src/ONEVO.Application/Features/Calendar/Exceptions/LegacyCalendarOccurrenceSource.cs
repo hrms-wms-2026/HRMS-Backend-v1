@@ -51,8 +51,8 @@ public sealed class LegacyCalendarOccurrenceSource(
             var isOrganizer = e.CreatedById == employee.UserId;
             if (mine is null && !isOrganizer)
                 continue;
-            if (!organizerIds.TryGetValue(e.CreatedById, out var organizerId))
-                organizerIds[e.CreatedById] = organizerId = (await employees.GetDefaultForUserAsync(tenantId, e.CreatedById, ct))?.Id;
+            if (!organizerIds.TryGetValue((e.CreatedById ?? Guid.Empty), out var organizerId))
+                organizerIds[(e.CreatedById ?? Guid.Empty)] = organizerId = (await employees.GetDefaultForUserAsync(tenantId, (e.CreatedById ?? Guid.Empty), ct))?.Id;
             var peopleCount = people.Select(p => p.EmployeeId).Append(organizerId ?? Guid.Empty).Where(id => id != Guid.Empty).Distinct().Count();
 
             if (!reports.TryGetValue(seriesId, out var report))

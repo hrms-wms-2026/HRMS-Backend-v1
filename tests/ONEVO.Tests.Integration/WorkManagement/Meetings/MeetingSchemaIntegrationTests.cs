@@ -214,7 +214,7 @@ public sealed class MeetingSchemaIntegrationTests
             category_id, status_id, priority, completed_hours, progress_percent, created_at, created_by_id, is_deleted)
         VALUES ('{taskId}', '{h.TenantId}', 'meeting', 'module', '{at.ProjectId}', '{at.ObjectiveId}',
             'M-{taskId:N}', 'Standup', '{h.CategoryIdFor(at.ProjectId)}', '{at.StatusId}', 'medium', 0, 0, SYSDATETIMEOFFSET(),
-            '{at.OrganizerEmployeeId}', 0)
+            '{h.UserIdOf(at.OrganizerEmployeeId)}', 0)
         """;
 
     private static async Task<object?> ScalarAsync(MyTeamDb h, string sql)

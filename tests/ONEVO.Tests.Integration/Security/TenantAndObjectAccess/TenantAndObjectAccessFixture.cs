@@ -13,6 +13,7 @@ using ONEVO.Domain.Features.Conversations.Entities;
 using ONEVO.Domain.Features.CoreHr.Entities;
 using ONEVO.Domain.Features.InfrastructureModule.Entities;
 using ONEVO.Domain.Features.Leave.Request.Entities;
+using ONEVO.Domain.Features.Monitoring.ActivityMonitoring.Entities;
 using ONEVO.Domain.Features.Monitoring.Screenshots.Entities;
 using ONEVO.Domain.Features.Monitoring.TrayActivation.Entities;
 using ONEVO.Domain.Features.OrgStructure.Entities;
@@ -69,6 +70,7 @@ public sealed class TenantAndObjectAccessFixture : IAsyncLifetime
     public TenantSession OtherTeamManager { get; private set; } = null!;
     public TenantSession Hr { get; private set; } = null!;
     public TenantSession CoveringManager { get; private set; } = null!;
+    public TenantSession HrMonitoring { get; private set; } = null!;
 
     public TenantObjects A { get; private set; } = null!;
     public TenantObjects B { get; private set; } = null!;
@@ -81,6 +83,10 @@ public sealed class TenantAndObjectAccessFixture : IAsyncLifetime
     public Guid ColleagueLeaveRequestId { get; private set; }
     public Guid ColleagueScreenshotId { get; private set; }
     public Guid ColleagueDeviceId { get; private set; }
+
+    /// <summary>Active minutes in the colleague's one seeded daily summary - no other employee has any.</summary>
+    public const int ColleagueActiveMinutes = 777;
+    public static readonly DateOnly ColleagueSummaryDate = DateOnly.FromDateTime(DateTime.UtcNow).AddDays(-1);
 
     public IServiceProvider Services => _factory.Services;
 
@@ -128,6 +134,10 @@ public sealed class TenantAndObjectAccessFixture : IAsyncLifetime
         // manager, plus a position with company-wide coverage of tenant A's legal entity.
         CoveringManager = await SeedAndLoginUserAsync(OwnerA, "covering@xt-acc-a.test",
             ["monitoring:read", "monitoring:screenshots:request"], "Covering Manager");
+        // HR with the tenant-wide employee permission (org:manage) and no coverage: productivity
+        // reports stay tenant-wide for this caller.
+        HrMonitoring = await SeedAndLoginUserAsync(OwnerA, "hr-monitoring@xt-acc-a.test",
+            ["monitoring:read", "org:manage"], "HR Monitoring");
 
         EmployeeEmployeeId = await AddEmployeeForUserAsync(OwnerA.TenantId, legalEntityA, "employee@xt-acc-a.test", "EMP-E", "Employee");
         ColleagueEmployeeId = await AddEmployeeForUserAsync(OwnerA.TenantId, legalEntityA, "colleague@xt-acc-a.test", "EMP-C", ColleagueMarker);
@@ -144,6 +154,7 @@ public sealed class TenantAndObjectAccessFixture : IAsyncLifetime
         ColleagueDashboardId = await GetMyDashboardIdAsync(Colleague);
         ColleagueLeaveRequestId = await SeedLeaveRequestAsync(OwnerA.TenantId, ColleagueEmployeeId, A.LeaveTypeId, ColleagueMarker);
         (ColleagueScreenshotId, ColleagueDeviceId) = await SeedColleagueMonitoringAsync(OwnerA.TenantId, legalEntityA);
+        await SeedColleagueProductivityAsync(OwnerA.TenantId, A.DepartmentId);
     }
 
     public async Task DisposeAsync()
@@ -514,6 +525,30 @@ public sealed class TenantAndObjectAccessFixture : IAsyncLifetime
         db.Add(device);
         await db.SaveChangesAsync();
         return (asset.Id, device.Id);
+    }
+
+    /// <summary>
+    /// Puts the colleague in tenant A's department and gives them one daily activity summary, so the
+    /// productivity report has exactly one employee's minutes to leak or to show.
+    /// </summary>
+    private async Task SeedColleagueProductivityAsync(Guid tenantId, Guid departmentId)
+    {
+        using var scope = _factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+        var colleague = await db.Employees.SingleAsync(e => e.TenantId == tenantId && e.Id == ColleagueEmployeeId);
+        colleague.DepartmentId = departmentId;
+        db.Add(new ActivityDailySummary
+        {
+            Id = Guid.NewGuid(),
+            TenantId = tenantId,
+            EmployeeId = ColleagueEmployeeId,
+            Date = ColleagueSummaryDate,
+            TotalActiveMinutes = ColleagueActiveMinutes,
+            TotalIdleMinutes = 33,
+            ActivityScore = 70m,
+            CreatedAt = DateTimeOffset.UtcNow,
+        });
+        await db.SaveChangesAsync();
     }
 
     private async Task<Guid> GetPrimaryLegalEntityIdAsync(Guid tenantId)

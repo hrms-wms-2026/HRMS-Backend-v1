@@ -74,7 +74,7 @@ public sealed class MeetingBulkPreviewIntegrationTests
         db.EmployeeHierarchyClosures.Add(new EmployeeHierarchyClosure
         {
             TenantId = h.TenantId, AncestorEmployeeId = manager.Id, DescendantEmployeeId = directReport.Id, Depth = 1,
-            SourcePositionAssignmentId = Guid.NewGuid(), GeneratedAt = DateTimeOffset.UtcNow,
+            SourcePositionAssignmentId = h.ClosureSourceFor(db, directReport.Id), GeneratedAt = DateTimeOffset.UtcNow,
         });
 
         var at = new MeetingPlacement(organizer.Id, projectId, rootId, h.AddStatus(db, projectId, marksComplete: false));
@@ -186,13 +186,13 @@ public sealed class MeetingBulkPreviewIntegrationTests
                 new EmployeeHierarchyClosure
                 {
                     TenantId = w.H.TenantId, AncestorEmployeeId = secondManager, DescendantEmployeeId = secondReport, Depth = 1,
-                    SourcePositionAssignmentId = Guid.NewGuid(), GeneratedAt = DateTimeOffset.UtcNow,
+                    SourcePositionAssignmentId = w.H.ClosureSourceFor(db, secondReport), GeneratedAt = DateTimeOffset.UtcNow,
                 },
                 // Two levels below the first manager: not a direct report, so not part of their team.
                 new EmployeeHierarchyClosure
                 {
                     TenantId = w.H.TenantId, AncestorEmployeeId = w.Manager, DescendantEmployeeId = grandReport, Depth = 2,
-                    SourcePositionAssignmentId = Guid.NewGuid(), GeneratedAt = DateTimeOffset.UtcNow,
+                    SourcePositionAssignmentId = w.H.ClosureSourceFor(db, grandReport), GeneratedAt = DateTimeOffset.UtcNow,
                 });
             await db.SaveChangesAsync();
         }
@@ -262,7 +262,7 @@ public sealed class MeetingBulkPreviewIntegrationTests
             db.EmployeeHierarchyClosures.Add(new EmployeeHierarchyClosure
             {
                 TenantId = w.H.TenantId, AncestorEmployeeId = w.Manager, DescendantEmployeeId = w.Attendee, Depth = 1,
-                SourcePositionAssignmentId = Guid.NewGuid(), GeneratedAt = DateTimeOffset.UtcNow,
+                SourcePositionAssignmentId = w.H.ClosureSourceFor(db, w.Attendee), GeneratedAt = DateTimeOffset.UtcNow,
             });
             w.H.AddSeriesParticipant(db, w.Series, w.Attendee);
             await db.SaveChangesAsync();
@@ -343,7 +343,7 @@ public sealed class MeetingBulkPreviewIntegrationTests
         // The create re-validates: a leaver who slipped through is skipped, not invited.
         var factory = new MeetingTestServices(db, new MeetingTestClock(First.AddDays(-1))).Factory;
         var created = await new UnitOfWork(db).ExecuteInTransactionAsync(ct => factory.CreateDirectAsync(
-            w.H.TenantId, w.Organizer, Guid.NewGuid(),
+            w.H.TenantId, w.Organizer, w.H.UserIdOf(w.Organizer),
             new ProductionPlacement(w.ProjectId, w.RootModuleId, false, true),
             new CreateMeetingRequest(w.ProjectId, w.RootModuleId, "Delivery sync", null, null, false,
                 First.AddDays(1), 30, false, "UTC", null, [w.DepartmentMember, w.Leaver], [], null),

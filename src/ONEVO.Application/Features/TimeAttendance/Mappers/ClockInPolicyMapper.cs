@@ -33,7 +33,7 @@ public static class ClockInPolicyMapper
             entity.NotificationRecipientResolver,
             rules,
             entity.IsActive,
-            entity.CreatedById,
+            (entity.CreatedById ?? Guid.Empty),
             entity.CreatedAt,
             entity.UpdatedAt);
     }

@@ -226,7 +226,7 @@ public sealed class LedProgressDetailIntegrationTests
             await db.Database.ExecuteSqlRawAsync("DROP INDEX IF EXISTS ix_task_assignments_one_per_task ON task_assignments");
             db.TaskAssignments.Add(new TaskAssignment
             {
-                Id = Guid.NewGuid(), TaskId = s.Tasks["t3"], EmployeeId = s.AliceId, UserId = Guid.NewGuid(),
+                Id = Guid.NewGuid(), TaskId = s.Tasks["t3"], EmployeeId = s.AliceId, UserId = MyTeamDb.UserIdOf(db, s.AliceId),
                 AssignedById = s.AliceId, AssignedAt = DateTimeOffset.UtcNow,
             });
             await db.SaveChangesAsync();

@@ -828,7 +828,7 @@ public sealed class DevSmokeTestTenantSeeder : IHostedService
                 BillingCurrency = "USD",
                 IncludedSeats = includedSeats,
                 OverageAllowed = DevSmokeOverageAllowed,
-                CreatedById = userId,
+                CreatedById = null, // a platform_users id when set; the seeder has no platform admin (task 39c)
                 CreatedAt = now
             };
             db.TenantSubscriptions.Add(subscription);

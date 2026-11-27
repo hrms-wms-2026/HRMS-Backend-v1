@@ -8,6 +8,42 @@ Written 2026-11-15 from a read-only scan of the whole backend on branch `feature
 - The task number is the priority across the whole backend. Task 01 is the most urgent, task 30 the least.
 - The first 12 tasks are the ones to finish before UAT opens. Tasks 13 to 21 should land during UAT. The rest can follow.
 - If a task turns out bigger than a day, split it and keep the same number with a suffix (for example `task-08b`).
+- When a task is finished, add a `## Status` section to its file and update the status table below.
+
+## Status (2026-11-27)
+
+Only tasks that have started or have a decision are listed. Every other task is not started.
+
+| # | Task | Status | Where |
+|---|---|---|---|
+| 03 | Cut the per-request session lookups | Done | `development`, PR #235 |
+| 07 | Fix the global rate limiter | Done | `development`, PR #237 |
+| 11 | Secrets out of the repository and scans in CI | On hold, no permission from the repository owner yet | - |
+| 15 | Deny by default for every endpoint | Done (PR #240). Follow-up 15b done: the Stripe webhook refuses a missing signature first and gives one generic error, and admin login always checks a dummy password hash. The rate limits moved to person-2 (tasks 45 to 49) | 15: `development`, PR #240. 15b: local `claude/merge-development-1126` (7b9741846), now in local `feature/testing` too, not yet in `development` |
+| 19 | Validation coverage and shared rules | Done | `development`, PR #240 |
+| 19b | Validation coverage for the remaining commands (the allow-list is now empty) | Done | `development`, PR #240 |
+| 23 | Security headers, upload checks and request limits (Swagger removed) | Done | `development`, PR #240 |
+| 27 | Cross-tenant and object access tests for UAT | Done (PR #240). Follow-up 27b done: the productivity report counts only the employees a manager covers; HR and admin keep the whole tenant | 27: `development`, PR #240. 27b: local `claude/merge-development-1126` (7b9741846), now in local `feature/testing` too, not yet in `development` |
+| 32 | One permission catalogue in code (`PermissionCatalog`) | Done | `development`, PR #240 |
+| 33 | Safe add, rename and retire of permissions (migration `AddPermissionLifecycle`) | Done | `development`, PR #240 |
+| 39a | Foreign keys and status check constraints, first part (migration `AddReferenceForeignKeysAndStatusChecks39a`) | Done | `development`, PR #240 |
+| 39b | Remaining core foreign keys (migration `AddCoreForeignKeys39b`) | Done | local `claude/merge-development-1126` (7b9741846), now in local `feature/testing` too, not yet in `development` |
+| 39c | Audit column foreign keys (migration `AddAuditColumnForeignKeys39c`) | Done | same |
+| 39d | Tenant foreign keys (migration `AddTenantForeignKeys39d`) | Done | same |
+| 39e | Other module foreign keys (migrations `AddOtherModuleForeignKeys39e`, `ReferenceKeysClientNoAction39e`) | Done | same |
+| 39f | Remaining status check constraints (migration `AddStatusCheckConstraints39f`) | Done. 35 columns still need a constants class first | same |
+| 39g | Cascade delete review (migration `ReviewCascadeDeletes39g`) | Done. 28 cascades became NO ACTION, 17 kept | same |
+| 44 | Sensitive data in API responses | Done. Steps 1, 2 and 4 in PR #240. Row 4 decided (managers may see), no change. Follow-up 44b done: project members carry `employeeId`, and the other internal ids the guard found are gone. The audit fields named `...ById` are still open | 44: `development`, PR #240. 44b: local `claude/merge-development-1126` (7b9741846), now in local `feature/testing` too, not yet in `development` (the frontend part is on the frontend branch `claude/improve-task-44b-employee-ids`) |
+
+The two migrations from PR #240 (`AddPermissionLifecycle`, `AddReferenceForeignKeysAndStatusChecks39a`) are created, not applied. Each developer applies them to their own or the shared database.
+
+The follow-ups 15b, 27b and 44b and the tasks 39b to 39g are on the local branch `claude/merge-development-1126`, which also has the latest `origin/development` (dd4f2d2bd) merged in. Its gate on 2026-11-27: unit 8695 passed, architecture 1028 passed, SqlServerMigration and RateLimit tests 333 passed, 0 failed. Local `feature/testing` was fast-forwarded to it, with these docs, on 2026-11-27. Nothing is pushed.
+
+New migrations, created and not applied. On a database, they run in this order, mixed with the migrations from `development`: 39a, `AddRateLimitSettings`, `AddInboxItems`, `AddRowVersionTokens`, 39b, 39c, `AddBrevoEmailProvider`, `DropNotificationActorForeignKey`, 39d, 39e, 39f, 39g, `ReferenceKeysClientNoAction39e`, `AddInboxTenantForeignKeysAfterMerge`. The last one gives the new inbox tables their tenant key. Details: `docs/reports/database/2026-11-26-merge-development-migrations.md` and `docs/reports/database/2026-11-25-task-39efg-module-keys-checks-cascades.md`.
+
+Person-1 work still open: 11 (on hold); the keys for the four inbox employee columns; the 35 status columns without a constants class (39f); the audit fields named `...ById` (44); and the same unknown-email timing gap in force-change-password (15).
+
+Since task 15 the "No fallback authorization policy" finding in the table below is fixed. Since task 23 the API has no Swagger in any environment; the API description is in `docs/api/openapi/`.
 
 ## Targets the team agreed
 
@@ -198,7 +234,18 @@ Build in this order. Each person works through their own folder from the lowest 
 - 15: [Deny by default for every endpoint](<person-1-security-and-auth/task-15 Deny by default for every endpoint.md>)
 - 19: [Validation coverage and shared rules](<person-1-security-and-auth/task-19 Validation coverage and shared rules.md>)
 - 23: [Security headers, upload checks and request limits](<person-1-security-and-auth/task-23 Security headers, upload checks and request limits.md>)
+- 19b: [Validation coverage for the remaining commands](<person-1-security-and-auth/task-19b Validation coverage for the remaining commands.md>)
 - 27: [Cross-tenant and object access tests for UAT](<person-1-security-and-auth/task-27 Cross-tenant and object access tests for UAT.md>)
+- 32: [One permission catalogue in code](<person-1-security-and-auth/task-32 One permission catalogue in code.md>)
+- 33: [Safe add, rename and retire of permissions](<person-1-security-and-auth/task-33 Safe add, rename and retire of permissions.md>)
+- 39 (39a): [Foreign keys and check constraints](<person-1-security-and-auth/task-39 Foreign keys and check constraints.md>)
+- 39b: [Remaining core foreign keys](<person-1-security-and-auth/task-39b Remaining core foreign keys.md>)
+- 39c: [Audit column foreign keys](<person-1-security-and-auth/task-39c Audit column foreign keys.md>)
+- 39d: [Tenant foreign keys](<person-1-security-and-auth/task-39d Tenant foreign keys.md>)
+- 39e: [Other module foreign keys](<person-1-security-and-auth/task-39e Other module foreign keys.md>)
+- 39f: [Remaining status check constraints](<person-1-security-and-auth/task-39f Remaining status check constraints.md>)
+- 39g: [Cascade delete review](<person-1-security-and-auth/task-39g Cascade delete review.md>)
+- 44: [Sensitive data in API responses](<person-1-security-and-auth/task-44 Sensitive data in API responses.md>)
 
 ### person-3-api-and-pagination
 

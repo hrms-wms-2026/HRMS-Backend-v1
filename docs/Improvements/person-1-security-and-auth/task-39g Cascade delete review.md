@@ -20,3 +20,16 @@
 ## Done when
 
 - Every remaining cascade is on the allow-list with its reason, and a report in `docs/reports/database/` lists the decision for each key.
+
+## Results (2026-11-25)
+
+Report: `docs/reports/database/2026-11-25-task-39efg-module-keys-checks-cascades.md`. Branch `claude/improve-task-39efg` (39e, 39f and 39g together).
+
+- 45 cascades reviewed: 17 kept, 28 changed to NO ACTION by `CascadeDeleteRules` (migration `20261125053817_ReviewCascadeDeletes39g`, 28 drop and add, no data change). Not applied by the agent.
+- Kept: line items and layout rows that the code clears or removes (clock-in late rules, dashboard widgets and layouts), the parts of a conversation message (system cards are hard-deleted), leave policy blackout periods, the grants and overrides of a retired permission, and the parts of roles and tasks, which are removed through EF.
+- `ForeignKeyRulesTests.EveryCascadeIsOnTheAllowList` lists the kept keys with their reasons; `NoForeignKeyToAPersonCascades` now covers `platform_users`.
+- The report has the decision for each key.
+
+## Status (2026-11-27)
+
+Done. Merged into the local branch `claude/merge-development-1126` (7b9741846) together with 39b to 39g, 15b, 27b, 44b and the latest `origin/development`. Gate: unit 8695 passed, architecture 1028 passed, SqlServerMigration and RateLimit 333 passed. Now in local `feature/testing` too, not yet in `development`, not pushed. Migration `ReviewCascadeDeletes39g` is created, not applied; the order of all migrations is in `docs/reports/database/2026-11-26-merge-development-migrations.md`.

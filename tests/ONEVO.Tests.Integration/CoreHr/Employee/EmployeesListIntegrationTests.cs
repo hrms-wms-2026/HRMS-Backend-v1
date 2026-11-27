@@ -119,6 +119,7 @@ public sealed class EmployeesListIntegrationTestsFixture : IAsyncLifetime
         _callerAUserId = SeedCompanyWideCaller(db, _tenantAId, _legalEntityAId, "CALLER-A", _employeesReadPermissionId);
         _callerBUserId = SeedCompanyWideCaller(db, _tenantBId, _legalEntityBId, "CALLER-B", _employeesReadPermissionId);
 
+        TestUsers.AddForNewEmployees(db);
         await db.SaveChangesAsync();
 
         await CreateRestrictedRoleAsync();

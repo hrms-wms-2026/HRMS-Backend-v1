@@ -29,7 +29,7 @@ public class ClockInPolicy : ITenantOwnedEntity
     public bool IsActive { get; set; } = true;
     /// <summary>When the late/early deduction rows last actually changed; days before it are never newly charged.</summary>
     public DateTimeOffset? DeductionRulesChangedAt { get; set; }
-    public Guid CreatedById { get; set; }
+    public Guid? CreatedById { get; set; }
     public DateTimeOffset CreatedAt { get; set; }
     public DateTimeOffset UpdatedAt { get; set; }
 

@@ -114,12 +114,19 @@ Both limiters only cover `/api/v1` and `/admin/v1`. Paths outside them (health, 
 
 ## Stripe webhook
 
-`StripeWebhookController.ProcessWebhookWithSecretAsync` reads the raw body as a string, then calls
+A request with no `Stripe-Signature` header (or a blank one) is refused first, before the secret
+lookup. Otherwise `StripeWebhookController.ProcessWebhookWithSecretAsync` reads the raw body as a string, then calls
 `EventUtility.ConstructEvent(payload, signature, secret)`. That call checks the HMAC signature and
 the timestamp tolerance (default 300 seconds) and throws on mismatch, and the controller returns
 400. Nothing reads the event data (`ExtractCommand`, `ProcessStripeEventCommand`) until the
 signature has passed. The only work before the signature check is resolving the webhook secret
-for the gateway key or config id, which is one database lookup.
+for the gateway key or config id, which is one database lookup. Nothing is written before the
+signature passes.
+
+Every rejection (bad gateway key, missing or invalid signature, gateway not configured) returns the
+same 400 body, `WebhookRejection`: a generic detail and the request's correlation id. The reason
+(`invalid_gateway_key`, `missing_signature`, `not_configured`, `invalid_signature`, with the Stripe
+exception) is logged server side under that correlation id. `StripeWebhookControllerTests` pins this.
 
 ## Open findings (reported, not fixed in task 15)
 
@@ -131,10 +138,11 @@ for the gateway key or config id, which is one database lookup.
    short lifetime, so online guessing is impractical. But it is a credential exchange with no
    dedicated limit. Per-IP limits here can block offices where many trays share one NAT address,
    so the limit size is a product decision.
-3. **Small timing differences in login.** `AdminLoginCommandHandler` and
-   `ForcePasswordChangeCommandHandler` return early without hashing when the email is unknown. The
-   response body is identical, but response time differs. Suggested fix: verify against a dummy
-   hash on the unknown-account path.
-4. **Stripe webhook error text tells callers whether a gateway is configured.** It returns
-   "Stripe webhook is not configured." versus "Invalid Stripe signature.". Unit tests pin both
-   messages. Low impact: gateway keys are not secret, and nothing is processed without a valid signature.
+3. **Small timing differences in login.** Fixed for admin login on 2026-11-23 (task 15
+   follow-up): `AdminLoginCommandHandler` verifies against `DummyPasswordHash` (a real BCrypt
+   cost-12 hash) when the email is unknown, the credential is missing, or the account is locked,
+   so every failed login costs one hash. Still open: `ForcePasswordChangeCommandHandler` returns
+   early without hashing when the email is unknown.
+4. **Stripe webhook error text told callers whether a gateway is configured.** Fixed on
+   2026-11-23: every rejection now returns the same generic body with a correlation id (see "Stripe
+   webhook" above).

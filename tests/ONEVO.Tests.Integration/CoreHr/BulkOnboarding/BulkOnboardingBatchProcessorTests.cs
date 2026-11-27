@@ -112,9 +112,10 @@ public sealed class BulkOnboardingBatchProcessorTests : IAsyncLifetime
         _workModeIdB = workModeB.Id;
         db.TimeAttendanceWorkModes.AddRange(workModeA, workModeB);
 
+        // Real users: bulk_onboarding_batches.created_by_user_id has a key to users (task 39b).
+        _userA = TestUsers.New(db, _tenantA);
+        _userB = TestUsers.New(db, _tenantB);
         await db.SaveChangesAsync();
-        _userA = Guid.NewGuid();
-        _userB = Guid.NewGuid();
     }
 
     public Task DisposeAsync() => Task.CompletedTask;

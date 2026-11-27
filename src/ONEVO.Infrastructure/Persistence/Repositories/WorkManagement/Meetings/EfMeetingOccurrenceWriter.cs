@@ -59,7 +59,7 @@ public sealed class EfMeetingOccurrenceWriter : IMeetingOccurrenceWriter
                     VALUES (@id, {d.TenantId}, {WorkTaskKinds.Meeting}, {WorkTaskVisibilityScopes.Module},
                             {d.ProjectId}, {d.ObjectiveId}, {d.ShortId}, {d.Title},
                             {d.Description}, {d.CategoryId}, {d.StatusId}, {WorkTaskPriorities.Medium},
-                            0, 0, SYSDATETIMEOFFSET(), {d.CreatedById}, 0);
+                            0, 0, SYSDATETIMEOFFSET(), {(d.CreatedById == Guid.Empty ? (Guid?)null : d.CreatedById)}, 0);
                     SET @task_in = 1;
                 END TRY
                 BEGIN CATCH

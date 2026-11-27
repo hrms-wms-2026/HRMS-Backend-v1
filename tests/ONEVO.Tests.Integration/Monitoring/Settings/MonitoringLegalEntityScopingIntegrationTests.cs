@@ -190,7 +190,7 @@ public sealed class MonitoringLegalEntityScopingIntegrationTestsFixture : IAsync
             ScopeType = scopeType,
             ScopeId = scopeId,
             ActivityMonitoring = activityMonitoring,
-            SetById = Guid.NewGuid(),
+            SetById = TestUsers.New(db, tenantId),
             CreatedAt = DateTimeOffset.UtcNow,
             UpdatedAt = DateTimeOffset.UtcNow
         });
@@ -209,7 +209,7 @@ public sealed class MonitoringLegalEntityScopingIntegrationTestsFixture : IAsync
             ScopeType = "role",
             ScopeId = roleId,
             ActivityMonitoring = activityMonitoring,
-            SetById = Guid.NewGuid(),
+            SetById = TestUsers.New(db, tenantId),
             CreatedAt = DateTimeOffset.UtcNow,
             UpdatedAt = DateTimeOffset.UtcNow
         });
@@ -322,6 +322,7 @@ public sealed class MonitoringLegalEntityScopingIntegrationTestsFixture : IAsync
             });
         }
 
+        TestUsers.AddForNewEmployees(db);
         await db.SaveChangesAsync();
 
         var sessionInfo = await LoginAndGetSessionAsync(userId, $"{slug}@test.dev", "TestPass1!", tenant.Slug);
@@ -676,6 +677,7 @@ public sealed class MonitoringLegalEntityScopingIntegrationTests : IClassFixture
             };
             db.Positions.Add(positionB);
             db.Positions.Add(positionA);
+            TestUsers.AddForNewEmployees(db);
             await db.SaveChangesAsync();
 
             db.PositionAssignments.Add(new PositionAssignment

@@ -214,7 +214,7 @@ public sealed partial class DapiHistorySeeder
                 TaskId = taskId,
                 UserId = DapiOwnerUserId,
                 EmployeeId = ownerId,
-                AssignedById = DapiOwnerUserId,
+                AssignedById = ownerId, // an employee id, like the application writes (task 39b)
                 AssignedAt = At(ctx.Window.From, 10, 0)
             });
         }

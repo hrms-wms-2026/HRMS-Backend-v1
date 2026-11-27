@@ -50,8 +50,10 @@ Full table: `docs/reports/security/2026-11-19-task-27-cross-tenant-and-object-ac
   in the tenant. They now follow the same coverage rule as `/employees/{id}/overview/activity`. There are 12 new
   probes that failed before the fix, a covering-manager positive control, unit tests, and an architecture test
   that keeps new monitoring endpoints gated.
-- Open product decision: `GET /api/v1/monitoring/reports/productivity` still aggregates across the tenant for any
-  `monitoring:read` holder. It is left unchanged.
+- Productivity report decision resolved (2026-11-23, "coverage only"): `GET /api/v1/monitoring/reports/productivity`
+  now sums only the employees a manager covers, in every scope. HR and admins (`org:manage`) keep the
+  tenant-wide view. Four integration tests and seven new handler unit tests cover it. See the report's
+  "Productivity report" section.
 
 ### Not leaks
 
@@ -60,3 +62,9 @@ Full table: `docs/reports/security/2026-11-19-task-27-cross-tenant-and-object-ac
 - Leave approve or reject: the policy check runs before the approver check. For a request with no policy, a
   non-approver gets 409 instead of 403.
 - `employees:read` is a retired permission code, so tests must not seed it.
+
+## Status (2026-11-23)
+
+Done. Merged to `development` in PR #240 on 2026-11-20.
+
+Decision 2026-11-23 on the productivity report (`GET /api/v1/monitoring/reports/productivity`): **coverage only**. A manager sees only the employees they cover; HR and admin see the whole tenant. Built in follow-up 27b (see "Results" above). It is on the local branch `claude/merge-development-1126` (2026-11-27), now in local `feature/testing` too, not yet in `development`. Until that lands, `development` still aggregates across the tenant.

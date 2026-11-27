@@ -41,3 +41,18 @@ The integration suite showed that these keys are right for the application but b
 - `task_assignments.user_id` → `users`: 86 failures. Same cause: assignments copy the fixture employee's random user id.
 - `employee_hierarchy_closure.source_position_assignment_id` → `position_assignments`: 26 failures. Six test files write closure rows with made-up assignment ids. The closure is rebuilt from `position_assignments` by `EfEmployeeHierarchyClosureRepository.RebuildAsync`, so the fixtures can call that instead.
 - `task_drafts.project_id` → `projects`: 2 failures in `TaskDraftRepositoryIntegrationTests`, which stores drafts for projects that do not exist.
+
+## Results
+
+Done on branch `claude/improve-task-39b-core-fks` (from origin/development b6fabb74f). Report: `docs/reports/database/2026-11-23-task-39b-core-foreign-keys.md`.
+
+- Migration: `20261123045150_AddCoreForeignKeys39b`, generated with `dotnet ef migrations add`. 39 foreign keys and 37 indexes; no table or column change. One hand-written step runs first: the `task_assignments.assigned_by_id` data repair (user id to employee id, stops with error 50039 if a value cannot be mapped; never deletes). Not applied to any shared database.
+- All 43 `task-39b` lines are gone from `missing-foreign-keys.txt` (418 → 379 lines). 39 columns have a key. Four have a reason instead: `attendance_alert_deductions.alert_id` (needs a product decision to soft-delete alerts), `employees.nationality_id` and `reporting_manager_changes.batch_id` (`external`), and `task_statuses.approver_id` (`unused`, a dead field).
+- Every key is NO ACTION (Restrict on `position_reporting_history`, like its other keys). `DeleteLeavePolicyVersion` and `AddLeavePolicyVersion` now refuse to delete a version that leave rows use. Roles are soft-deleted, so `positions.default_role_id` is safe.
+- The demo seeders wrote the owner's user id into `task_assignments.assigned_by_id`. They now write the employee id, as the application does.
+- Test fixtures fixed: shared `TestUsers` helper, real closure source assignments, real assignment user ids, real draft owners and project.
+- Local `CrownusDb` orphan check (run by the user): 417 of 417 `task_assignments.assigned_by_id` rows are orphans (old seeder user ids), all other columns 0. `work_modes` is missing locally because the database is behind on migrations. The migration repairs `assigned_by_id` first (`TaskAssignmentAssignedByRepairTests`). Not applied to the local database yet; the report has a read-only preview query.
+
+## Status (2026-11-27)
+
+Done. Merged into the local branch `claude/merge-development-1126` (7b9741846) together with 39b to 39g, 15b, 27b, 44b and the latest `origin/development`. Gate: unit 8695 passed, architecture 1028 passed, SqlServerMigration and RateLimit 333 passed. Now in local `feature/testing` too, not yet in `development`, not pushed. Migration `AddCoreForeignKeys39b` is created, not applied; the order of all migrations is in `docs/reports/database/2026-11-26-merge-development-migrations.md`.

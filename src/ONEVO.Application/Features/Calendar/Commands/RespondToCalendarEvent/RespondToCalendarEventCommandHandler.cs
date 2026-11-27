@@ -84,17 +84,17 @@ public sealed class RespondToCalendarEventCommandHandler(
         {
             var responderName = $"{employee.FirstName} {employee.LastName}";
             if (normalizedStatus == CalendarEventParticipantStatuses.ResolutionRequested)
-                await notifications.NotifyResolutionRequestedAsync(tenantId, calendarEvent.CreatedById, calendarEvent.Title, responderName, request.Reason!, ct);
+                await notifications.NotifyResolutionRequestedAsync(tenantId, (calendarEvent.CreatedById ?? Guid.Empty), calendarEvent.Title, responderName, request.Reason!, ct);
             else if (normalizedStatus == CalendarEventParticipantStatuses.ReplacementNominated)
             {
-                await notifications.NotifyReplacementNominatedAsync(tenantId, calendarEvent.CreatedById, calendarEvent.Title, responderName, nomineeName!, ct);
+                await notifications.NotifyReplacementNominatedAsync(tenantId, (calendarEvent.CreatedById ?? Guid.Empty), calendarEvent.Title, responderName, nomineeName!, ct);
                 // The nominee hears about it too (plan C1 P1-4).
                 if (nomineeUserId is Guid nomineeUser && nomineeUser != Guid.Empty)
                     await notifications.NotifyNomineeAsync(tenantId, nomineeUser, calendarEvent.Title, responderName, ct);
             }
             // Accept / decline reaches the organizer too (P1-2) - unless the organizer is answering their own event.
             else if (calendarEvent.CreatedById != currentUser.UserId)
-                await notifications.NotifyRsvpAnsweredAsync(tenantId, calendarEvent.CreatedById, calendarEvent.Title, responderName,
+                await notifications.NotifyRsvpAnsweredAsync(tenantId, (calendarEvent.CreatedById ?? Guid.Empty), calendarEvent.Title, responderName,
                     normalizedStatus == CalendarEventParticipantStatuses.Accepted, ct);
         }
 

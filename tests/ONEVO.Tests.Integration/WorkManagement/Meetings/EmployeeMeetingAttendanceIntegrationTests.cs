@@ -54,17 +54,17 @@ public sealed class EmployeeMeetingAttendanceIntegrationTests
             db.EmployeeHierarchyClosures.Add(new EmployeeHierarchyClosure
             {
                 TenantId = w.H.TenantId, AncestorEmployeeId = manager.Id, DescendantEmployeeId = w.Attendee, Depth = 1,
-                SourcePositionAssignmentId = Guid.NewGuid(), GeneratedAt = DateTimeOffset.UtcNow,
+                SourcePositionAssignmentId = w.H.ClosureSourceFor(db, w.Attendee), GeneratedAt = DateTimeOffset.UtcNow,
             });
             db.EmployeeHierarchyClosures.Add(new EmployeeHierarchyClosure
             {
                 TenantId = w.H.TenantId, AncestorEmployeeId = skipLevel.Id, DescendantEmployeeId = w.Attendee, Depth = 2,
-                SourcePositionAssignmentId = Guid.NewGuid(), GeneratedAt = DateTimeOffset.UtcNow,
+                SourcePositionAssignmentId = w.H.ClosureSourceFor(db, w.Attendee), GeneratedAt = DateTimeOffset.UtcNow,
             });
             db.EmployeeHierarchyClosures.Add(new EmployeeHierarchyClosure
             {
                 TenantId = w.H.TenantId, AncestorEmployeeId = skipLevel.Id, DescendantEmployeeId = manager.Id, Depth = 1,
-                SourcePositionAssignmentId = Guid.NewGuid(), GeneratedAt = DateTimeOffset.UtcNow,
+                SourcePositionAssignmentId = w.H.ClosureSourceFor(db, manager.Id), GeneratedAt = DateTimeOffset.UtcNow,
             });
 
             // The former manager still manages somebody else, so they are a manager in this tenant - but the
@@ -73,7 +73,7 @@ public sealed class EmployeeMeetingAttendanceIntegrationTests
             db.EmployeeHierarchyClosures.Add(new EmployeeHierarchyClosure
             {
                 TenantId = w.H.TenantId, AncestorEmployeeId = former.Id, DescendantEmployeeId = theirOwnReport.Id, Depth = 1,
-                SourcePositionAssignmentId = Guid.NewGuid(), GeneratedAt = DateTimeOffset.UtcNow,
+                SourcePositionAssignmentId = w.H.ClosureSourceFor(db, theirOwnReport.Id), GeneratedAt = DateTimeOffset.UtcNow,
             });
             await db.SaveChangesAsync();
 
@@ -155,7 +155,7 @@ public sealed class EmployeeMeetingAttendanceIntegrationTests
             db.EmployeeHierarchyClosures.Add(new EmployeeHierarchyClosure
             {
                 TenantId = w.H.TenantId, AncestorEmployeeId = w.FormerManager, DescendantEmployeeId = w.Subject, Depth = 1,
-                SourcePositionAssignmentId = Guid.NewGuid(), GeneratedAt = DateTimeOffset.UtcNow,
+                SourcePositionAssignmentId = w.H.ClosureSourceFor(db, w.Subject), GeneratedAt = DateTimeOffset.UtcNow,
             });
             await db.SaveChangesAsync();
         }

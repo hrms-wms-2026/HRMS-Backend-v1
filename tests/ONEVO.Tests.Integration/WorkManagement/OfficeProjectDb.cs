@@ -134,6 +134,7 @@ public sealed class OfficeProjectDb : IAsyncDisposable
             LegalEntityId = legalEntityId, EmploymentStatusId = employmentStatusId,
         };
         db.Employees.Add(employee);
+        TestUsers.AddForNewEmployees(db);
         await db.SaveChangesAsync();
         return employee;
     }
@@ -159,6 +160,9 @@ public sealed class OfficeProjectDb : IAsyncDisposable
     public async Task AssignRoleAsync(Guid userId, Guid roleId, DateTimeOffset assignedAt, DateTimeOffset? expiresAt = null)
     {
         await using var db = AdminContext();
+        // An owner without an employee is still a user: users.id is the key of user_roles.user_id (task 39b).
+        if (!await db.Users.IgnoreQueryFilters().AnyAsync(u => u.Id == userId))
+            TestUsers.Add(db, TenantId, userId);
         db.UserRoles.Add(new UserRole
         {
             TenantId = TenantId, UserId = userId, RoleId = roleId,

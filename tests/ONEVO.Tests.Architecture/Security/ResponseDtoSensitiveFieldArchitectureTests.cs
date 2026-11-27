@@ -66,16 +66,6 @@ public sealed class ResponseDtoSensitiveFieldArchitectureTests
         ["TenantInvitationDto.UserId"] = "Admin app tenant invitations.",
         ["TenantSessionResponse.UserId"] = "Admin app tenant session management.",
         ["TenantIntegrationCredentialDto"] = "Admin app (TenantIntegrationCredentialsController); tokens are returned as HasAccessToken flags.",
-
-        // ── FOLLOW-UP: tenant app responses that still carry an internal id. Listed in the
-        //    task 44 results section. Remove each entry when its fix lands; do not add more. ──
-        ["ProjectMemberAvatarDto.UserId"] = "FOLLOW-UP task 44 step 3: holds an employee id; rename to EmployeeId needs the Work Management owner and the frontend.",
-        ["ProjectMemberAvatarViewModel.UserId"] = "FOLLOW-UP task 44 step 3: same as ProjectMemberAvatarDto.UserId.",
-        ["ProjectMembershipSummaryDto.UserId"] = "FOLLOW-UP task 44 step 3: holds the creator's login user id; replace with EmployeeId with the Work Management owner.",
-        ["ProjectMembershipViewModel.UserId"] = "FOLLOW-UP task 44 step 3: same as ProjectMembershipSummaryDto.UserId.",
-        ["FileRecordDto"] = "FOLLOW-UP: GET/POST /api/v1/files returns TenantId and UploadedByUserId; the tray screenshot client also reads this DTO.",
-        ["OnboardingAccessGrantRequestListItemResponse"] = "FOLLOW-UP: onboarding access requests list returns RequestedByUserId and DecidedByUserId.",
-        ["GitHubTenantApprovalDto.EnabledByUserId"] = "FOLLOW-UP: tenant GitHub approval returns the enabling user's login id.",
     };
 
     private static readonly Assembly ApplicationAssembly = typeof(InvitationDetailDto).Assembly;

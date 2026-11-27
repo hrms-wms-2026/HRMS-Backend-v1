@@ -38,7 +38,7 @@ public sealed class MeetingSplitIntegrationTests
     {
         await using var db = w.H.NewContext();
         var result = await new MeetingTestServices(db, new MeetingTestClock(Now)).Edits.EditAsync(
-            w.H.TenantId, w.Organizer, Guid.NewGuid(), w.Series.Id, at, edit, CancellationToken.None);
+            w.H.TenantId, w.Organizer, w.H.UserIdOf(w.Organizer), w.Series.Id, at, edit, CancellationToken.None);
         Assert.True(result.IsSuccess, result.Error);
         return result.Value!;
     }

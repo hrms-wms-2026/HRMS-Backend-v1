@@ -276,7 +276,7 @@ public sealed partial class WorkManagementDapiDemoSeeder
             TaskId = taskId,
             UserId = ResolveUserId(personKey),
             EmployeeId = employeeIdByPersonKey[personKey],
-            AssignedById = DapiOwnerUserId,
+            AssignedById = employeeIdByPersonKey["dabi"], // the owner's employee id, like the application writes (task 39b)
             AssignedAt = now
         });
     }

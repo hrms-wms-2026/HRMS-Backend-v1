@@ -63,7 +63,7 @@ public sealed class EventMeetingLinkService(
                         OutboxMessageTypes.CalendarMeetingCancel,
                         new CalendarMeetingCancelPayload(
                             evt.TenantId, claimed.Provider, meeting.ExternalMeetingId, claimed.ExternalCalendarConnectionId,
-                            evt.CreatedById, Guid.Empty, evt.Title),
+                            (evt.CreatedById ?? Guid.Empty), Guid.Empty, evt.Title),
                         $"meeting-cancel:{claimed.Id}:{claimed.LinkGeneration}", evt.TenantId, innerCt);
                     await unitOfWork.SaveChangesAsync(innerCt);
                     return Result<CreateEventMeetingResult>.NotFound("Calendar event not found.");
@@ -90,7 +90,7 @@ public sealed class EventMeetingLinkService(
                 meetings.Update(claimed);
                 if (ambiguous)
                     await notifications.NotifyOrganizerAboutMeetingAsync(
-                        evt.TenantId, evt.CreatedById, CalendarMeetingNoticeCodes.Unresolved, evt.Title, providerName, innerCt);
+                        evt.TenantId, (evt.CreatedById ?? Guid.Empty), CalendarMeetingNoticeCodes.Unresolved, evt.Title, providerName, innerCt);
                 await unitOfWork.SaveChangesAsync(innerCt);
                 return Result<CreateEventMeetingResult>.NotFound("Calendar event not found.");
             }
@@ -102,7 +102,7 @@ public sealed class EventMeetingLinkService(
             await SendPendingFallbackInvitesAsync(current, claimed, organizerName, innerCt);
             meetings.Update(claimed);
             await notifications.NotifyOrganizerAboutMeetingAsync(
-                current.TenantId, current.CreatedById,
+                current.TenantId, (current.CreatedById ?? Guid.Empty),
                 ambiguous ? CalendarMeetingNoticeCodes.LinkUnknown : CalendarMeetingNoticeCodes.LinkFailed,
                 current.Title, providerName, innerCt);
             await unitOfWork.SaveChangesAsync(innerCt);
@@ -145,7 +145,7 @@ public sealed class EventMeetingLinkService(
     /// <summary>In-app notice to the event's organizer (see CalendarMeetingNoticeCodes).</summary>
     public Task NotifyOrganizerAsync(CalendarEvent evt, string noticeCode, string provider, CancellationToken ct)
         => notifications.NotifyOrganizerAboutMeetingAsync(
-            evt.TenantId, evt.CreatedById, noticeCode, evt.Title, CalendarMeetingProviderNames.Display(provider), ct);
+            evt.TenantId, (evt.CreatedById ?? Guid.Empty), noticeCode, evt.Title, CalendarMeetingProviderNames.Display(provider), ct);
 
     /// <summary>Spec: an event that ended while provisioning_unknown becomes unresolved when next read
     /// (the stray-meeting data is kept and the organizer is warned). Returns the row as it now stands.</summary>
@@ -158,7 +158,7 @@ public sealed class EventMeetingLinkService(
             return await meetings.GetByCalendarEventAsync(evt.TenantId, evt.Id, ct) ?? snapshot;
 
         await notifications.NotifyOrganizerAboutMeetingAsync(
-            evt.TenantId, evt.CreatedById, CalendarMeetingNoticeCodes.Unresolved, evt.Title,
+            evt.TenantId, (evt.CreatedById ?? Guid.Empty), CalendarMeetingNoticeCodes.Unresolved, evt.Title,
             CalendarMeetingProviderNames.Display(snapshot.Provider), ct);
         await unitOfWork.SaveChangesAsync(ct);
         snapshot.Status = CalendarEventMeetingStatuses.Unresolved;
@@ -209,7 +209,7 @@ public sealed class EventMeetingLinkService(
         meetings.Update(meeting);
         if (!resolved)
             await notifications.NotifyOrganizerAboutMeetingAsync(
-                evt.TenantId, evt.CreatedById, CalendarMeetingNoticeCodes.Unresolved, evt.Title,
+                evt.TenantId, (evt.CreatedById ?? Guid.Empty), CalendarMeetingNoticeCodes.Unresolved, evt.Title,
                 CalendarMeetingProviderNames.Display(meeting.Provider), ct);
         await unitOfWork.SaveChangesAsync(ct);
         return resolved ? Result.Success() : Result.Conflict("meeting_link_unresolved");

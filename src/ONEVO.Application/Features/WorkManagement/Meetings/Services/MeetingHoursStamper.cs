@@ -150,7 +150,7 @@ public sealed class MeetingHoursStamper
                         if (key.AddMinutes(series.DurationMinutes) > heldUntil
                             || await _meetings.GetDetailsAsync(tenantId, series.Id, key, innerCt) is not null)
                             continue;
-                        await _materializer.EnsureAsync(tenantId, series, key, series.CreatedById, innerCt);
+                        await _materializer.EnsureAsync(tenantId, series, key, (series.CreatedById ?? Guid.Empty), innerCt);
                     }
                     return 0;
                 }, ct);

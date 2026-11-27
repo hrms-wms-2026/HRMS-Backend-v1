@@ -36,7 +36,7 @@ public sealed class DeleteObjectiveAssetCommandHandler : IRequestHandler<DeleteO
         if (asset is null || asset.OwnerType != EntityAssetOwnerTypes.Objective || asset.OwnerId != objective.Id)
             return Result.NotFound("Attachment not found.");
 
-        if (!caller.Value!.CanRemove(asset.CreatedById))
+        if (!caller.Value!.CanRemove((asset.CreatedById ?? Guid.Empty)))
             return Result.Forbidden("Only the person who attached this file or the module head can remove it.");
 
         var fileId = asset.FileRecordId;

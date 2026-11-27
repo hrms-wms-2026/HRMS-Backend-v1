@@ -59,7 +59,7 @@ public sealed class TryCreateActiveAssignmentTests : IAsyncLifetime
         var repo = PositionAssignmentRepositoryTestSupport.CreateRepository(db);
 
         var createdId = await repo.TryCreateActiveAssignmentAsync(
-            _tenantId, employeeId, _positionId, DateOnly.FromDateTime(DateTime.UtcNow), Guid.NewGuid(), reportsToEmployeeId: null);
+            _tenantId, employeeId, _positionId, DateOnly.FromDateTime(DateTime.UtcNow), Guid.Empty, reportsToEmployeeId: null);
 
         Assert.NotNull(createdId);
         var row = await db.PositionAssignments.FindAsync(createdId!.Value);
@@ -75,9 +75,9 @@ public sealed class TryCreateActiveAssignmentTests : IAsyncLifetime
         var repo = PositionAssignmentRepositoryTestSupport.CreateRepository(db);
 
         await repo.TryCreateActiveAssignmentAsync(
-            _tenantId, employeeA, _positionId, DateOnly.FromDateTime(DateTime.UtcNow), Guid.NewGuid(), reportsToEmployeeId: null);
+            _tenantId, employeeA, _positionId, DateOnly.FromDateTime(DateTime.UtcNow), Guid.Empty, reportsToEmployeeId: null);
         var second = await repo.TryCreateActiveAssignmentAsync(
-            _tenantId, employeeB, _positionId, DateOnly.FromDateTime(DateTime.UtcNow), Guid.NewGuid(), reportsToEmployeeId: null);
+            _tenantId, employeeB, _positionId, DateOnly.FromDateTime(DateTime.UtcNow), Guid.Empty, reportsToEmployeeId: null);
 
         Assert.Null(second);
     }
@@ -89,7 +89,7 @@ public sealed class TryCreateActiveAssignmentTests : IAsyncLifetime
         await using var db = CreateContext(_tenantId, "try-create-active");
         var repo = PositionAssignmentRepositoryTestSupport.CreateRepository(db);
         var createdId = await repo.TryCreateActiveAssignmentAsync(
-            _tenantId, employeeId, _positionId, DateOnly.FromDateTime(DateTime.UtcNow), Guid.NewGuid(), reportsToEmployeeId: null);
+            _tenantId, employeeId, _positionId, DateOnly.FromDateTime(DateTime.UtcNow), Guid.Empty, reportsToEmployeeId: null);
 
         var effectiveTo = DateOnly.FromDateTime(DateTime.UtcNow);
         var ended = await repo.EndActiveAsync(_tenantId, createdId!.Value, effectiveTo);
@@ -115,6 +115,7 @@ public sealed class TryCreateActiveAssignmentTests : IAsyncLifetime
             Email = $"{Guid.NewGuid():N}@try-create-active.onevo.dev",
             HireDate = DateOnly.FromDateTime(DateTime.UtcNow),
         });
+        TestUsers.AddForNewEmployees(db);
         await db.SaveChangesAsync();
         return employeeId;
     }

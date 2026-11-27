@@ -25,3 +25,19 @@
 ## Done when
 
 - No `audit` line is left, or each one left has a reason other than "Guid.Empty".
+
+## Results
+
+Done on branch `claude/improve-task-39c-audit-fks` (from local `feature/testing` 07e9075f4, which has 39b). Report: `docs/reports/database/2026-11-24-task-39c-audit-column-foreign-keys.md`.
+
+- Migration: `20261123120447_AddAuditColumnForeignKeys39c`, generated with `dotnet ef migrations add`. 70 columns become nullable; 75 indexes and 75 NO ACTION foreign keys. One migration instead of batches, as Execution asked. Not applied to any shared database.
+- 69 keys to `users`, 5 to `platform_users` (platform-admin tables), 1 to `employees` (Work Management `calendar_events`, whose writers store the creating employee).
+- 75 of 76 `audit` lines are gone from `missing-foreign-keys.txt` (384 → 309 lines). `invitation_tokens.created_by_id` stays with a reason: it holds a `platform_users` id for the tenant owner's invitation and a `users` id otherwise.
+- `BaseEntity.CreatedById` (and `ClockInPolicy`, `MeetingSeries`, the Work Management `CalendarEvent`) is nullable. `AuditableEntityInterceptor` writes `NULL` for anonymous callers and for platform admins (whose id is not a `users` id). Raw inserts write `NULL` too.
+- Hand-written SQL: `Guid.Empty` → `NULL` repair that stops with error 50039 on any other bad value and never deletes (`AuditCreatorRepairTests`), and `wm_refresh_module_hour_summary`, which inserted `Guid.Empty`, now inserts `NULL`.
+- Bad data: the agent cannot read the database. The user recreated the local `CrownusDb` at 39b level; the report has a read-only orphan query for any other database.
+- Test fixtures: real creator and actor user ids instead of random ones (meetings, employee detail, position assignments).
+
+## Status (2026-11-27)
+
+Done. Merged into the local branch `claude/merge-development-1126` (7b9741846) together with 39b to 39g, 15b, 27b, 44b and the latest `origin/development`. Gate: unit 8695 passed, architecture 1028 passed, SqlServerMigration and RateLimit 333 passed. Now in local `feature/testing` too, not yet in `development`, not pushed. Migration `AddAuditColumnForeignKeys39c` is created, not applied; the order of all migrations is in `docs/reports/database/2026-11-26-merge-development-migrations.md`.

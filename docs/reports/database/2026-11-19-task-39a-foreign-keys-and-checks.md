@@ -90,7 +90,7 @@ None. `20261120015440_AddReferenceForeignKeysAndStatusChecks39a` and its snapsho
 
 These are the task files 39b to 39g in `docs/Improvements/person-1-security-and-auth/`:
 
-- 39b: the remaining core keys that need a decision first.
+- 39b: the remaining core keys that need a decision first. Done 2026-11-23: see `2026-11-23-task-39b-core-foreign-keys.md`.
 - 39c: the `created_by_id` audit columns.
 - 39d: `tenant_id` keys to `tenants`, in batches of about 30 tables.
 - 39e: the other modules (124 columns).

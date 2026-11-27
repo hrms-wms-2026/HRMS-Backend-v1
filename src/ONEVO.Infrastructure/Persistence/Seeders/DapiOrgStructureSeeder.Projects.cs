@@ -98,7 +98,7 @@ public sealed partial class DapiOrgStructureSeeder
                     TaskId = taskId,
                     UserId = userId,
                     EmployeeId = employeeId,
-                    AssignedById = DapiOwnerUserId,
+                    AssignedById = project.LeadId, // the owner's employee id, like the application writes (task 39b)
                     AssignedAt = now
                 });
             }

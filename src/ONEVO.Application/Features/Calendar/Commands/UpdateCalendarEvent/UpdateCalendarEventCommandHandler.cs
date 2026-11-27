@@ -77,7 +77,7 @@ public sealed class UpdateCalendarEventCommandHandler(
                 existing.Id, existing.Title, existing.Description, existing.StartDate, existing.EndDate,
                 existing.SourceType, existing.Color, existing.Recurrence, existing.IsAllDay, existing.Timezone,
                 existing.EventStatus, existing.IsPrivate, existing.Location, existing.MeetingLink,
-                existing.ExternalSource, existing.CreatedById));
+                existing.ExternalSource, (existing.CreatedById ?? Guid.Empty)));
         }, ct);
     }
 }

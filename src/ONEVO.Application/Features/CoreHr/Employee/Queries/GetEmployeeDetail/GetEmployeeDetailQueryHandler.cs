@@ -94,7 +94,7 @@ public class GetEmployeeDetailQueryHandler : IRequestHandler<GetEmployeeDetailQu
         if (visible is null
             && _invitationAccess is not null
             && invitation is { UsedAt: null, RevokedAt: null }
-            && await _invitationAccess.ResolveInviterUserIdAsync(invitation, existing.CreatedById, ct) == _currentUser.UserId)
+            && await _invitationAccess.ResolveInviterUserIdAsync(invitation, (existing.CreatedById ?? Guid.Empty), ct) == _currentUser.UserId)
         {
             visible = await _employeeRepository.GetVisibleByIdAsync(
                 tenantId, EmployeeVisibilityScope.Unrestricted(), request.EmployeeId, ct);
@@ -175,7 +175,7 @@ public class GetEmployeeDetailQueryHandler : IRequestHandler<GetEmployeeDetailQu
         // person who added the employee or users:manage - the same rule the commands enforce.
         var canManageInvitation = _invitationAccess is not null
             && invitation is { UsedAt: null, RevokedAt: null }
-            && await _invitationAccess.CanManageAsync(invitation, existing.CreatedById, ct);
+            && await _invitationAccess.CanManageAsync(invitation, (existing.CreatedById ?? Guid.Empty), ct);
 
         return Result<EmployeeDetailResponse>.Success(new EmployeeDetailResponse(
             request.EmployeeId, jobInformation, personalInformation,

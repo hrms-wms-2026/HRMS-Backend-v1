@@ -74,7 +74,7 @@ public sealed partial class DapiHistorySeeder
             var series = await EnsureSeriesAsync(ctx, plan, ct);
             if (series is null)
                 continue;
-            var organizerUserId = series.CreatedById;
+            var organizerUserId = series.CreatedById ?? Guid.Empty;
             var slots = recurrence.Occurrences(series.RecurrenceRule, series.DtStart, series.Timezone, from, to);
             await unitOfWork.ExecuteInTransactionAsync(async innerCt =>
             {

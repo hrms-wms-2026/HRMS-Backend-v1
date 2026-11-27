@@ -19,7 +19,7 @@ public class AccessGrantRequest : ITenantOwnedEntity
     public Guid TargetDepartmentId { get; set; }
     public Guid PositionAccessTemplateId { get; set; }
     public Guid RequestedRoleId { get; set; }
-    public string ApprovalStatus { get; set; } = "Pending";
+    public string ApprovalStatus { get; set; } = AccessGrantApprovalStatuses.Pending;
     public Guid RequestedByUserId { get; set; }
     public Guid? DecidedByUserId { get; set; }
     public DateTimeOffset RequestedAt { get; set; }
@@ -37,4 +37,13 @@ public static class AccessGrantActionType
     public const string EmployeeOnboarding = "onboarding_position_access";
     // 22 characters.
     public const string PositionChange = "position_change_access";
+}
+
+/// <summary>Values of <see cref="AccessGrantRequest.ApprovalStatus"/>, stored capitalised (task 39f: a check constraint
+/// reads them).</summary>
+public static class AccessGrantApprovalStatuses
+{
+    public const string Pending = "Pending";
+    public const string Approved = "Approved";
+    public const string Rejected = "Rejected";
 }

@@ -30,3 +30,17 @@ The desktop agent writes the monitoring tables at high volume. Check that the re
 ## Done when
 
 - No `task-39e` line is left. With 39b, 39c and 39d done, fewer than 100 id columns have no key, and each has a reason (the target of task 39).
+
+## Results (2026-11-25)
+
+Report: `docs/reports/database/2026-11-25-task-39efg-module-keys-checks-cascades.md`. Branch `claude/improve-task-39efg` (39e, 39f and 39g together).
+
+- Migration `20261125053716_AddOtherModuleForeignKeys39e`: 107 NO ACTION keys and 92 indexes, one `ReferenceForeignKeys` method per module. Not applied by the agent.
+- Its hand-written `RepairOtherModuleReferencesSql` runs first: `Guid.Empty` and ids of the wrong identity table become `NULL` on nullable columns; any other unknown id stops the migration with 50039 naming the columns. Nothing is deleted.
+- No `task-39e` line is left. 17 columns stay without a key, each with a reason (`mixed`, `polymorphic`, `external`, `unused`, a hard delete that a key would block, or the template and version save cycle). 34 id columns have no key in total.
+- `MonitoringRetentionPurgeRunner` deletes only `activity_raw_buffer` and `monitoring_evidence_assets` rows, which no key points at.
+- Bad data: the read-only check `C:\Users\User\Desktop\orphans39efg.sql` (part 1) found one problem on the local database. The Dapi demo seeder's device ids in `activity_snapshots`, `app_usage_snapshots` and `device_state_snapshots` (12281 rows each) had no `tray_device_registrations` row. The repair adds those registrations for the Dapi demo tenant only, other tenants still stop the migration, and `DapiHistorySeeder` now creates them. Everything else was clean.
+
+## Status (2026-11-27)
+
+Done. Merged into the local branch `claude/merge-development-1126` (7b9741846) together with 39b to 39g, 15b, 27b, 44b and the latest `origin/development`. Gate: unit 8695 passed, architecture 1028 passed, SqlServerMigration and RateLimit 333 passed. Now in local `feature/testing` too, not yet in `development`, not pushed. Migration `AddOtherModuleForeignKeys39e` is created, not applied; the order of all migrations is in `docs/reports/database/2026-11-26-merge-development-migrations.md`.

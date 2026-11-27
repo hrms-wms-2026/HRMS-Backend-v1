@@ -71,7 +71,7 @@ public sealed class SprintActionSubmitter : ISprintActionSubmitter
         if (tree.Get(position)?.OwnerId is { } holder)
             recipients.Add(holder);
         if (action.Sprint is not null
-            && await _identity.ResolveCallerEmployeeIdAsync(action.TenantId, action.Sprint.CreatedById, ct) is { } creatorEmployeeId)
+            && await _identity.ResolveCallerEmployeeIdAsync(action.TenantId, (action.Sprint.CreatedById ?? Guid.Empty), ct) is { } creatorEmployeeId)
             recipients.Add(creatorEmployeeId);
 
         try

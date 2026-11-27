@@ -111,11 +111,11 @@ Branch `claude/improve-task-44-sensitive-data-c98209`, started from `origin/deve
 
 ### Open decisions (not changed)
 
-1. **Row 4, employee personal data.** Needs the product owner's answer: should a reporting manager see a team member's date of birth, home address and emergency contacts? Code is unchanged until then. If the answer is no, gate the personal section and emergency contacts in `GetEmployeeDetailQueryHandler` the way payroll is gated today, and add the rule to the permission catalogue (task 32).
-2. **Step 3, project members.** Needs the Work Management owner. `ProjectMemberAvatarDto.UserId` holds an employee id, and the frontend reads `member.userId` in six places (project card, project list, milestone tree, task backlog, task board, task form), so the rename must ship together with the frontend. `ProjectMembershipSummaryDto.UserId` (`creatorMembership.userId` on `POST /api/v1/work/projects`) is confirmed to hold the creator's **login user id**, a real internal id. The frontend does not read it, but `CreateProjectEndpointTests` uses it to find the owner. Suggested fix: replace it with `EmployeeId` (`member.EmployeeId`). Both are `FOLLOW-UP` entries in the guard's allow-list.
+1. **Row 4, employee personal data.** *Decided 2026-11-23: yes, managers can see them. No code change; see the follow-up section below.* Needed the product owner's answer: should a reporting manager see a team member's date of birth, home address and emergency contacts? Code is unchanged until then. If the answer is no, gate the personal section and emergency contacts in `GetEmployeeDetailQueryHandler` the way payroll is gated today, and add the rule to the permission catalogue (task 32).
+2. **Step 3, project members.** *Done 2026-11-23 (backend and frontend together); see the follow-up section below.* Needed the Work Management owner. `ProjectMemberAvatarDto.UserId` holds an employee id, and the frontend reads `member.userId` in six places (project card, project list, milestone tree, task backlog, task board, task form), so the rename must ship together with the frontend. `ProjectMembershipSummaryDto.UserId` (`creatorMembership.userId` on `POST /api/v1/work/projects`) is confirmed to hold the creator's **login user id**, a real internal id. The frontend does not read it, but `CreateProjectEndpointTests` uses it to find the owner. Suggested fix: replace it with `EmployeeId` (`member.EmployeeId`). Both are `FOLLOW-UP` entries in the guard's allow-list.
 3. **Guard 5, Semgrep rule.** Not added. The rule set lives in `../dev-env` (outside this repo), and the architecture test covers the same names more precisely. Add a Semgrep rule only if the scan must also catch it outside CI.
 
-### More leaks found by the guard (follow-up, allow-listed as `FOLLOW-UP`)
+### More leaks found by the guard (fixed 2026-11-23, see the follow-up section)
 
 | Response | Field | Endpoint |
 |---|---|---|
@@ -137,3 +137,36 @@ The guard does not catch audit fields named `…ById`. `AttendanceCorrectionResp
 
 - `find-unauthorized-endpoints.ps1` on the worktree: 0 actions without an authorization attribute; 32 explicit `[AllowAnonymous]` actions, none added.
 - Full gate (`verify.ps1 <worktree> -Full`, report `dev-env/reports/improve-task-44-sensitive-data-c98209/verify-20261119-151802`): build PASS, unit 8019 passed, architecture 720 passed, integration 1251 passed / 1 skipped, 0 failed. No flaky re-runs needed.
+
+## Status (2026-11-23)
+
+Steps 1, 2 and 4 done. Merged to `development` in PR #240 on 2026-11-20.
+
+Decisions 2026-11-23:
+
+- **Row 4, employee personal data: accepted as it is.** A reporting manager may see a team member's date of birth, home address and emergency contacts. No code change.
+- **Step 3, project members: approved.** `ProjectMemberAvatarDto.UserId` becomes `EmployeeId` in the backend and the frontend together (frontend item 5 above). Done in follow-up 44b (below).
+- **The extra `...ById` audit fields** (`AttendanceCorrectionResponse.RequestedById` and `ReviewedById`, `WorkAreaChangeRequestResponse.ReviewedById`): planned for the same follow-up, but still open after 44b (see the end of the follow-up section).
+
+Update 2026-11-27: follow-up 44b is on the local branch `claude/merge-development-1126`, now in local `feature/testing` too, not yet in `development`. The frontend part is on the frontend branch `claude/improve-task-44b-employee-ids`.
+
+## Follow-up 44b (2026-11-23)
+
+Backend branch `claude/improve-task-44b-employee-ids` (from `origin/development` b6fabb74f). Frontend branch `claude/improve-task-44b-employee-ids` in the frontend repo.
+
+Decisions from the user:
+
+- **Row 4:** "Yes, managers can see them." A reporting manager with `employees:read` whose coverage includes the employee keeps seeing date of birth, phone, home addresses and emergency contacts on `GET /api/v1/employees/{id}/detail`. Bank data stays behind `employees:read:sensitive`. No code change.
+- **Step 3:** backend and frontend change together.
+
+| Response | Change |
+|---|---|
+| `ProjectMemberAvatarDto` / `ProjectMemberAvatarViewModel` (`members[]` on `GET /api/v1/work/projects`, `/mine`, `/{id}`) | `userId` renamed to `employeeId`. The value is unchanged: it was always the employee id |
+| `ProjectMembershipSummaryDto` / `ProjectMembershipViewModel` (`creatorMembership` on `POST /api/v1/work/projects`) | `userId` (the creator's login user id) replaced by `employeeId` (the membership's employee id) |
+| `FileRecordDto` (`/api/v1/files…`, leave document upload, tray screenshot upload) | `tenantId` and `uploadedByUserId` are `[JsonIgnore]`. They stay on the record because about ten ownership checks (only the uploader may link, read or delete a pending file) use them. The tray app was checked first: it reads its tenant id from its own JWT and parses the screenshot upload response only for `stored`, `duplicates` and `rejected` |
+| `OnboardingAccessGrantRequestListItemResponse` (onboarding access request list) | `requestedByUserId` and `decidedByUserId` removed. `requestedByName` and `decidedByName` stay |
+| `GitHubTenantApprovalDto` (tenant GitHub approval) | `enabledByUserId` removed |
+
+The guard's seven `FOLLOW-UP` allow-list entries are removed, so the guard now has no known tenant-app leak on its list. The OpenAPI files did not change: they do not describe these response bodies, and regeneration gave a line-ending-only diff.
+
+Still open (not part of this follow-up): audit fields named `…ById` (`RequestedById`, `ReviewedById` on the attendance responses) are login user ids that the guard does not catch. The onboarding inbox builds an `InboxPerson` from `DecidedByUserId` when no employee id is known.

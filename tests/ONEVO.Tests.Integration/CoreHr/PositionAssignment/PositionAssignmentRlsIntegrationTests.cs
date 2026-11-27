@@ -61,6 +61,7 @@ public sealed class PositionAssignmentRlsIntegrationTests : IAsyncLifetime
         _tenantASecondPositionId = positionA2.Id;
         db.Positions.AddRange(positionA, positionA2);
 
+        TestUsers.AddForNewEmployees(db);
         await db.SaveChangesAsync();
 
         await CreateRestrictedRoleAsync();
@@ -106,13 +107,16 @@ public sealed class PositionAssignmentRlsIntegrationTests : IAsyncLifetime
     {
         await using (var seedDb = CreateContext(_tenantAId, "posn-assign-rls-a", useRestrictedRole: true))
         {
+            // A real source assignment: the closure has a foreign key to position_assignments (task 39b).
+            var source = NewAssignment(_tenantAId, _tenantAEmployeeId, _tenantAPositionId);
+            seedDb.PositionAssignments.Add(source);
             seedDb.EmployeeHierarchyClosures.Add(new ONEVO.Domain.Features.CoreHr.Entities.EmployeeHierarchyClosure
             {
                 TenantId = _tenantAId,
                 AncestorEmployeeId = _tenantAEmployeeId, // a real employee: the closure has foreign keys to employees (task 39a)
                 DescendantEmployeeId = _tenantAEmployeeId,
                 Depth = 1,
-                SourcePositionAssignmentId = Guid.NewGuid(),
+                SourcePositionAssignmentId = source.Id,
                 GeneratedAt = DateTimeOffset.UtcNow,
             });
             await seedDb.SaveChangesAsync();

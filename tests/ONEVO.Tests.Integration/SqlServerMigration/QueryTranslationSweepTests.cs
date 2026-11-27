@@ -601,11 +601,10 @@ public sealed class QueryTranslationSweepTests
             var departmentId = h.AddDepartment(db);
             var manager = h.AddEmployee(db, departmentId);
             var employee = h.AddEmployee(db, departmentId);
-            db.Users.Add(new ONEVO.Domain.Features.InfrastructureModule.Entities.User
-            {
-                Id = employee.UserId, TenantId = h.TenantId, Email = $"sweep-{Guid.NewGuid():N}@example.test",
-                PasswordHash = "x", FirstName = "Sweep", LastName = "User", IsActive = true,
-            });
+            // AddEmployee already added the users row (task 39b key on employees.user_id).
+            var sweepUser = db.Users.Local.Single(u => u.Id == employee.UserId);
+            sweepUser.FirstName = "Sweep";
+            sweepUser.LastName = "User";
             var managerPositionId = h.AddPositionHeldBy(db, manager.Id);
             var positionId = h.AddPositionHeldBy(db, employee.Id);
             h.AddCoverage(db, managerPositionId, ONEVO.Domain.Features.OrgStructure.Entities.ManagementCoverageRecord.TargetDepartment,

@@ -73,12 +73,33 @@ Behaviour changes to note:
 - The unfiltered screenshot list does not include legacy assets stored under a user id instead of an employee id.
   Those stay reachable through the daily report and the URL endpoint.
 
-## Open product decision (not changed)
+## Productivity report: decision resolved (2026-11-23, "coverage only")
 
-`GET /api/v1/monitoring/reports/productivity` still needs only `monitoring:read`. With `scope` and `scopeId` it
-aggregates productivity across the tenant, a department or a team, whether or not the caller covers those people.
-It returns aggregates, not one employee's raw data, so whether coverage should limit it is a product decision.
-Options: limit the aggregate to the caller's coverage, or keep it tenant-wide and give it its own permission.
+`GET /api/v1/monitoring/reports/productivity` used to aggregate across the tenant, a department or one employee
+for any `monitoring:read` holder, whatever their coverage. The decision is "coverage only". It was built on branch
+`claude/improve-task-27b-productivity-coverage`.
+
+- A caller without `org:manage` sees only the employees they may view: themselves plus their management coverage
+  (`IEmployeeViewAccess`, the rule `/employees/{id}/overview/activity` uses).
+  - `scope=Tenant` sums only those employees.
+  - `scope=Department` sums only the department's employees among them. An unknown department is still 404.
+  - `scope=Employee` on someone outside coverage returns 403, the same as the per-employee monitoring reads.
+- HR and admins keep the tenant-wide view through `org:manage`. `IEmployeeViewAccess` has no tenant-wide test of
+  its own, so this uses the one other employee-access helpers apply: `EmployeeDocumentAccess`, employee detail,
+  position history and bank details all treat `org:manage` as unrestricted before falling back to coverage. The
+  employee directory is the exception: it stays coverage-scoped even for `org:manage`, by an earlier product
+  decision.
+- The response shape has not changed and no OpenAPI update was needed. The exception detection job and exception
+  evidence still call the repository's existing aggregate methods directly and are not affected.
+
+The colleague is the only employee with a daily summary (777 active minutes), so each report shows 777 or 0:
+
+| Test | Caller | Before fix | After fix |
+|---|---|---|---|
+| `Productivity_OtherTeamManager_TenantAndDepartmentScopes_LeaveOutTheColleague` | other-team manager (`monitoring:read`, no coverage) | tenant scope 777 (failed at the first assertion) | tenant 0, department 0 |
+| `Productivity_OtherTeamManager_EmployeeScopeOnColleague_IsRefused` | same | 200 | 403 |
+| `Productivity_CoveringManager_SeesTheColleagueInEveryScope` | covering manager (company-wide coverage) | 777 in every scope | 777 in every scope |
+| `Productivity_HrAndAdmin_KeepTheTenantWideView` | HR (`monitoring:read` + `org:manage`, no coverage) and tenant owner | 777 in every scope | 777 in every scope |
 
 ## Cross-tenant probes (tenant A's owner against tenant B's ids)
 

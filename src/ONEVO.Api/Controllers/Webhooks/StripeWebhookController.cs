@@ -10,21 +10,28 @@ using Stripe.Checkout;
 namespace ONEVO.Api.Controllers.Webhooks;
 
 // Stripe calls these without a session; every request is authenticated by its Stripe-Signature
-// header against the gateway's webhook secret (EventUtility.ConstructEvent below).
+// header against the gateway's webhook secret (EventUtility.ConstructEvent below). Nothing reads the
+// event data until that check passes. Every rejection returns the same 400 body with a correlation
+// id; the reason is logged server side only.
 [ApiController]
 [AllowAnonymous]
 [Route("api/payment-gateways/stripe/{gatewayKey}/webhook")]
 public class StripeWebhookController : ControllerBase
 {
     private readonly IMediator _mediator;
+    private const string SignatureHeader = "Stripe-Signature";
+
     private readonly IPaymentGatewayWebhookSecretResolver _webhookSecrets;
+    private readonly ILogger<StripeWebhookController> _logger;
 
     public StripeWebhookController(
         IMediator mediator,
-        IPaymentGatewayWebhookSecretResolver webhookSecrets)
+        IPaymentGatewayWebhookSecretResolver webhookSecrets,
+        ILogger<StripeWebhookController> logger)
     {
         _mediator = mediator;
         _webhookSecrets = webhookSecrets;
+        _logger = logger;
     }
 
     [HttpPost]
@@ -35,7 +42,12 @@ public class StripeWebhookController : ControllerBase
     {
         if (!PaymentGatewayKeyRules.IsValid(gatewayKey))
         {
-            return BadRequest("Invalid payment gateway key.");
+            return Reject("invalid_gateway_key");
+        }
+
+        if (!HasSignatureHeader())
+        {
+            return Reject("missing_signature");
         }
 
         var webhookSecret = await _webhookSecrets.ResolveWebhookSecretAsync(
@@ -52,6 +64,11 @@ public class StripeWebhookController : ControllerBase
         [FromRoute] Guid gatewayConfigId,
         CancellationToken ct)
     {
+        if (!HasSignatureHeader())
+        {
+            return Reject("missing_signature");
+        }
+
         var webhookSecret = await _webhookSecrets.ResolveByConfigIdAsync(
             "stripe",
             gatewayConfigId,
@@ -66,7 +83,7 @@ public class StripeWebhookController : ControllerBase
     {
         if (string.IsNullOrWhiteSpace(webhookSecret))
         {
-            return BadRequest("Stripe webhook is not configured.");
+            return Reject("not_configured");
         }
 
         string payload;
@@ -75,16 +92,16 @@ public class StripeWebhookController : ControllerBase
             payload = await reader.ReadToEndAsync(ct);
         }
 
-        var signature = HttpContext.Request.Headers["Stripe-Signature"].FirstOrDefault() ?? string.Empty;
+        var signature = HttpContext.Request.Headers[SignatureHeader].FirstOrDefault() ?? string.Empty;
 
         Event stripeEvent;
         try
         {
             stripeEvent = EventUtility.ConstructEvent(payload, signature, webhookSecret);
         }
-        catch (StripeException)
+        catch (StripeException ex)
         {
-            return BadRequest("Invalid Stripe signature.");
+            return Reject("invalid_signature", ex);
         }
 
         var command = ExtractCommand(stripeEvent);
@@ -94,6 +111,20 @@ public class StripeWebhookController : ControllerBase
         }
 
         return Ok();
+    }
+
+    private bool HasSignatureHeader() =>
+        !string.IsNullOrWhiteSpace(HttpContext.Request.Headers[SignatureHeader].FirstOrDefault());
+
+    private BadRequestObjectResult Reject(string reason, Exception? detail = null)
+    {
+        var correlationId = HttpContext.Items["X-Correlation-Id"]?.ToString() ?? Guid.NewGuid().ToString();
+        _logger.LogWarning(
+            detail,
+            "Stripe webhook rejected: {Reason}. CorrelationId: {CorrelationId}",
+            reason,
+            correlationId);
+        return BadRequest(WebhookRejection.For(correlationId));
     }
 
     private static ProcessStripeEventCommand? ExtractCommand(Event e) => e.Type switch

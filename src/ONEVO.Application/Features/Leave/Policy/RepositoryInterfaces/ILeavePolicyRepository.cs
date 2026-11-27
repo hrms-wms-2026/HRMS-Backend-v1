@@ -54,6 +54,12 @@ public interface ILeavePolicyRepository
 
     void RemoveVersion(LeavePolicyVersion version);
 
+    /// <summary>
+    /// True when a leave request, entitlement or balance audit points at the version. Such a version
+    /// cannot be removed: the foreign keys on leave_policy_version_id (task 39b) refuse the delete.
+    /// </summary>
+    Task<bool> IsVersionInUseAsync(Guid tenantId, Guid versionId, CancellationToken ct = default);
+
     void AddAssignment(LeavePolicyAssignment assignment);
 
     void RemoveAssignment(LeavePolicyAssignment assignment);

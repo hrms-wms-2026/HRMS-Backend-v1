@@ -53,7 +53,7 @@ public sealed class TeamPlannerServiceIntegrationTests
         => db.EmployeeHierarchyClosures.Add(new EmployeeHierarchyClosure
         {
             TenantId = h.TenantId, AncestorEmployeeId = ancestor, DescendantEmployeeId = descendant, Depth = depth,
-            SourcePositionAssignmentId = Guid.NewGuid(), GeneratedAt = DateTimeOffset.UtcNow,
+            SourcePositionAssignmentId = h.ClosureSourceFor(db, descendant), GeneratedAt = DateTimeOffset.UtcNow,
         });
 
     private static TeamPlannerService Service(ApplicationDbContext db, bool enabled = true)

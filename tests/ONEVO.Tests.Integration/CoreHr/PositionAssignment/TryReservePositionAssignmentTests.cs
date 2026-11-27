@@ -59,7 +59,7 @@ public sealed class TryReservePositionAssignmentTests : IAsyncLifetime
         var repo = PositionAssignmentRepositoryTestSupport.CreateRepository(db);
 
         var reservedId = await repo.TryReservePositionAssignmentAsync(
-            _tenantId, employeeId, _positionId, DateOnly.FromDateTime(DateTime.UtcNow), Guid.NewGuid(), reportsToEmployeeId: null);
+            _tenantId, employeeId, _positionId, DateOnly.FromDateTime(DateTime.UtcNow), Guid.Empty, reportsToEmployeeId: null);
 
         Assert.NotNull(reservedId);
         var row = await db.PositionAssignments.FindAsync(reservedId!.Value);
@@ -76,11 +76,11 @@ public sealed class TryReservePositionAssignmentTests : IAsyncLifetime
         var repo = PositionAssignmentRepositoryTestSupport.CreateRepository(db);
 
         var first = await repo.TryReservePositionAssignmentAsync(
-            _tenantId, employeeA, _positionId, DateOnly.FromDateTime(DateTime.UtcNow), Guid.NewGuid(), reportsToEmployeeId: null);
+            _tenantId, employeeA, _positionId, DateOnly.FromDateTime(DateTime.UtcNow), Guid.Empty, reportsToEmployeeId: null);
         Assert.NotNull(first);
 
         var second = await repo.TryReservePositionAssignmentAsync(
-            _tenantId, employeeB, _positionId, DateOnly.FromDateTime(DateTime.UtcNow), Guid.NewGuid(), reportsToEmployeeId: null);
+            _tenantId, employeeB, _positionId, DateOnly.FromDateTime(DateTime.UtcNow), Guid.Empty, reportsToEmployeeId: null);
 
         Assert.Null(second);
         var count = await db.PositionAssignments.CountAsync(pa => pa.PositionId == _positionId);
@@ -96,8 +96,8 @@ public sealed class TryReservePositionAssignmentTests : IAsyncLifetime
         var repoB = PositionAssignmentRepositoryTestSupport.CreateRepository(CreateContext(_tenantId, "try-reserve"));
 
         var effectiveFrom = DateOnly.FromDateTime(DateTime.UtcNow);
-        var taskA = repoA.TryReservePositionAssignmentAsync(_tenantId, employeeA, _positionId, effectiveFrom, Guid.NewGuid(), reportsToEmployeeId: null);
-        var taskB = repoB.TryReservePositionAssignmentAsync(_tenantId, employeeB, _positionId, effectiveFrom, Guid.NewGuid(), reportsToEmployeeId: null);
+        var taskA = repoA.TryReservePositionAssignmentAsync(_tenantId, employeeA, _positionId, effectiveFrom, Guid.Empty, reportsToEmployeeId: null);
+        var taskB = repoB.TryReservePositionAssignmentAsync(_tenantId, employeeB, _positionId, effectiveFrom, Guid.Empty, reportsToEmployeeId: null);
         var results = await Task.WhenAll(taskA, taskB);
 
         Assert.Single(results, r => r is not null);
@@ -114,6 +114,8 @@ public sealed class TryReservePositionAssignmentTests : IAsyncLifetime
         var employees = new List<Guid>();
         for (var i = 0; i < callers; i++)
             employees.Add(await SeedEmployeeAsync());
+        // created_by_id has a key to users, so the creator must be a real user.
+        var createdById = await TestUsers.NewAsync(() => CreateContext(_tenantId, "try-reserve"), _tenantId);
         var contexts = employees.Select(_ => CreateContext(_tenantId, "try-reserve")).ToList();
         try
         {
@@ -125,7 +127,7 @@ public sealed class TryReservePositionAssignmentTests : IAsyncLifetime
                 await contexts[i].Database.OpenConnectionAsync();
                 await start.WaitAsync();
                 return await repo.TryReservePositionAssignmentAsync(
-                    _tenantId, employeeId, _positionId, effectiveFrom, Guid.NewGuid(), reportsToEmployeeId: null);
+                    _tenantId, employeeId, _positionId, effectiveFrom, createdById, reportsToEmployeeId: null);
             })).ToList();
             start.Release(callers);
             var results = await Task.WhenAll(calls);
@@ -156,6 +158,7 @@ public sealed class TryReservePositionAssignmentTests : IAsyncLifetime
             Email = $"{Guid.NewGuid():N}@try-reserve.onevo.dev",
             HireDate = DateOnly.FromDateTime(DateTime.UtcNow),
         });
+        TestUsers.AddForNewEmployees(db);
         await db.SaveChangesAsync();
         return employeeId;
     }
