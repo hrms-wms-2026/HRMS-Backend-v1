@@ -72,6 +72,18 @@ public class EfObjectiveRepository : IObjectiveRepository
             .ToListAsync(ct);
     }
 
+    public async Task<IReadOnlyList<Objective>> GetAllByProjectIdsAsync(Guid tenantId, IReadOnlyCollection<Guid> projectIds, CancellationToken ct = default)
+    {
+        if (projectIds.Count == 0)
+            return Array.Empty<Objective>();
+
+        var ids = projectIds.ToList();
+        return await _db.Objectives
+            .AsNoTracking()
+            .Where(o => o.TenantId == tenantId && ids.Contains(o.ProjectId))
+            .ToListAsync(ct);
+    }
+
     public async Task<IReadOnlyList<Objective>> GetTrackedActiveDirectChildrenAsync(Guid tenantId, Guid parentObjectiveId, CancellationToken ct = default)
     {
         return await _db.Objectives

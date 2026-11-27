@@ -36,6 +36,12 @@ public sealed class GetCalendarEventsQueryHandlerTests
             .ReturnsAsync(new Dictionary<Guid, IReadOnlyList<CalendarEventGuest>>());
         _events.Setup(x => x.GetParticipantsForEventsAsync(TenantId, It.IsAny<IReadOnlyList<Guid>>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(new Dictionary<Guid, IReadOnlyList<CalendarEventParticipant>>());
+        _events.Setup(x => x.GetChildrenForMastersAsync(TenantId, It.IsAny<IReadOnlyCollection<Guid>>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new Dictionary<Guid, IReadOnlyList<CalendarEvent>>());
+        _employees.Setup(x => x.ListByIdsAsync(TenantId, It.IsAny<IReadOnlyCollection<Guid>>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new Dictionary<Guid, Employee>());
+        _employees.Setup(x => x.ListDefaultForUsersAsync(TenantId, It.IsAny<IReadOnlyCollection<Guid>>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new Dictionary<Guid, Employee>());
         return new GetCalendarEventsQueryHandler(_currentUser.Object, _employees.Object, _events.Object, _expander.Object);
     }
 
@@ -92,11 +98,15 @@ public sealed class GetCalendarEventsQueryHandlerTests
 
         var detachedStart = new DateTimeOffset(2026, 9, 3, 9, 0, 0, TimeSpan.Zero);
         var cancelledStart = new DateTimeOffset(2026, 9, 4, 9, 0, 0, TimeSpan.Zero);
-        _events.Setup(x => x.GetChildrenForMasterAsync(TenantId, master.Id, It.IsAny<CancellationToken>()))
-            .ReturnsAsync([
-                new CalendarEvent { Id = Guid.NewGuid(), TenantId = TenantId, RecurrenceParentId = master.Id, RecurrenceOriginalStart = detachedStart, IsRecurrenceCancelled = false },
-                new CalendarEvent { Id = Guid.NewGuid(), TenantId = TenantId, RecurrenceParentId = master.Id, RecurrenceOriginalStart = cancelledStart, IsRecurrenceCancelled = true }
-            ]);
+        _events.Setup(x => x.GetChildrenForMastersAsync(TenantId, It.Is<IReadOnlyCollection<Guid>>(ids => ids.Contains(master.Id)), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new Dictionary<Guid, IReadOnlyList<CalendarEvent>>
+            {
+                [master.Id] =
+                [
+                    new CalendarEvent { Id = Guid.NewGuid(), TenantId = TenantId, RecurrenceParentId = master.Id, RecurrenceOriginalStart = detachedStart, IsRecurrenceCancelled = false },
+                    new CalendarEvent { Id = Guid.NewGuid(), TenantId = TenantId, RecurrenceParentId = master.Id, RecurrenceOriginalStart = cancelledStart, IsRecurrenceCancelled = true }
+                ]
+            });
 
         var occurrenceStarts = new[]
         {
@@ -130,8 +140,11 @@ public sealed class GetCalendarEventsQueryHandlerTests
             {
                 [eventId] = [new CalendarEventParticipant { Id = Guid.NewGuid(), TenantId = TenantId, EventId = eventId, EmployeeId = participantEmployeeId, ResponseStatus = CalendarEventParticipantStatuses.Pending }]
             });
-        _employees.Setup(x => x.GetByIdAsync(TenantId, participantEmployeeId, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new Employee { Id = participantEmployeeId, TenantId = TenantId, FirstName = "Ada", LastName = "Lovelace" });
+        _employees.Setup(x => x.ListByIdsAsync(TenantId, It.Is<IReadOnlyCollection<Guid>>(ids => ids.Contains(participantEmployeeId)), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new Dictionary<Guid, Employee>
+            {
+                [participantEmployeeId] = new Employee { Id = participantEmployeeId, TenantId = TenantId, FirstName = "Ada", LastName = "Lovelace" }
+            });
 
         var result = await sut.Handle(new GetCalendarEventsQuery(From, To), CancellationToken.None);
 
@@ -221,8 +234,7 @@ public sealed class GetCalendarEventsQueryHandlerTests
     {
         var sut = BuildSut();
         var organizerUserId = Guid.NewGuid();
-        _employees.Setup(x => x.GetDefaultForUserAsync(TenantId, organizerUserId, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new Employee { Id = Guid.NewGuid(), UserId = organizerUserId, TenantId = TenantId, FirstName = "Nadesh", LastName = "Coomaraswamy" });
+        OrganizerIs(new Employee { Id = Guid.NewGuid(), UserId = organizerUserId, TenantId = TenantId, FirstName = "Nadesh", LastName = "Coomaraswamy" });
         _events.Setup(x => x.GetInDateRangeForCallerAsync(TenantId, UserId, EmployeeId, From, To, It.IsAny<CancellationToken>()))
             .ReturnsAsync([
                 new CalendarEvent
@@ -270,8 +282,6 @@ public sealed class GetCalendarEventsQueryHandlerTests
     {
         var sut = BuildSut();
         var orphanUserId = Guid.NewGuid();
-        _employees.Setup(x => x.GetDefaultForUserAsync(TenantId, orphanUserId, It.IsAny<CancellationToken>()))
-            .ReturnsAsync((Employee?)null);
         _events.Setup(x => x.GetInDateRangeForCallerAsync(TenantId, UserId, EmployeeId, From, To, It.IsAny<CancellationToken>()))
             .ReturnsAsync([
                 new CalendarEvent
@@ -295,8 +305,7 @@ public sealed class GetCalendarEventsQueryHandlerTests
     {
         var sut = BuildSut();
         var organizerUserId = Guid.NewGuid();
-        _employees.Setup(x => x.GetDefaultForUserAsync(TenantId, organizerUserId, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new Employee { Id = Guid.NewGuid(), UserId = organizerUserId, TenantId = TenantId, FirstName = "Kiru", LastName = "B" });
+        OrganizerIs(new Employee { Id = Guid.NewGuid(), UserId = organizerUserId, TenantId = TenantId, FirstName = "Kiru", LastName = "B" });
         CalendarEvent Make(int day) => new()
         {
             Id = Guid.NewGuid(), TenantId = TenantId, Title = $"Event {day}",
@@ -309,6 +318,49 @@ public sealed class GetCalendarEventsQueryHandlerTests
 
         await sut.Handle(new GetCalendarEventsQuery(From, To), CancellationToken.None);
 
-        _employees.Verify(x => x.GetDefaultForUserAsync(TenantId, organizerUserId, It.IsAny<CancellationToken>()), Times.Once);
+        _employees.Verify(x => x.ListDefaultForUsersAsync(
+            TenantId, It.Is<IReadOnlyCollection<Guid>>(ids => ids.SequenceEqual(new[] { organizerUserId })), It.IsAny<CancellationToken>()), Times.Once);
+        _employees.Verify(x => x.GetDefaultForUserAsync(TenantId, organizerUserId, It.IsAny<CancellationToken>()), Times.Never);
     }
+
+    /// <summary>Improvements task 14: participant names, series children and organizers are each one batched
+    /// call, however many events, series, participants and organizers there are.</summary>
+    [Fact]
+    public async Task Handle_UsesOneBatchedCallPerLookup_HoweverManyEventsAndParticipants()
+    {
+        var sut = BuildSut();
+        var realRows = Enumerable.Range(1, 5).Select(day => new CalendarEvent
+        {
+            Id = Guid.NewGuid(), TenantId = TenantId, Title = $"Event {day}", StartDate = From.AddDays(day), EndDate = From.AddDays(day).AddHours(1),
+            SourceType = CalendarEventSourceTypes.Manual, Recurrence = CalendarRecurrences.None, CreatedById = Guid.NewGuid(), CreatedAt = DateTimeOffset.UtcNow
+        }).ToList();
+        var masters = Enumerable.Range(1, 3).Select(i => new CalendarEvent
+        {
+            Id = Guid.NewGuid(), TenantId = TenantId, Title = $"Series {i}", StartDate = From, EndDate = From.AddMinutes(30),
+            SourceType = CalendarEventSourceTypes.Manual, Recurrence = CalendarRecurrences.Weekly, RecurrenceRule = "FREQ=WEEKLY",
+            CreatedById = Guid.NewGuid(), CreatedAt = DateTimeOffset.UtcNow
+        }).ToList();
+        _events.Setup(x => x.GetInDateRangeForCallerAsync(TenantId, UserId, EmployeeId, From, To, It.IsAny<CancellationToken>())).ReturnsAsync(realRows);
+        _events.Setup(x => x.GetRecurringMastersForCallerAsync(TenantId, UserId, EmployeeId, To, It.IsAny<CancellationToken>())).ReturnsAsync(masters);
+        _events.Setup(x => x.GetParticipantsForEventsAsync(TenantId, It.IsAny<IReadOnlyList<Guid>>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(realRows.Concat(masters).ToDictionary(e => e.Id, e => (IReadOnlyList<CalendarEventParticipant>)Enumerable.Range(0, 3)
+                .Select(_ => new CalendarEventParticipant { Id = Guid.NewGuid(), TenantId = TenantId, EventId = e.Id, EmployeeId = Guid.NewGuid() }).ToList()));
+        _expander.Setup(x => x.Expand("FREQ=WEEKLY", From, From, To)).Returns([From, From.AddDays(7)]);
+
+        var result = await sut.Handle(new GetCalendarEventsQuery(From, To), CancellationToken.None);
+
+        Assert.Equal(5 + 3 * 2, result.Value!.Events.Count);
+        _events.Verify(x => x.GetParticipantsForEventsAsync(TenantId, It.IsAny<IReadOnlyList<Guid>>(), It.IsAny<CancellationToken>()), Times.Once);
+        _events.Verify(x => x.GetGuestsForEventsAsync(TenantId, It.IsAny<IReadOnlyList<Guid>>(), It.IsAny<CancellationToken>()), Times.Once);
+        _events.Verify(x => x.GetChildrenForMastersAsync(TenantId, It.IsAny<IReadOnlyCollection<Guid>>(), It.IsAny<CancellationToken>()), Times.Once);
+        _events.Verify(x => x.GetChildrenForMasterAsync(It.IsAny<Guid>(), It.IsAny<Guid>(), It.IsAny<CancellationToken>()), Times.Never);
+        _employees.Verify(x => x.ListByIdsAsync(TenantId, It.Is<IReadOnlyCollection<Guid>>(ids => ids.Count == 8 * 3), It.IsAny<CancellationToken>()), Times.Once);
+        _employees.Verify(x => x.GetByIdAsync(It.IsAny<Guid>(), It.IsAny<Guid>(), It.IsAny<CancellationToken>()), Times.Never);
+        _employees.Verify(x => x.ListDefaultForUsersAsync(TenantId, It.Is<IReadOnlyCollection<Guid>>(ids => ids.Count == 8), It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    private void OrganizerIs(Employee organizer)
+        => _employees.Setup(x => x.ListDefaultForUsersAsync(
+                TenantId, It.Is<IReadOnlyCollection<Guid>>(ids => ids.Contains(organizer.UserId)), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new Dictionary<Guid, Employee> { [organizer.UserId] = organizer });
 }

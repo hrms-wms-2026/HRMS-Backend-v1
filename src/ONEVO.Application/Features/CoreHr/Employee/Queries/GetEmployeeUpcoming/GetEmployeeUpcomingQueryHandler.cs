@@ -65,13 +65,16 @@ public sealed class GetEmployeeUpcomingQueryHandler(
             items.Add((CalendarItem(e, e.StartDate, e.EndDate), e.Id));
         }
 
-        foreach (var master in await events.GetRecurringMastersForEmployeeAsync(tenantId, request.EmployeeId, to, ct))
+        var masters = (await events.GetRecurringMastersForEmployeeAsync(tenantId, request.EmployeeId, to, ct))
+            .Where(m => !m.IsPrivate && !string.IsNullOrWhiteSpace(m.RecurrenceRule))
+            .ToList();
+        // One query for every series' children (Improvements task 14), not one per series.
+        var childrenByMaster = await events.GetChildrenForMastersAsync(tenantId, masters.Select(m => m.Id).ToList(), ct);
+        foreach (var master in masters)
         {
-            if (master.IsPrivate || string.IsNullOrWhiteSpace(master.RecurrenceRule)) continue;
-
-            var children = await events.GetChildrenForMasterAsync(tenantId, master.Id, ct);
+            var children = childrenByMaster.GetValueOrDefault(master.Id) ?? [];
             var duration = master.EndDate - master.StartDate;
-            foreach (var start in expander.Expand(master.RecurrenceRule, master.StartDate, from, to))
+            foreach (var start in expander.Expand(master.RecurrenceRule!, master.StartDate, from, to))
             {
                 // A detached (edited or cancelled) occurrence is represented by its own child row.
                 if (children.Any(c => c.RecurrenceOriginalStart == start)) continue;
@@ -107,13 +110,10 @@ public sealed class GetEmployeeUpcomingQueryHandler(
         if (eventIds.Count == 0) return items.Select(i => i.Item).ToList();
 
         var participantsByEvent = await events.GetParticipantsForEventsAsync(tenantId, eventIds, ct);
-        var names = new Dictionary<Guid, string>();
-        foreach (var participant in participantsByEvent.Values.SelectMany(p => p))
-        {
-            if (names.ContainsKey(participant.EmployeeId)) continue;
-            var person = await employees.GetByIdAsync(tenantId, participant.EmployeeId, ct);
-            names[participant.EmployeeId] = person is null ? "Unknown" : $"{person.FirstName} {person.LastName}".Trim();
-        }
+        var participantIds = participantsByEvent.Values.SelectMany(p => p).Select(p => p.EmployeeId).Distinct().ToList();
+        var people = await employees.ListByIdsAsync(tenantId, participantIds, ct);
+        var names = participantIds.ToDictionary(
+            id => id, id => people.TryGetValue(id, out var person) ? $"{person.FirstName} {person.LastName}".Trim() : "Unknown");
 
         return items.Select(i =>
             i.EventId is { } id && participantsByEvent.TryGetValue(id, out var participants)

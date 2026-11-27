@@ -32,35 +32,36 @@ public sealed class GetCalendarEventsQueryHandler(
         var realRows = await events.GetInDateRangeForCallerAsync(
             tenantId, currentUser.UserId, employee?.Id, request.From, request.To, ct);
 
-        var participantsByEvent = await events.GetParticipantsForEventsAsync(tenantId, realRows.Select(e => e.Id).ToList(), ct);
-        var guestsByEvent = await events.GetGuestsForEventsAsync(tenantId, realRows.Select(e => e.Id).ToList(), ct);
+        var masters = await events.GetRecurringMastersForCallerAsync(tenantId, currentUser.UserId, employee?.Id, request.To, ct);
+
+        // Participants, guests, children and participant names are each loaded once for every event (Improvements
+        // task 14), not once per event or per participant.
+        var eventIds = realRows.Select(e => e.Id).Concat(masters.Select(m => m.Id)).ToList();
+        var participantsByEvent = await events.GetParticipantsForEventsAsync(tenantId, eventIds, ct);
+        var guestsByEvent = await events.GetGuestsForEventsAsync(tenantId, eventIds, ct);
+        var childrenByMaster = await events.GetChildrenForMastersAsync(tenantId, masters.Select(m => m.Id).ToList(), ct);
+        var participantEmployees = await employees.ListByIdsAsync(
+            tenantId, participantsByEvent.Values.SelectMany(p => p).Select(p => p.EmployeeId).Distinct().ToList(), ct);
 
         var items = new List<CalendarEventItem>();
         foreach (var e in realRows)
         {
-            var participants = participantsByEvent.TryGetValue(e.Id, out var p)
-                ? await ResolveParticipantSummariesAsync(p, tenantId, ct)
-                : [];
             items.Add(new CalendarEventItem(
                 e.Id, e.Title, e.Description, e.StartDate, e.EndDate, e.SourceType, e.Color,
                 e.Recurrence, e.IsAllDay, e.Timezone, e.EventStatus, e.IsPrivate, e.Location,
-                e.MeetingLink, e.ExternalSource, e.CreatedById, Participants: participants,
+                e.MeetingLink, e.ExternalSource, e.CreatedById,
+                Participants: ParticipantSummaries(participantsByEvent, participantEmployees, e.Id),
                 Guests: GuestSummaries(guestsByEvent, e.Id)));
         }
 
-        var masters = await events.GetRecurringMastersForCallerAsync(tenantId, currentUser.UserId, employee?.Id, request.To, ct);
-
         foreach (var master in masters)
         {
-            var children = await events.GetChildrenForMasterAsync(tenantId, master.Id, ct);
+            var children = childrenByMaster.GetValueOrDefault(master.Id) ?? [];
             var occurrenceStarts = expander.Expand(master.RecurrenceRule!, master.StartDate, request.From, request.To);
             var duration = master.EndDate - master.StartDate;
 
-            var masterParticipantsByEvent = await events.GetParticipantsForEventsAsync(tenantId, [master.Id], ct);
-            var masterGuests = GuestSummaries(await events.GetGuestsForEventsAsync(tenantId, [master.Id], ct), master.Id);
-            var masterParticipants = masterParticipantsByEvent.TryGetValue(master.Id, out var mp)
-                ? await ResolveParticipantSummariesAsync(mp, tenantId, ct)
-                : [];
+            var masterGuests = GuestSummaries(guestsByEvent, master.Id);
+            var masterParticipants = ParticipantSummaries(participantsByEvent, participantEmployees, master.Id);
 
             foreach (var occurrenceStart in occurrenceStarts)
             {
@@ -83,10 +84,13 @@ public sealed class GetCalendarEventsQueryHandler(
         if (meetings is not null && employee is not null)
             items.AddRange(await meetings.ListAsync(tenantId, employee.Id, request.From, request.To, ct));
 
+        var creatorIds = items.Select(i => i.CreatedById).Distinct().ToList();
+        var otherOrganizers = await employees.ListDefaultForUsersAsync(
+            tenantId, creatorIds.Where(id => id != currentUser.UserId).ToList(), ct);
         var organizerNames = new Dictionary<Guid, string?>();
-        foreach (var creatorId in items.Select(i => i.CreatedById).Distinct())
+        foreach (var creatorId in creatorIds)
         {
-            var organizer = creatorId == currentUser.UserId ? employee : await employees.GetDefaultForUserAsync(tenantId, creatorId, ct);
+            var organizer = creatorId == currentUser.UserId ? employee : otherOrganizers.GetValueOrDefault(creatorId);
             organizerNames[creatorId] = organizer is null ? null : $"{organizer.FirstName} {organizer.LastName}";
         }
 
@@ -104,16 +108,13 @@ public sealed class GetCalendarEventsQueryHandler(
         IReadOnlyDictionary<Guid, IReadOnlyList<CalendarEventGuest>> guestsByEvent, Guid eventId)
         => guestsByEvent.TryGetValue(eventId, out var guests) ? guests.Select(g => new CalendarEventGuestSummary(g.Email)).ToList() : [];
 
-    private async Task<IReadOnlyList<CalendarEventParticipantSummary>> ResolveParticipantSummariesAsync(
-        IReadOnlyList<CalendarEventParticipant> participants, Guid tenantId, CancellationToken ct)
-    {
-        var summaries = new List<CalendarEventParticipantSummary>();
-        foreach (var p in participants)
-        {
-            var employee = await employees.GetByIdAsync(tenantId, p.EmployeeId, ct);
-            summaries.Add(new CalendarEventParticipantSummary(
-                p.EmployeeId, employee is null ? "Unknown" : $"{employee.FirstName} {employee.LastName}", p.ResponseStatus));
-        }
-        return summaries;
-    }
+    private static IReadOnlyList<CalendarEventParticipantSummary> ParticipantSummaries(
+        IReadOnlyDictionary<Guid, IReadOnlyList<CalendarEventParticipant>> participantsByEvent,
+        IReadOnlyDictionary<Guid, ONEVO.Domain.Features.CoreHr.Entities.Employee> employeesById, Guid eventId)
+        => participantsByEvent.TryGetValue(eventId, out var participants)
+            ? participants.Select(p => new CalendarEventParticipantSummary(
+                p.EmployeeId,
+                employeesById.TryGetValue(p.EmployeeId, out var employee) ? $"{employee.FirstName} {employee.LastName}" : "Unknown",
+                p.ResponseStatus)).ToList()
+            : [];
 }

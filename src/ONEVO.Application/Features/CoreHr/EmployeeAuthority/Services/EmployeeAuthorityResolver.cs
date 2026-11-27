@@ -303,20 +303,31 @@ public sealed class EmployeeAuthorityResolver : IEmployeeAuthorityResolver
                 return Result<EmployeeApprovalRoute>.Success(route);
         }
 
+        // Reporting-line tier: the whole chain's employees, permission grants and primary assignments are
+        // loaded in one query each (Improvements task 14), then walked nearest-first in memory.
+        if (ancestorChain.Count == 0)
+        {
+            return Result<EmployeeApprovalRoute>.UnprocessableEntity(
+                "No eligible approver was found for this employee and action.");
+        }
+
+        var ancestorsById = await _employeeRepository.ListByIdsAsync(tenantId, ancestorChain, cancellationToken);
+        var ancestorsInLegalEntity = ancestorsById.Values.Where(e => e.LegalEntityId == request.LegalEntityId).ToList();
+        var ancestorUserIdsWithPermission = await _permissionRepository.ListUserIdsHoldingPermissionAsync(
+            ancestorsInLegalEntity.Select(e => e.UserId).Distinct().ToList(), request.RequiredPermission, now, cancellationToken);
+        var ancestorPrimaryByEmployeeId = await _positionAssignmentRepository.GetActivePrimaryByEmployeeIdsAsync(
+            tenantId, ancestorsInLegalEntity.Select(e => e.Id).ToList(), cancellationToken);
+
         foreach (var ancestorEmployeeId in ancestorChain)
         {
-            var ancestorEmployee = await _employeeRepository.GetByIdAsync(tenantId, ancestorEmployeeId, cancellationToken);
-            if (ancestorEmployee is null || ancestorEmployee.LegalEntityId != request.LegalEntityId)
+            if (!ancestorsById.TryGetValue(ancestorEmployeeId, out var ancestorEmployee)
+                || ancestorEmployee.LegalEntityId != request.LegalEntityId)
                 continue;
 
-            var hasPermission = await _permissionRepository.UserHasPermissionCodeAsync(
-                ancestorEmployee.UserId, request.RequiredPermission, now, cancellationToken);
-            if (!hasPermission)
+            if (!ancestorUserIdsWithPermission.Contains(ancestorEmployee.UserId))
                 continue;
 
-            var ancestorAssignment = await _positionAssignmentRepository.GetActivePrimaryAsync(
-                tenantId, ancestorEmployeeId, cancellationToken);
-            if (ancestorAssignment is null)
+            if (!ancestorPrimaryByEmployeeId.TryGetValue(ancestorEmployeeId, out var ancestorAssignment))
                 continue;
 
             return Result<EmployeeApprovalRoute>.Success(new EmployeeApprovalRoute(
@@ -526,14 +537,25 @@ public sealed class EmployeeAuthorityResolver : IEmployeeAuthorityResolver
         DateTimeOffset now,
         CancellationToken ct)
     {
+        if (records.Count == 0)
+            return null;
+
+        // Every owner position, its holders, and the resolved holders' status, employee row and permission
+        // are loaded in one query each for the whole record list (Improvements task 14); the walk below is the
+        // same record-by-record priority walk, in memory.
+        var ownerPositionIds = records.Select(r => r.OwnerPositionId).Distinct().ToList();
+        var ownerPositionsById = (await _positionRepository.GetByIdsAsync(tenantId, ownerPositionIds, ct))
+            .ToDictionary(p => p.Id);
+        var holdersByOwnerPositionId = await _positionAssignmentRepository.GetActiveHoldersByPositionIdsAsync(
+            tenantId, ownerPositionIds, ct);
+
+        var resolvedHolderByRecord = new Dictionary<ManagementCoverageRecord, PositionActiveHolder>();
         foreach (var record in records)
         {
-            var ownerPosition = await _positionRepository.GetByIdAsync(tenantId, record.OwnerPositionId, ct);
-            if (ownerPosition is null || !ownerPosition.IsActive)
+            if (!ownerPositionsById.TryGetValue(record.OwnerPositionId, out var ownerPosition) || !ownerPosition.IsActive)
                 continue;
 
-            var holders = await _positionAssignmentRepository.GetActiveHoldersAsync(tenantId, record.OwnerPositionId, ct);
-
+            var holders = holdersByOwnerPositionId.GetValueOrDefault(record.OwnerPositionId) ?? Array.Empty<PositionActiveHolder>();
             var resolvedHolder = holders.Count switch
             {
                 0 => null,
@@ -555,22 +577,33 @@ public sealed class EmployeeAuthorityResolver : IEmployeeAuthorityResolver
             if (descendantsOfSubject.Contains(resolvedHolder.EmployeeId))
                 continue;
 
-            // Same tenant + same legal entity + active employee, in one chokepoint call - the
-            // resolved holder's PositionAssignment being active (checked above via
-            // GetActiveHoldersAsync) does not by itself guarantee the employee's own employment
-            // status is still active.
-            var activeCandidateIds = await _employeeRepository.ListActiveEmployeeIdsByIdsAsync(
-                tenantId, request.LegalEntityId, new[] { resolvedHolder.EmployeeId }, ct);
-            if (activeCandidateIds.Count == 0)
-                continue;
+            resolvedHolderByRecord[record] = resolvedHolder;
+        }
 
-            var candidateEmployee = await _employeeRepository.GetByIdAsync(tenantId, resolvedHolder.EmployeeId, ct);
-            if (candidateEmployee is null)
-                continue;
+        if (resolvedHolderByRecord.Count == 0)
+            return null;
 
-            var hasPermission = await _permissionRepository.UserHasPermissionCodeAsync(
-                candidateEmployee.UserId, request.RequiredPermission, now, ct);
-            if (!hasPermission)
+        var candidateIds = resolvedHolderByRecord.Values.Select(h => h.EmployeeId).Distinct().ToList();
+
+        // Same tenant + same legal entity + active employee, in one chokepoint call - the resolved holder's
+        // PositionAssignment being active does not by itself guarantee the employee's own employment status
+        // is still active.
+        var activeCandidateIds = (await _employeeRepository.ListActiveEmployeeIdsByIdsAsync(
+            tenantId, request.LegalEntityId, candidateIds, ct)).ToHashSet();
+        var candidatesById = await _employeeRepository.ListByIdsAsync(tenantId, candidateIds, ct);
+        var candidateUserIdsWithPermission = await _permissionRepository.ListUserIdsHoldingPermissionAsync(
+            candidatesById.Values.Where(e => activeCandidateIds.Contains(e.Id)).Select(e => e.UserId).Distinct().ToList(),
+            request.RequiredPermission, now, ct);
+
+        foreach (var record in records)
+        {
+            if (!resolvedHolderByRecord.TryGetValue(record, out var resolvedHolder))
+                continue;
+            if (!activeCandidateIds.Contains(resolvedHolder.EmployeeId))
+                continue;
+            if (!candidatesById.TryGetValue(resolvedHolder.EmployeeId, out var candidateEmployee))
+                continue;
+            if (!candidateUserIdsWithPermission.Contains(candidateEmployee.UserId))
                 continue;
 
             return new EmployeeApprovalRoute(

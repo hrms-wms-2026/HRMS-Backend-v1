@@ -15,6 +15,9 @@ internal static class WorkHierarchyServiceMocks
         var mock = new Mock<IWorkHierarchyService>();
         mock.Setup(x => x.LoadTreeAsync(It.IsAny<Guid>(), It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(new ProjectModuleTree(modules));
+        mock.Setup(x => x.LoadTreesAsync(It.IsAny<Guid>(), It.IsAny<IReadOnlyCollection<Guid>>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((Guid _, IReadOnlyCollection<Guid> projectIds, CancellationToken _) =>
+                projectIds.Distinct().ToDictionary(id => id, _ => new ProjectModuleTree(modules)));
         return mock;
     }
 

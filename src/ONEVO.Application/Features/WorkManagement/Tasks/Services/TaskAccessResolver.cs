@@ -6,7 +6,6 @@ using ONEVO.Application.Features.WorkManagement.Hierarchy;
 using ONEVO.Application.Features.WorkManagement.ProjectMembers.RepositoryInterfaces;
 using ONEVO.Application.Features.WorkManagement.Projects.RepositoryInterfaces;
 using ONEVO.Application.Features.WorkManagement.Tasks.RepositoryInterfaces;
-using ONEVO.Domain.Features.WorkManagement.Projects.Entities;
 using ONEVO.Domain.Features.WorkManagement.Tasks.Entities;
 
 namespace ONEVO.Application.Features.WorkManagement.Tasks.Services;
@@ -90,23 +89,21 @@ public sealed class TaskAccessResolver : ITaskAccessResolver
         var permissions = await _permissionResolver.ResolveAsync(userId, tenantId, null, ct);
         var hasReadPermission = permissions.Contains(PermissionCatalog.SuperAdmin);
 
-        // One project lookup and one membership lookup per project, not per task.
-        var projects = new Dictionary<Guid, Project>();
+        // Projects, memberships and Module trees are each loaded once for every project in the list
+        // (Improvements task 14), not once per project.
+        var projects = (await _projects.ListByIdsAsync(tenantId, tasks.Select(t => t.ProjectId).Distinct().ToList(), ct))
+            .Where(p => p.IsActive)
+            .ToDictionary(p => p.Id);
         var accessibleObjectiveIds = new Dictionary<Guid, IReadOnlySet<Guid>>();
-        foreach (var projectId in tasks.Select(t => t.ProjectId).Distinct())
+        if (!hasReadPermission && projects.Count > 0)
         {
-            var project = await _projects.GetByIdForTenantAsync(tenantId, projectId, ct);
-            if (project is null || !project.IsActive)
-                continue;
-            projects[projectId] = project;
-
-            if (!hasReadPermission)
-            {
-                var memberObjectiveIds = await _members.GetActiveObjectiveIdsForEmployeeInProjectAsync(
-                    tenantId, projectId, callerEmployeeId.Value, ct);
-                accessibleObjectiveIds[projectId] =
-                    (await _hierarchy.LoadTreeAsync(tenantId, projectId, ct)).AtOrBelow(memberObjectiveIds);
-            }
+            var activeProjectIds = projects.Keys.ToList();
+            var memberObjectiveIds = await _members.GetActiveObjectiveIdsForEmployeeInProjectsAsync(
+                tenantId, activeProjectIds, callerEmployeeId.Value, ct);
+            var trees = await _hierarchy.LoadTreesAsync(tenantId, activeProjectIds, ct);
+            foreach (var projectId in activeProjectIds)
+                accessibleObjectiveIds[projectId] = trees[projectId].AtOrBelow(
+                    memberObjectiveIds.GetValueOrDefault(projectId) ?? Array.Empty<Guid>());
         }
 
         var privateTasks = tasks.Where(t => t.VisibilityScope == WorkTaskVisibilityScopes.Assignees).ToList();
@@ -155,13 +152,9 @@ public sealed class TaskAccessResolver : ITaskAccessResolver
 
         var assignments = await _tasks.GetAssignedEmployeeIdsByTaskIdsAsync(
             privateTasks.Select(task => task.Id).ToList(), ct);
-        var projectLeads = new Dictionary<Guid, Guid>();
-        foreach (var projectId in privateTasks.Select(task => task.ProjectId).Distinct())
-        {
-            var project = await _projects.GetByIdForTenantAsync(tenantId, projectId, ct);
-            if (project is not null)
-                projectLeads[projectId] = project.LeadId;
-        }
+        var projectLeads = (await _projects.ListByIdsAsync(
+                tenantId, privateTasks.Select(task => task.ProjectId).Distinct().ToList(), ct))
+            .ToDictionary(project => project.Id, project => project.LeadId);
 
         return tasks.Where(task =>
             task.VisibilityScope != WorkTaskVisibilityScopes.Assignees

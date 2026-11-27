@@ -20,6 +20,11 @@ public interface IProjectMemberRepository
     /// matching Work Management's inherited objective-access rule.</summary>
     Task<IReadOnlyList<Guid>> GetActiveObjectiveIdsForEmployeeInProjectAsync(Guid tenantId, Guid projectId, Guid employeeId, CancellationToken ct = default);
 
+    /// <summary>Batch form of <see cref="GetActiveObjectiveIdsForEmployeeInProjectAsync"/> over several projects in
+    /// at most two queries, keyed by project id. Projects where the employee has no active membership are absent.</summary>
+    Task<IReadOnlyDictionary<Guid, IReadOnlyList<Guid>>> GetActiveObjectiveIdsForEmployeeInProjectsAsync(
+        Guid tenantId, IReadOnlyCollection<Guid> projectIds, Guid employeeId, CancellationToken ct = default);
+
     /// <summary>Active projects <paramref name="employeeId"/> belongs to (active or removed), limited to
     /// projects <paramref name="viewerEmployeeId"/> is also an active member of - Work Management
     /// visibility is relationship-based, so another employee's projects are only revealed where the
