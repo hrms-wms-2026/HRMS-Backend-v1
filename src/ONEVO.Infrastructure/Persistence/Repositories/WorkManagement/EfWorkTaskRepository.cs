@@ -129,6 +129,30 @@ public class EfWorkTaskRepository : IWorkTaskRepository
         ).ToListAsync(ct);
     }
 
+    public async Task<IReadOnlyList<MyProjectTaskHoursRow>> GetMyTaskHoursByProjectAsync(Guid tenantId, Guid employeeId,
+        IReadOnlyCollection<Guid> projectIds, CancellationToken ct = default)
+    {
+        if (projectIds.Count == 0)
+            return Array.Empty<MyProjectTaskHoursRow>();
+        var ids = projectIds.ToList();
+        // Open = the GetMyActiveTasksAsync test: not in a completing status and progress under 100%.
+        var rows = await (
+            from t in _db.WorkTasks.AsNoTracking()
+            join s in _db.TaskStatuses.AsNoTracking() on t.StatusId equals s.Id
+            where t.TenantId == tenantId && ids.Contains(t.ProjectId) && t.TaskKind != WorkTaskKinds.Meeting
+                  && _db.TaskAssignments.Any(a => a.TaskId == t.Id && a.EmployeeId == employeeId)
+            group new { t.EstimatedHours, Open = !s.MarksTaskComplete && t.ProgressPercent < 100 } by t.ProjectId into g
+            select new
+            {
+                ProjectId = g.Key,
+                Allocated = g.Sum(x => x.EstimatedHours ?? 0m),
+                Open = g.Sum(x => x.Open ? x.EstimatedHours ?? 0m : 0m),
+                OpenCount = g.Count(x => x.Open),
+            }
+        ).ToListAsync(ct);
+        return rows.Select(r => new MyProjectTaskHoursRow(r.ProjectId, r.Allocated, r.Open, r.OpenCount)).ToList();
+    }
+
     public async Task<OpenAssignedTasksPage> ListOpenAssignedToEmployeeAsync(Guid tenantId, Guid employeeId, int take, CancellationToken ct = default)
     {
         var query =

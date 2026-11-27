@@ -11,6 +11,7 @@ using ONEVO.Application.Features.WorkManagement.Projects.Helpers;
 using ONEVO.Application.Features.WorkManagement.Projects.Mappers;
 using ONEVO.Application.Features.WorkManagement.Projects.RepositoryInterfaces;
 using ONEVO.Application.Features.WorkManagement.ProjectMembers.RepositoryInterfaces;
+using ONEVO.Application.Features.WorkManagement.Tasks.RepositoryInterfaces;
 
 namespace ONEVO.Application.Features.WorkManagement.Projects.Queries.ListProjects;
 
@@ -29,11 +30,14 @@ public class ListProjectsQueryHandler : IRequestHandler<ListProjectsQuery, Resul
     private readonly IEntityAssetRepository _entityAssets;
     private readonly ILabelRepository _labels;
     private readonly IProjectMemberRepository _members;
+    private readonly IWorkTaskRepository _tasks;
 
     public ListProjectsQueryHandler(
         ICurrentUser currentUser, ICallerIdentityResolver identity, IProjectRepository projects,
-        IEntityAssetRepository entityAssets, ILabelRepository labels, IProjectMemberRepository members)
+        IEntityAssetRepository entityAssets, ILabelRepository labels, IProjectMemberRepository members,
+        IWorkTaskRepository tasks)
     {
+        _tasks = tasks;
         _currentUser = currentUser;
         _identity = identity;
         _projects = projects;
@@ -77,6 +81,8 @@ public class ListProjectsQueryHandler : IRequestHandler<ListProjectsQuery, Resul
         var memberCounts = await _members.CountDistinctActiveMembersAsync(tenantId, projectIds, ct);
         var displayNames = await ProjectMemberAvatarResolver.ResolveDisplayNamesAsync(_identity, tenantId, memberEmployeeIdsByProject, ct);
         var avatarFileIds = await ProjectMemberAvatarResolver.ResolveAvatarFileIdsAsync(_entityAssets, tenantId, memberEmployeeIdsByProject, ct);
+        var myHours = (await _tasks.GetMyTaskHoursByProjectAsync(tenantId, targetEmployeeId, projectIds, ct))
+            .ToDictionary(r => r.ProjectId);
 
         var dtoItems = items
             .Select(p => ProjectMapper.ToListItem(
@@ -84,7 +90,8 @@ public class ListProjectsQueryHandler : IRequestHandler<ListProjectsQuery, Resul
                 logos.TryGetValue(p.Id, out var fileId) ? fileId : null,
                 labels.TryGetValue(p.Id, out var projectLabels) ? projectLabels : null,
                 ProjectMemberAvatarResolver.BuildAvatars(p.Id, memberEmployeeIdsByProject, displayNames, avatarFileIds),
-                memberCounts.TryGetValue(p.Id, out var count) ? count : 0))
+                memberCounts.TryGetValue(p.Id, out var count) ? count : 0,
+                myHours.GetValueOrDefault(p.Id)))
             .ToList();
 
         return Result<PagedResult<ProjectListItemResponse>>.Success(

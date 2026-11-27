@@ -8,4 +8,5 @@ public sealed record ProjectListItemViewModel(
     decimal AllocatedHours, decimal CompletedHours, bool IsLead,
     bool IsAchieved, DateTimeOffset? AchievedAt, DateTimeOffset? UpdatedAt, Guid? LogoFileId,
     IReadOnlyList<LabelViewModel> Labels, IReadOnlyList<ProjectMemberAvatarViewModel> Members, int MemberCount,
-    string? SystemPurpose = null, string? Icon = null);
+    string? SystemPurpose = null, string? Icon = null,
+    decimal MyAllocatedHours = 0m, decimal MyOpenHours = 0m, int MyOpenTaskCount = 0);

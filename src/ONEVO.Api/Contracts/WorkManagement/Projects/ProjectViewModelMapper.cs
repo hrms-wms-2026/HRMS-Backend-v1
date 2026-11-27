@@ -56,7 +56,8 @@ public static class ProjectViewModelMapper
         dto.StartDate, dto.TargetDate, dto.Color, dto.IsActive,
         dto.AllocatedHours, dto.CompletedHours, dto.IsLead,
         dto.IsAchieved, dto.AchievedAt, dto.UpdatedAt, dto.LogoFileId,
-        dto.Labels.Select(ToViewModel).ToList(), dto.Members.Select(ToViewModel).ToList(), dto.MemberCount, dto.SystemPurpose, dto.Icon);
+        dto.Labels.Select(ToViewModel).ToList(), dto.Members.Select(ToViewModel).ToList(), dto.MemberCount, dto.SystemPurpose, dto.Icon,
+        dto.MyAllocatedHours, dto.MyOpenHours, dto.MyOpenTaskCount);
 
     public static PagedResultViewModel<ProjectListItemViewModel> ToViewModel(this PagedResult<ProjectListItemResponse> page) => new(
         page.Items.Select(ToViewModel).ToList(), page.PageNumber, page.PageSize, page.TotalCount, page.TotalPages, page.HasNext, page.HasPrevious);

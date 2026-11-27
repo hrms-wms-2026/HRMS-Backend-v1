@@ -7,6 +7,7 @@ using ONEVO.Application.Features.WorkManagement.Labels.RepositoryInterfaces;
 using ONEVO.Application.Features.WorkManagement.Projects.Queries.ListProjects;
 using ONEVO.Application.Features.WorkManagement.Projects.RepositoryInterfaces;
 using ONEVO.Application.Features.WorkManagement.ProjectMembers.RepositoryInterfaces;
+using ONEVO.Application.Features.WorkManagement.Tasks.RepositoryInterfaces;
 using ONEVO.Domain.Features.WorkManagement.Labels.Entities;
 using ONEVO.Domain.Features.WorkManagement.Projects.Entities;
 using Xunit;
@@ -62,8 +63,34 @@ public class ListProjectsQueryHandlerTests
         members.Setup(x => x.CountDistinctActiveMembersAsync(TenantId, It.IsAny<IReadOnlyCollection<Guid>>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(new Dictionary<Guid, int>());
 
-        var handler = new ListProjectsQueryHandler(currentUser.Object, identity.Object, projects.Object, entityAssets.Object, labels.Object, members.Object);
+        Tasks = new Mock<IWorkTaskRepository>();
+        Tasks.Setup(x => x.GetMyTaskHoursByProjectAsync(TenantId, It.IsAny<Guid>(), It.IsAny<IReadOnlyCollection<Guid>>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(Array.Empty<MyProjectTaskHoursRow>());
+
+        var handler = new ListProjectsQueryHandler(currentUser.Object, identity.Object, projects.Object, entityAssets.Object, labels.Object, members.Object, Tasks.Object);
         return (handler, projects, entityAssets, labels, members, identity);
+    }
+
+    private Mock<IWorkTaskRepository> Tasks = new();
+
+    [Fact]
+    public async Task Handle_AttachesTheCallersOwnTaskHoursPerProject()
+    {
+        var withTasks = MakeProject(EmployeeId);
+        var withoutTasks = MakeProject(OtherEmployeeId);
+        var (handler, _, _, _, _, _) = BuildHandler([withTasks, withoutTasks], 2);
+        Tasks.Setup(x => x.GetMyTaskHoursByProjectAsync(TenantId, EmployeeId, It.IsAny<IReadOnlyCollection<Guid>>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync([new MyProjectTaskHoursRow(withTasks.Id, 12.5m, 8m, 3)]);
+
+        var result = await handler.Handle(new ListProjectsQuery(null, new PagedRequest()), CancellationToken.None);
+
+        var mine = result.Value!.Items.Single(i => i.Id == withTasks.Id);
+        Assert.Equal(12.5m, mine.MyAllocatedHours);
+        Assert.Equal(8m, mine.MyOpenHours);
+        Assert.Equal(3, mine.MyOpenTaskCount);
+        var none = result.Value.Items.Single(i => i.Id == withoutTasks.Id);
+        Assert.Equal(0m, none.MyAllocatedHours);
+        Assert.Equal(0, none.MyOpenTaskCount);
     }
 
     [Fact]
