@@ -371,12 +371,11 @@ public sealed class EfEmployeeChecklistTaskRepository(ApplicationDbContext db) :
     public Task<EmployeeChecklistTask?> GetTrackedByWorkTaskIdAsync(Guid tenantId, Guid workTaskId, CancellationToken ct = default)
         => db.EmployeeChecklistTasks.FirstOrDefaultAsync(x => x.TenantId == tenantId && x.WorkTaskId == workTaskId, ct);
 
-    public Task<IReadOnlyList<EmployeeChecklistTask>> ListByOffboardingRecordAsync(Guid tenantId, Guid offboardingRecordId, CancellationToken ct = default)
-        => db.EmployeeChecklistTasks.AsNoTracking()
+    public async Task<IReadOnlyList<EmployeeChecklistTask>> ListByOffboardingRecordAsync(Guid tenantId, Guid offboardingRecordId, CancellationToken ct = default)
+        => await db.EmployeeChecklistTasks.AsNoTracking()
             .Where(x => x.TenantId == tenantId && x.OffboardingRecordId == offboardingRecordId)
             .OrderByNullsLast(x => x.Sequence).ThenBy(x => x.Id)
-            .ToListAsync(ct)
-            .ContinueWith(t => (IReadOnlyList<EmployeeChecklistTask>)t.Result, ct);
+            .ToListAsync(ct);
 
     public Task<int> SaveChangesAsync(CancellationToken ct = default) => db.SaveChangesAsync(ct);
 }
